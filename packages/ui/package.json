@@ -1,0 +1,53 @@
+{
+  "name": "@arbimind/ui",
+  "version": "1.0.0",
+  "description": "ArbiMind Web Dashboard - Real-time arbitrage monitoring and control",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rainbow-me/rainbowkit": "^2.2.9",
+    "@tanstack/react-query": "^5.90.9",
+    "clsx": "^2.0.0",
+    "date-fns": "^2.30.0",
+    "ethers": "^6.8.1",
+    "framer-motion": "^10.16.5",
+    "lucide-react": "^0.294.0",
+    "next": "^14.0.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-hot-toast": "^2.4.1",
+    "recharts": "^2.8.0",
+    "tailwind-merge": "^2.0.0",
+    "viem": "^2.39.0",
+    "wagmi": "^2.19.4"
+  },
+  "devDependencies": {
+    "@next/swc-wasm-nodejs": "^14.2.32",
+    "@next/swc-win32-x64-msvc": "^14.2.32",
+    "@types/node": "^20.10.0",
+    "@types/react": "^18.2.39",
+    "@types/react-dom": "^18.2.17",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^8.54.0",
+    "eslint-config-next": "^14.0.4",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.3.6",
+    "typescript": "^5.3.3"
+  },
+  "keywords": [
+    "nextjs",
+    "react",
+    "ethereum",
+    "arbitrage",
+    "dashboard",
+    "defi"
+  ],
+  "author": "ArbiMind Team",
+  "license": "MIT"
+}

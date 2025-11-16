@@ -1,0 +1,23 @@
+{
+  "name": "@arbimind/contracts",
+  "version": "1.0.0",
+  "description": "Smart contracts for ArbiMind arbitrage execution",
+  "scripts": {
+    "build": "forge build",
+    "test": "forge test",
+    "deploy": "forge script Deploy --rpc-url $ETHEREUM_RPC_URL --private-key $PRIVATE_KEY --broadcast --verify",
+    "deploy:local": "forge script Deploy --rpc-url http://localhost:8545 --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --broadcast",
+    "clean": "forge clean",
+    "lint": "forge fmt && forge build"
+  },
+  "devDependencies": {},
+  "keywords": [
+    "solidity",
+    "ethereum",
+    "arbitrage",
+    "mev",
+    "defi"
+  ],
+  "author": "ArbiMind Team",
+  "license": "MIT"
+}

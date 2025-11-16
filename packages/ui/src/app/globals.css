@@ -1,0 +1,219 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-dark-900 text-white;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    background-image: 
+      radial-gradient(circle at 20% 50%, rgba(0, 246, 255, 0.1) 0%, transparent 50%),
+      radial-gradient(circle at 80% 80%, rgba(118, 69, 255, 0.1) 0%, transparent 50%),
+      radial-gradient(circle at 40% 20%, rgba(10, 242, 155, 0.05) 0%, transparent 50%);
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary-500 hover:bg-primary-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 cursor-pointer;
+  }
+  
+  .btn-secondary {
+    @apply bg-dark-700 hover:bg-dark-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 cursor-pointer;
+  }
+  
+  .btn-success {
+    @apply bg-success-500 hover:bg-success-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 cursor-pointer;
+  }
+  
+  .btn-warning {
+    @apply bg-warning-500 hover:bg-warning-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 cursor-pointer;
+  }
+
+  .btn {
+    @apply bg-dark-700 hover:bg-dark-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 cursor-pointer;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent hover:bg-dark-700/50 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 cursor-pointer border border-dark-600;
+  }
+
+  .btn-outline {
+    @apply bg-transparent hover:bg-dark-700/50 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 cursor-pointer border-2 border-cyan-500/50 hover:border-cyan-500;
+  }
+  
+  .card {
+    @apply bg-dark-800 border border-dark-700 rounded-xl p-6 shadow-lg;
+  }
+  
+  .card-hover {
+    @apply card hover:border-primary-500 transition-colors duration-200;
+  }
+  
+  .input-field {
+    @apply bg-dark-700 border border-dark-600 text-white placeholder-dark-400 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+  }
+  
+  .status-indicator {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  
+  .status-running {
+    @apply status-indicator bg-success-100 text-success-800;
+  }
+  
+  .status-stopped {
+    @apply status-indicator bg-dark-100 text-dark-800;
+  }
+  
+  .status-error {
+    @apply status-indicator bg-red-100 text-red-800;
+  }
+  
+  .profit-positive {
+    @apply text-success-400 font-semibold;
+  }
+  
+  .profit-negative {
+    @apply text-red-400 font-semibold;
+  }
+  
+  .profit-neutral {
+    @apply text-dark-300 font-semibold;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent;
+  }
+  
+  .glow-effect {
+    @apply shadow-lg shadow-cyan-500/25;
+  }
+  
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  
+  .animate-glow {
+    animation: glow 2s ease-in-out infinite alternate;
+  }
+
+  /* Futuristic animations */
+  @keyframes glow {
+    0%, 100% {
+      box-shadow: 0 0 20px rgba(0, 246, 255, 0.3);
+    }
+    50% {
+      box-shadow: 0 0 40px rgba(0, 246, 255, 0.6), 0 0 60px rgba(118, 69, 255, 0.4);
+    }
+  }
+
+  @keyframes circuit {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  .animate-circuit {
+    background-size: 200% 200%;
+    animation: circuit 10s ease infinite;
+  }
+
+  /* Glassmorphism */
+  .glass {
+    background: rgba(17, 24, 39, 0.5);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(0, 246, 255, 0.2);
+  }
+
+  .glass-card {
+    @apply backdrop-blur-md bg-white/5 border border-white/10 rounded-2xl shadow-xl;
+  }
+
+  .glass-card:hover {
+    @apply border-cyan-400/30 shadow-cyan-500/10;
+  }
+
+  /* Neon borders */
+  .neon-border {
+    box-shadow: 
+      0 0 5px rgba(0, 246, 255, 0.5),
+      0 0 10px rgba(0, 246, 255, 0.3),
+      inset 0 0 5px rgba(0, 246, 255, 0.1);
+  }
+
+  /* Cyber grid background */
+  .cyber-grid {
+    background-image: 
+      linear-gradient(rgba(0, 246, 255, 0.1) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 246, 255, 0.1) 1px, transparent 1px);
+    background-size: 50px 50px;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-dark-800;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-dark-600 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-dark-500;
+}
+
+/* Loading animation */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Pulse animation for live data */
+@keyframes pulse-live {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-live {
+  animation: pulse-live 2s ease-in-out infinite;
+}

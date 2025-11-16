@@ -1,0 +1,35 @@
+{
+  "name": "arbimind",
+  "version": "1.0.0",
+  "description": "The brain of on-chain arbitrage - Professional MEV/searcher system",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:ui": "npm run dev --workspace=@arbimind/ui",
+    "dev:bot": "npm run dev --workspace=@arbimind/bot",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces",
+    "clean": "npm run clean --workspaces",
+    "setup": "npm install"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "arbitrage",
+    "mev",
+    "defi",
+    "ethereum",
+    "dex",
+    "flash-loans",
+    "trading"
+  ],
+  "author": "ArbiMind Team",
+  "license": "MIT"
+}
