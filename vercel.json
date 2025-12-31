@@ -1,34 +1,12 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "packages/ui/next.config.js",
-      "use": "@vercel/next"
-    }
-  ],
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/$1" },
-    { "src": "/(.*)", "dest": "/$1" }
-  ],
+  "framework": "nextjs",
+  "rootDirectory": "packages/ui",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm build",
+  "devCommand": "pnpm dev",
+  "outputDirectory": ".next",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./",
   "env": {
-    "NODE_ENV": "production"
-  },
-  "functions": {
-    "api/**/*.ts": {
-      "runtime": "nodejs18.x"
-    }
-  },
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "X-XSS-Protection", "value": "1; mode=block" }
-      ]
-    }
-  ],
-  "redirects": [
-    { "source": "/", "destination": "/dashboard", "permanent": false }
-  ]
+    "NEXT_TELEMETRY_DISABLED": "1"
+  }
 }
