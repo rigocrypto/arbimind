@@ -22,8 +22,8 @@ export function middleware(req: NextRequest) {
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
     `font-src 'self' data: https://fonts.gstatic.com`,
     `img-src 'self' blob: data: https:`,
-    `connect-src 'self' https://api.arbimind.ai wss://api.arbimind.ai https://pulse.walletconnect.org https://api.web3modal.org https://*.walletconnect.org https://*.walletconnect.com wss://*.walletconnect.org wss://*.walletconnect.com https://*.infura.io https://*.alchemy.com https://rpc.ankr.com https://*.ankr.com`,
-    `frame-src 'self' https://*.walletconnect.org`,
+    `connect-src 'self' https://api.arbimind.ai wss://api.arbimind.ai https://pulse.walletconnect.org https://api.web3modal.org https://*.walletconnect.org https://*.walletconnect.com https://*.reown.com wss://*.walletconnect.org wss://*.walletconnect.com https://*.infura.io https://*.alchemy.com https://rpc.ankr.com https://*.ankr.com https://eth.merkle.io https://*.merkle.io https://rpc.walletconnect.org`,
+    `frame-src 'self' https://*.walletconnect.org https://*.reown.com`,
     `worker-src 'self' blob:`,
     `base-uri 'self'`,
     `form-action 'self'`,
@@ -61,6 +61,6 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/:path*'],
+  matcher: ['/((?!api|_next/static|_next/image|favicon\\.ico|\\.well-known).*)'],
 };
 
