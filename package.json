@@ -1,6 +1,7 @@
 {
   "name": "arbimind",
   "version": "1.0.0",
+  "packageManager": "pnpm@10.27.0",
   "description": "The brain of on-chain arbitrage - Professional MEV/searcher system",
   "private": true,
   "workspaces": [
