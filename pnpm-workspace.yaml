@@ -1,0 +1,3 @@
+# pnpm-workspace.yaml - Defines monorepo packages
+packages:
+  - 'packages/*'
