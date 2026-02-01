@@ -14,8 +14,11 @@
 
 ### Railway Settings (important)
 
-1. **Root Directory**: Set to `packages/backend` (Settings → Root Directory)
-2. Railway will use `nixpacks.toml` in that folder for build/start
+1. **Root Directory**: Set to `packages/backend` (Settings → Build)
+2. **Source**: Repo `rigocrypto/arbimind`, Branch `main`
+3. **Builder**: Docker (auto-detects `packages/backend/Dockerfile`) or Nixpacks
+
+If Railpack only sees LICENSE/README → Root Directory not applied, or wrong branch.
 
 ### Deploy
 
