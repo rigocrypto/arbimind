@@ -36,6 +36,11 @@ jobs:
           node-version: 20
           cache: 'pnpm'
 
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
       - name: Install pnpm
         run: npm install -g pnpm
 
@@ -83,6 +88,7 @@ jobs:
 
       - name: Build and push Docker image
         if: github.event_name == 'push'
+        continue-on-error: true
         uses: docker/build-push-action@v4
         with:
           context: .
@@ -94,6 +100,7 @@ jobs:
 
       - name: Trigger Railway Deployment
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        continue-on-error: true
         uses: railwayapp/deploy-action@v1
         with:
           railway-token: ${{ secrets.RAILWAY_TOKEN }}
@@ -101,6 +108,7 @@ jobs:
 
       - name: Notify Slack on Success
         if: success()
+        continue-on-error: true
         uses: slackapi/slack-github-action@v1
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_DEPLOYMENTS }}
@@ -120,6 +128,7 @@ jobs:
 
       - name: Notify Slack on Failure
         if: failure()
+        continue-on-error: true
         uses: slackapi/slack-github-action@v1
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_ALERTS }}

@@ -13,6 +13,7 @@
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces",
     "lint": "npm run lint --workspaces",
+    "typecheck": "pnpm run typecheck --workspace=@arbimind/backend && pnpm run typecheck --workspace=@arbimind/bot && pnpm run type-check --workspace=@arbimind/ui",
     "clean": "npm run clean --workspaces",
     "setup": "npm install"
   },
