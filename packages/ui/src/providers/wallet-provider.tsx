@@ -14,9 +14,11 @@ import { createConfig, WagmiProvider, http } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { mainnet, arbitrum, base } from 'wagmi/chains';
 
+const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'arbimind-demo-id';
+
 const { connectors } = getDefaultWallets({
   appName: 'ArbiMind Auto Trader',
-  projectId: 'arbimind-demo-id', // You should get a real project ID from WalletConnect Cloud
+  projectId,
   chains: [arbitrum, base, mainnet],
 });
 

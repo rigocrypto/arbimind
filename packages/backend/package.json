@@ -58,5 +58,8 @@
     "uniswap"
   ],
   "author": "ArbiMind Team",
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.x"
+  }
 }

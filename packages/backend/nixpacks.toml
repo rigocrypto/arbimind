@@ -1,0 +1,14 @@
+# Railway / Nixpacks config for backend
+# In Railway: Settings → Root Directory = packages/backend
+
+[phases.setup]
+nixPkgs = ["nodejs_18"]
+
+[phases.install]
+cmds = ["npm install"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm start"

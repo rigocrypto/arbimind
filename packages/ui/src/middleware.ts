@@ -15,14 +15,18 @@ export function middleware(req: NextRequest) {
 
   const devPermissive = `default-src 'self' blob: data: https:; script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https:; font-src 'self' data: https://fonts.gstatic.com https:; img-src 'self' blob: data: https:; connect-src * ws: wss: http: https:; worker-src blob: https:; child-src blob: https:; frame-src *; object-src 'none'; base-uri 'self';`;
 
+  // When on localhost, allow local backend API (engine, bot)
+  const isLocalhost = req.nextUrl.hostname === 'localhost' || req.nextUrl.hostname === '127.0.0.1';
+  const localBackend = isLocalhost ? 'http://localhost:8000 ws://localhost:8000 http://127.0.0.1:8000 ws://127.0.0.1:8000' : '';
+
   // Prod CSP: broad connect-src (https: wss:) for all RPCs/wallets - standard for Web3 dApps
   const prodStrict = [
     `default-src 'self'`,
-    `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'`,
+    `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'unsafe-eval'`,
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
     `font-src 'self' data: https://fonts.gstatic.com`,
     `img-src 'self' blob: data: https:`,
-    `connect-src 'self' https: wss:`,
+    `connect-src 'self' https: wss: ${localBackend}`.trim(),
     `frame-src 'self' https://*.walletconnect.org https://*.reown.com`,
     `worker-src 'self' blob:`,
     `base-uri 'self'`,

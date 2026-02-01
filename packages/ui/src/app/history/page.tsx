@@ -54,6 +54,8 @@ export default function HistoryPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-500" />
               <input
+                id="history-search"
+                name="search"
                 type="text"
                 placeholder="Search by token pair..."
                 value={searchQuery}

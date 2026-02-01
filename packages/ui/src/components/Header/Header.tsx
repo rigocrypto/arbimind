@@ -37,6 +37,8 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="relative w-full">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-500" />
               <input
+                id="header-search"
+                name="search"
                 type="text"
                 placeholder="Search opportunities..."
                 className="w-full bg-dark-800 border border-dark-700 rounded-lg pl-10 pr-4 py-2 text-sm text-white placeholder-dark-500 focus:outline-none focus:border-cyan-500 transition"

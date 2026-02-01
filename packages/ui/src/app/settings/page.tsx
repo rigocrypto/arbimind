@@ -66,8 +66,10 @@ export default function SettingsPage() {
                 <label className="text-sm font-medium text-white">Enable Auto Trading</label>
                 <p className="text-xs text-dark-400 mt-1">Automatically execute profitable opportunities</p>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
+              <label className="relative inline-flex items-center cursor-pointer" htmlFor="auto-trade">
                 <input
+                  id="auto-trade"
+                  name="autoTrade"
                   type="checkbox"
                   checked={settings.autoTrade}
                   onChange={(e) => handleChange('autoTrade', e.target.checked)}
@@ -79,10 +81,12 @@ export default function SettingsPage() {
 
             {/* Min Profit Threshold */}
             <div className="p-4 rounded-lg bg-dark-800/50 border border-dark-700">
-              <label className="text-sm font-medium text-white mb-2 block">
+              <label className="text-sm font-medium text-white mb-2 block" htmlFor="min-profit-threshold">
                 Minimum Profit Threshold (ETH)
               </label>
               <input
+                id="min-profit-threshold"
+                name="minProfitThreshold"
                 type="number"
                 step="0.001"
                 value={settings.minProfitThreshold}
@@ -94,10 +98,12 @@ export default function SettingsPage() {
 
             {/* Max Gas Price */}
             <div className="p-4 rounded-lg bg-dark-800/50 border border-dark-700">
-              <label className="text-sm font-medium text-white mb-2 block">
+              <label className="text-sm font-medium text-white mb-2 block" htmlFor="max-gas-price">
                 Maximum Gas Price (Gwei)
               </label>
               <input
+                id="max-gas-price"
+                name="maxGasPrice"
                 type="number"
                 step="1"
                 value={settings.maxGasPrice}
@@ -109,10 +115,12 @@ export default function SettingsPage() {
 
             {/* Slippage Tolerance */}
             <div className="p-4 rounded-lg bg-dark-800/50 border border-dark-700">
-              <label className="text-sm font-medium text-white mb-2 block">
+              <label className="text-sm font-medium text-white mb-2 block" htmlFor="slippage-tolerance">
                 Slippage Tolerance (%)
               </label>
               <input
+                id="slippage-tolerance"
+                name="slippageTolerance"
                 type="number"
                 step="0.1"
                 value={settings.slippageTolerance}
@@ -134,8 +142,10 @@ export default function SettingsPage() {
           <div className="space-y-4">
             {/* Risk Level */}
             <div className="p-4 rounded-lg bg-dark-800/50 border border-dark-700">
-              <label className="text-sm font-medium text-white mb-2 block">Risk Level</label>
+              <label className="text-sm font-medium text-white mb-2 block" htmlFor="risk-level">Risk Level</label>
               <select
+                id="risk-level"
+                name="riskLevel"
                 value={settings.riskLevel}
                 onChange={(e) => handleChange('riskLevel', e.target.value)}
                 className="w-full bg-dark-900 border border-dark-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500 transition"
@@ -149,10 +159,12 @@ export default function SettingsPage() {
 
             {/* Max Position Size */}
             <div className="p-4 rounded-lg bg-dark-800/50 border border-dark-700">
-              <label className="text-sm font-medium text-white mb-2 block">
+              <label className="text-sm font-medium text-white mb-2 block" htmlFor="max-position-size">
                 Maximum Position Size (ETH)
               </label>
               <input
+                id="max-position-size"
+                name="maxPositionSize"
                 type="number"
                 step="0.1"
                 value={settings.maxPositionSize}
@@ -178,8 +190,10 @@ export default function SettingsPage() {
                 <label className="text-sm font-medium text-white">Enable Notifications</label>
                 <p className="text-xs text-dark-400 mt-1">Receive browser notifications for trades</p>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
+              <label className="relative inline-flex items-center cursor-pointer" htmlFor="notifications">
                 <input
+                  id="notifications"
+                  name="notifications"
                   type="checkbox"
                   checked={settings.notifications}
                   onChange={(e) => handleChange('notifications', e.target.checked)}
@@ -195,8 +209,10 @@ export default function SettingsPage() {
                 <label className="text-sm font-medium text-white">Email Alerts</label>
                 <p className="text-xs text-dark-400 mt-1">Receive email notifications for important events</p>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
+              <label className="relative inline-flex items-center cursor-pointer" htmlFor="email-alerts">
                 <input
+                  id="email-alerts"
+                  name="emailAlerts"
                   type="checkbox"
                   checked={settings.emailAlerts}
                   onChange={(e) => handleChange('emailAlerts', e.target.checked)}
