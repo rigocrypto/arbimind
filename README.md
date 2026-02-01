@@ -21,6 +21,7 @@ A professional MEV/searcher system for detecting and executing arbitrage opportu
 ArbiMind/
 ├── packages/
 │   ├── ui/          # Next.js Web Dashboard
+│   ├── backend/     # Express API (engine, health, strategies)
 │   ├── bot/         # TypeScript Arbitrage Bot
 │   └── contracts/   # Solidity Smart Contracts
 ```
@@ -28,8 +29,9 @@ ArbiMind/
 ### Core Components
 
 1. **UI (Web dApp)**: Choose token pairs, set risk parameters, monitor performance
-2. **Off-chain Bot**: Scans pools, simulates trades, computes profitability
-3. **On-chain Executor**: Atomic arbitrage execution with safety checks
+2. **Backend API**: Engine control, strategy start/stop, health checks
+3. **Off-chain Bot**: Scans pools, simulates trades, computes profitability
+4. **On-chain Executor**: Atomic arbitrage execution with safety checks
 
 ## 🚀 Quick Start
 
@@ -44,21 +46,22 @@ ArbiMind/
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/rigocrypto/ArbiMind.git
 cd ArbiMind
 
-# Install dependencies
-npm install
+# Install dependencies (pnpm)
+pnpm install
 
 # Setup environment
-cp .env.example .env
+cp env.example .env
 # Edit .env with your configuration
 
 # Build all packages
-npm run build
+pnpm run build
 
-# Start development
-npm run dev
+# Start development (UI on :3000, or bot)
+pnpm run dev:ui
+pnpm run dev:bot
 ```
 
 ### Environment Configuration
@@ -70,6 +73,9 @@ Create a `.env` file with the following variables:
 ETHEREUM_RPC_URL=https://eth-mainnet.alchemyapi.io/v2/YOUR_KEY
 PRIVATE_KEY=your_execution_wallet_private_key
 TREASURY_ADDRESS=your_treasury_wallet_address
+
+# Backend (for CORS when UI is separate)
+FRONTEND_URL=http://localhost:3000
 
 # Bot Configuration
 MIN_PROFIT_ETH=0.01
@@ -125,16 +131,46 @@ forge build
 forge deploy --rpc-url $ETHEREUM_RPC_URL --private-key $PRIVATE_KEY
 ```
 
-### 2. Start the Bot
+### 2. Start the Backend (local)
 
 ```bash
-cd packages/bot
-npm run dev
+cd packages/backend
+pnpm run dev
 ```
 
-### 3. Access the Dashboard
+API: `http://localhost:8080` — `/api/health`, `/api/engine`
+
+### 3. Start the Bot
+
+```bash
+pnpm run dev:bot
+```
+
+### 4. Access the Dashboard
 
 Open [http://localhost:3000](http://localhost:3000) to access the ArbiMind dashboard.
+
+---
+
+## 🚢 Production Deployment
+
+| Service  | Platform | URL |
+|----------|----------|-----|
+| **Backend** | [Railway](https://railway.app) | `https://arbimind-production.up.railway.app` |
+| **UI**     | [Vercel](https://vercel.com)   | Your Vercel project URL |
+
+### Backend (Railway)
+
+- Set `RAILWAY_DOCKERFILE_PATH=Dockerfile.backend` in Railway
+- Variables: `NODE_ENV=production`, `FRONTEND_URL=https://<your-ui-domain>`
+- Test: `curl https://arbimind-production.up.railway.app/api/health`
+
+### UI (Vercel)
+
+- Set `NEXT_PUBLIC_API_URL=https://arbimind-production.up.railway.app/api`
+- Must end with `/api`
+
+See [DEPLOY.md](./DEPLOY.md) for full deployment details.
 
 ## 🔧 Configuration
 
