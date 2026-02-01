@@ -2,9 +2,5 @@
   "framework": "nextjs",
   "installCommand": "pnpm install",
   "buildCommand": "cd packages/ui && pnpm build",
-  "outputDirectory": "packages/ui/.next",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD ./",
-  "env": {
-    "NEXT_TELEMETRY_DISABLED": "1"
-  }
+  "outputDirectory": "packages/ui/.next"
 }
