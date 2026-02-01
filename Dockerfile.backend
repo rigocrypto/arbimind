@@ -1,0 +1,15 @@
+# Backend-only Dockerfile for Railway (use with RAILWAY_DOCKERFILE_PATH=Dockerfile.backend)
+# Build context: repo root
+FROM node:18-alpine
+WORKDIR /app
+
+COPY packages/backend/package.json ./
+RUN npm install
+
+COPY packages/backend/tsconfig.json ./
+COPY packages/backend/src ./src
+RUN npm run build
+
+EXPOSE 8000
+ENV PORT=8000
+CMD ["npm", "start"]

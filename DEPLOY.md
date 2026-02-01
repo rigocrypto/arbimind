@@ -12,13 +12,23 @@
 
 ## 1. Backend (Railway)
 
-### Railway Settings (important)
+### If Railpack fails ("Error creating build plan")
 
-1. **Root Directory**: Set to `packages/backend` (Settings → Build)
+Railway is building from repo root and Railpack doesn't understand the monorepo. **Force Docker:**
+
+1. **Service Variables** (Settings → Variables):
+   - `RAILWAY_DOCKERFILE_PATH` = `Dockerfile.backend`
 2. **Source**: Repo `rigocrypto/arbimind`, Branch `main`
-3. **Builder**: Docker (auto-detects `packages/backend/Dockerfile`) or Nixpacks
+3. **Root Directory**: Leave empty (or `packages/backend` if you prefer)
+4. **Redeploy**
 
-If Railpack only sees LICENSE/README → Root Directory not applied, or wrong branch.
+`Dockerfile.backend` at repo root builds only the backend and bypasses Railpack.
+
+### Alternative (Root Directory working)
+
+1. **Root Directory**: `packages/backend` (Settings → Build)
+2. **Source**: Branch `main`
+3. Railway uses `packages/backend/Dockerfile` automatically
 
 ### Deploy
 
