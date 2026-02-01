@@ -1,0 +1,11 @@
+**/node_modules
+**/.next
+**/dist
+**/.vercel
+**/.turbo
+**/.git
+.env*
+logs
+packages/ui
+packages/bot
+packages/contracts

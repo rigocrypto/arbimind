@@ -12,50 +12,58 @@
 
 ## 1. Backend (Railway)
 
-### If Railpack fails ("Error creating build plan")
+### Recommended: Force Docker (bypasses Railpack)
 
-Railway is building from repo root and Railpack doesn't understand the monorepo. **Force Docker:**
+Use this setup — it avoids Railpack "Error creating build plan" entirely.
 
-1. **Service Variables** (Settings → Variables):
-   - `RAILWAY_DOCKERFILE_PATH` = `Dockerfile.backend`
-2. **Source**: Repo `rigocrypto/arbimind`, Branch `main`
-3. **Root Directory**: Leave empty (or `packages/backend` if you prefer)
-4. **Redeploy**
+**Railway backend service settings:**
 
-`Dockerfile.backend` at repo root builds only the backend and bypasses Railpack.
+| Setting | Value |
+|---------|-------|
+| **Source** | Repo `rigocrypto/arbimind`, Branch `main` |
+| **Root Directory** | **Leave EMPTY** |
+| **Variables** | See below |
 
-### Alternative (Root Directory working)
+**Variables (Settings → Variables):**
 
-1. **Root Directory**: `packages/backend` (Settings → Build)
-2. **Source**: Branch `main`
-3. Railway uses `packages/backend/Dockerfile` automatically
+| Variable | Value |
+|----------|-------|
+| `RAILWAY_DOCKERFILE_PATH` | `Dockerfile.backend` |
+| `NODE_ENV` | `production` |
+| `FRONTEND_URL` | `https://arbimind.vercel.app` |
 
-### Deploy
+**Redeploy** — Railway uses `Dockerfile.backend` at repo root; Railpack is not used.
 
-```bash
-# From repo root
-cd packages/backend
-npm i -g @railway/cli
-railway login
-railway init
-railway up
+---
+
+### Alternative: Root Directory mode
+
+If you prefer building from `packages/backend`:
+
+1. **Root Directory** = `packages/backend` (no leading/trailing slashes)
+2. **Remove** `RAILWAY_DOCKERFILE_PATH` (or set to `Dockerfile`)
+3. `packages/backend/Dockerfile` will be used automatically
+
+**Do not mix** Root Directory with `RAILWAY_DOCKERFILE_PATH=Dockerfile.backend`.
+
+---
+
+### Verify before deploy
+
+```powershell
+git fetch origin
+git ls-tree -r --name-only origin/main | findstr "packages/backend/src/index.ts"
 ```
 
-Or: Connect GitHub → New Service → Set Root Directory = `packages/backend` → Deploy
+If that prints the path, `main` has the backend code.
 
-### Railway Env Vars
-
-| Variable | Value | Required |
-|----------|-------|----------|
-| `PORT` | `8000` | Yes |
-| `FRONTEND_URL` | `https://arbimind.vercel.app` or your domain | Yes (CORS) |
-| `NODE_ENV` | `production` | Yes |
+---
 
 ### Backend URL
 
-After deploy: `https://your-app-name.up.railway.app`
+After deploy: `https://arbimind-production.up.railway.app` (or your Railway URL)
 
-Test: `curl https://your-app-name.up.railway.app/api/health`
+Test: `curl https://arbimind-production.up.railway.app/api/health`
 
 ---
 
