@@ -1,10 +1,8 @@
 {
   "framework": "nextjs",
-  "rootDirectory": "packages/ui",
-  "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm build",
-  "devCommand": "pnpm dev",
-  "outputDirectory": ".next",
+  "installCommand": "pnpm install",
+  "buildCommand": "cd packages/ui && pnpm build",
+  "outputDirectory": "packages/ui/.next",
   "ignoreCommand": "git diff --quiet HEAD^ HEAD ./",
   "env": {
     "NEXT_TELEMETRY_DISABLED": "1"
