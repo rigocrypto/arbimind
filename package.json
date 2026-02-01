@@ -33,5 +33,15 @@
     "trading"
   ],
   "author": "ArbiMind Team",
-  "license": "MIT"
+  "license": "MIT",
+  "pnpm": {
+    "overrides": {
+      "tar": ">=7.5.7",
+      "glob": ">=10.5.0",
+      "preact": ">=10.28.2",
+      "hono": ">=4.11.7",
+      "h3": ">=1.15.5",
+      "diff": ">=4.0.4"
+    }
+  }
 }
