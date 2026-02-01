@@ -15,14 +15,14 @@ export function middleware(req: NextRequest) {
 
   const devPermissive = `default-src 'self' blob: data: https:; script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https:; font-src 'self' data: https://fonts.gstatic.com https:; img-src 'self' blob: data: https:; connect-src * ws: wss: http: https:; worker-src blob: https:; child-src blob: https:; frame-src *; object-src 'none'; base-uri 'self';`;
 
-  // Prod CSP: allows Next.js hydration (unsafe-inline), fonts, WalletConnect, common RPCs
+  // Prod CSP: broad connect-src (https: wss:) for all RPCs/wallets - standard for Web3 dApps
   const prodStrict = [
     `default-src 'self'`,
     `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'`,
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
     `font-src 'self' data: https://fonts.gstatic.com`,
     `img-src 'self' blob: data: https:`,
-    `connect-src 'self' https://api.arbimind.ai wss://api.arbimind.ai https://pulse.walletconnect.org https://api.web3modal.org https://*.walletconnect.org https://*.walletconnect.com https://*.reown.com wss://*.walletconnect.org wss://*.walletconnect.com https://*.infura.io https://*.alchemy.com https://rpc.ankr.com https://*.ankr.com https://eth.merkle.io https://*.merkle.io wss://*.merkle.io https://rpc.walletconnect.org https://cloudflare-eth.com`,
+    `connect-src 'self' https: wss:`,
     `frame-src 'self' https://*.walletconnect.org https://*.reown.com`,
     `worker-src 'self' blob:`,
     `base-uri 'self'`,
