@@ -5,6 +5,9 @@ import WalletProvider from '@/providers/wallet-provider'
 
 const inter = Inter({ subsets: ['latin'] })
 
+// Prevent SSG - WalletConnect uses indexedDB (browser-only) during prerender
+export const dynamic = 'force-dynamic'
+
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,

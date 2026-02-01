@@ -18,6 +18,13 @@ const nextConfig = {
   },
   // Disable any built-in CSP
   poweredByHeader: false,
+  webpack: (config) => {
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      '@react-native-async-storage/async-storage': false,
+    };
+    return config;
+  },
 }
 
 module.exports = nextConfig
