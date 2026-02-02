@@ -27,6 +27,7 @@ app.use(express.json());
 
 app.use('/api/health', healthRoutes);
 app.use('/api/engine', engineRoutes);
+app.use('/api/referral', referralRoutes);
 
 const PORT = parseInt(process.env.PORT || '8000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
