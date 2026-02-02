@@ -28,6 +28,16 @@ app.use(express.json());
 // Minimal test route – verify deploy is using latest code
 app.get('/api/test', (_req, res) => res.json({ ok: true, v: 'ace7bce' }));
 
+// Version/deploy verification – shows commit SHA from Railway
+app.get('/api/version', (_req, res) =>
+  res.json({
+    ok: true,
+    sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || 'unknown',
+    node: process.version,
+    startedAt: new Date().toISOString(),
+  })
+);
+
 // Explicit referral route first (in case router mount has issues)
 app.get('/api/referral/earnings', (req, res) => {
   const address = req.query.address as string;
@@ -47,6 +57,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 app.listen(PORT, HOST, () => {
   console.log(`🚀 ArbiMind Backend @ http://${HOST}:${PORT}`);
   console.log(`   /api/health  - Health check`);
-  console.log(`   /api/engine   - Start/stop strategies`);
+  console.log(`   /api/version - Deploy verification`);
+  console.log(`   /api/engine  - Start/stop strategies`);
   console.log(`   /api/referral - Earnings + claim`);
 });
