@@ -34,6 +34,8 @@ export interface Strategy {
   lastPnl: number;
   status: 'active' | 'paused' | 'error';
   active: boolean;
+  successRate?: number; // 0-100
+  sentiment?: number; // 0-1
 }
 
 export interface Opportunity {
@@ -81,6 +83,8 @@ const mockStrategies: Strategy[] = [
     lastPnl: 0.0234,
     status: 'active',
     active: true,
+    successRate: 85,
+    sentiment: 0.8,
   },
   {
     id: 'trend',
@@ -89,6 +93,8 @@ const mockStrategies: Strategy[] = [
     lastPnl: 0.0156,
     status: 'active',
     active: true,
+    successRate: 72,
+    sentiment: 0.6,
   },
   {
     id: 'market-making',
@@ -97,6 +103,8 @@ const mockStrategies: Strategy[] = [
     lastPnl: -0.0023,
     status: 'paused',
     active: false,
+    successRate: 92,
+    sentiment: 0.9,
   },
 ];
 

@@ -1,10 +1,12 @@
 'use client';
 
-import { Brain, Power, Search, Menu, ChevronDown } from 'lucide-react';
+import { Brain, Power, Search, Menu, ChevronDown, Share2 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAccount, useDisconnect } from 'wagmi';
 import { formatAddress } from '@/utils/format';
+import { RevenueTooltip } from '@/components/RevenueTooltip';
+import { useReferral } from '@/hooks/useReferral';
 
 interface HeaderProps {
   isRunning: boolean;
@@ -22,6 +24,7 @@ export function Header({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { isConnected } = useAccount();
   const { disconnect } = useDisconnect();
+  const { earnings, copyRefLink } = useReferral();
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -148,6 +151,14 @@ export function Header({
                         <div className="absolute right-0 top-full mt-1 py-1 rounded-lg bg-dark-800 border border-dark-600 shadow-xl z-50 min-w-[160px]">
                           <button
                             type="button"
+                            onClick={() => { copyRefLink(); setWalletDropdownOpen(false); }}
+                            className="w-full px-4 py-2 text-left text-sm text-dark-200 hover:bg-dark-700 transition-colors flex items-center gap-2"
+                          >
+                            <Share2 className="w-4 h-4" />
+                            Copy Referral Link
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => { openChainModal(); setWalletDropdownOpen(false); }}
                             className="w-full px-4 py-2 text-left text-sm text-dark-200 hover:bg-dark-700 transition-colors"
                           >
@@ -174,6 +185,19 @@ export function Header({
                 }}
               </ConnectButton.Custom>
             </div>
+
+            {/* Share & Earn - when connected */}
+            {isConnected && (
+              <button
+                type="button"
+                onClick={copyRefLink}
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 text-purple-300 text-xs font-medium transition-colors"
+                title="Copy referral link"
+              >
+                <Share2 className="w-4 h-4" />
+                <span>Share & Earn {earnings.toFixed(2)} ETH</span>
+              </button>
+            )}
 
             {/* Revenue info tooltip */}
             <RevenueTooltip />

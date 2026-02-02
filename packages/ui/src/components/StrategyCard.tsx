@@ -1,9 +1,11 @@
 'use client';
 
-import { Play, Pause, Settings } from 'lucide-react';
+import { useState } from 'react';
+import { Play, Pause, Settings, Brain } from 'lucide-react';
 import { useAccount } from 'wagmi';
 import { formatETH } from '@/utils/format';
 import type { Strategy } from '@/hooks/useArbiApi';
+import { StrategySettingsModal } from '@/components/StrategySettingsModal';
 
 interface StrategyCardProps {
   strategy: Strategy;
@@ -14,80 +16,62 @@ interface StrategyCardProps {
 }
 
 export function StrategyCard({ strategy, onRun, onToggleAuto, engineActiveStrategy }: StrategyCardProps) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const { isConnected } = useAccount();
   const allocationPercent = strategy.allocationBps / 100;
   const isActive = engineActiveStrategy !== undefined
     ? strategy.id === engineActiveStrategy
     : (strategy.active && strategy.status === 'active');
   const isPositive = strategy.lastPnl >= 0;
-
-  // Calculate progress ring circumference
-  const radius = 40;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (allocationPercent / 100) * circumference;
+  const successRate = strategy.successRate ?? Math.round(allocationPercent);
+  const sentiment = strategy.sentiment ?? 0.75;
 
   return (
-    <div className="glass-card p-4 sm:p-6 space-y-3 sm:space-y-4">
+    <div className="glass-card p-4 sm:p-5 space-y-3 compact max-w-sm w-full">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-2">
         <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
           <div className={`
-            w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center flex-shrink-0
+            w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0
             ${isActive ? 'bg-cyan-500/20' : 'bg-dark-700/50'}
           `}>
             <div className={`
-              w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full
+              w-2.5 h-2.5 rounded-full
               ${isActive ? 'bg-green-500 animate-pulse' : 'bg-dark-500'}
             `} />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-base sm:text-lg font-bold text-white truncate">{strategy.name}</h3>
+            <h3 className="text-base font-bold text-white truncate">{strategy.name}</h3>
             <p className="text-xs text-dark-400 capitalize">{strategy.status}</p>
           </div>
         </div>
       </div>
 
-      {/* Allocation Progress Ring */}
-      <div className="flex items-center justify-center py-3 sm:py-4">
-        <div className="relative w-20 h-20 sm:w-24 sm:h-24">
-          <svg className="transform -rotate-90 w-20 h-20 sm:w-24 sm:h-24" viewBox="0 0 80 80">
-            <circle
-              cx="40"
-              cy="40"
-              r="33"
-              stroke="currentColor"
-              strokeWidth="5"
-              fill="none"
-              className="text-dark-700"
-            />
-            <circle
-              cx="40"
-              cy="40"
-              r="33"
-              stroke="currentColor"
-              strokeWidth="5"
-              fill="none"
-              strokeDasharray={207.35}
-              strokeDashoffset={207.35 - (allocationPercent / 100) * 207.35}
-              className="text-cyan-400 transition-all duration-500"
-              strokeLinecap="round"
-            />
-          </svg>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-lg sm:text-xl font-bold text-white">{allocationPercent.toFixed(0)}%</span>
+      {/* Stats row: Success %, Profit, Sentiment */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="p-2 rounded-lg bg-dark-800/50 text-center">
+          <div className="text-xs text-dark-400">Success</div>
+          <div className="text-sm font-bold text-white">{successRate}%</div>
+        </div>
+        <div className="p-2 rounded-lg bg-dark-800/50 text-center">
+          <div className="text-xs text-dark-400">Profit</div>
+          <div className={`text-sm font-bold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+            {isPositive ? '+' : ''}{formatETH(strategy.lastPnl)}
           </div>
+        </div>
+        <div className="p-2 rounded-lg bg-dark-800/50 text-center flex flex-col items-center justify-center">
+          <div className="flex items-center gap-1">
+            <Brain className="w-3 h-3 text-cyan-400" />
+            <span className="text-xs text-dark-400">AI</span>
+          </div>
+          <div className="text-sm font-bold text-cyan-400">{Math.round(sentiment * 100)}%</div>
         </div>
       </div>
 
-      {/* Last PnL */}
-      <div className="flex items-center justify-between p-2.5 sm:p-3 rounded-lg bg-dark-800/50">
-        <span className="text-xs sm:text-sm text-dark-400">Last PnL</span>
-        <span className={`
-          text-base sm:text-lg font-bold
-          ${isPositive ? 'text-green-400' : 'text-red-400'}
-        `}>
-          {isPositive ? '+' : ''}{formatETH(strategy.lastPnl)}
-        </span>
+      {/* Allocation */}
+      <div className="flex items-center justify-between py-2 px-2 rounded-lg bg-dark-800/30">
+        <span className="text-xs text-dark-400">Allocation</span>
+        <span className="text-sm font-bold text-white">{allocationPercent.toFixed(0)}%</span>
       </div>
 
       {/* Actions */}
@@ -97,7 +81,7 @@ export function StrategyCard({ strategy, onRun, onToggleAuto, engineActiveStrate
           onClick={() => isConnected && onRun?.(strategy.id)}
           disabled={!isConnected}
           title={!isConnected ? 'Connect wallet first' : undefined}
-          className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg border font-medium text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all duration-200
+          className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border font-medium text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all duration-200
             ${!isConnected
               ? 'bg-dark-700/50 border-dark-600 text-dark-500 cursor-not-allowed opacity-60'
               : 'bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-500/30 text-cyan-400 cursor-pointer'
@@ -112,7 +96,7 @@ export function StrategyCard({ strategy, onRun, onToggleAuto, engineActiveStrate
           onClick={() => isConnected && onToggleAuto?.(strategy.id, !isActive)}
           disabled={!isConnected}
           title={!isConnected ? 'Connect wallet first' : undefined}
-          className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg border font-medium text-xs sm:text-sm focus:outline-none focus:ring-2 transition-all duration-200
+          className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border font-medium text-xs sm:text-sm focus:outline-none focus:ring-2 transition-all duration-200
             ${!isConnected
               ? 'bg-dark-700/50 border-dark-600 text-dark-500 cursor-not-allowed opacity-60'
               : isActive
@@ -125,12 +109,19 @@ export function StrategyCard({ strategy, onRun, onToggleAuto, engineActiveStrate
         </button>
         <button
           type="button"
-          className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg bg-dark-700/50 hover:bg-dark-600 border border-dark-600 text-dark-300 transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-dark-500/50 flex-shrink-0"
+          onClick={() => setSettingsOpen(true)}
+          className="px-3 py-2 rounded-lg bg-dark-700/50 hover:bg-dark-600 border border-dark-600 text-dark-300 hover:text-white transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-dark-500/50 flex-shrink-0"
           aria-label="Settings"
         >
           <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
         </button>
       </div>
+
+      <StrategySettingsModal
+        strategyName={strategy.name}
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
     </div>
   );
 }
