@@ -17,10 +17,10 @@ router.get('/earnings', (req: Request, res: Response) => {
     }
     const normalized = address.toLowerCase();
     const earnings = earningsByAddress[normalized] ?? 0;
-    res.json({ earnings });
+    return res.json({ earnings });
   } catch (error) {
     console.error('Referral earnings error:', error);
-    res.status(500).json({ earnings: 0 });
+    return res.status(500).json({ earnings: 0 });
   }
 });
 
@@ -43,10 +43,10 @@ router.post('/claim', (req: Request, res: Response) => {
     // TODO: Multi-sig treasury claim, emit tx
     earningsByAddress[normalized] = 0;
     console.log(`📤 [REFERRAL] Claimed ${amount} ETH for ${address}`);
-    res.json({ ok: true, claimed: amount, txHash: null });
+    return res.json({ ok: true, claimed: amount, txHash: null });
   } catch (error) {
     console.error('Referral claim error:', error);
-    res.status(500).json({ ok: false, error: 'Claim failed' });
+    return res.status(500).json({ ok: false, error: 'Claim failed' });
   }
 });
 

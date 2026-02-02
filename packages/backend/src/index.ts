@@ -18,12 +18,15 @@ app.use(
     origin: (origin, cb) => {
       if (!origin) return cb(null, true);
       if (allowedOrigins.includes(origin)) return cb(null, origin);
-      cb(new Error('Not allowed by CORS'));
+      return cb(new Error('Not allowed by CORS'));
     },
     credentials: true,
   })
 );
 app.use(express.json());
+
+// Minimal test route – verify deploy is using latest code
+app.get('/api/test', (_req, res) => res.json({ ok: true, v: 'ace7bce' }));
 
 // Explicit referral route first (in case router mount has issues)
 app.get('/api/referral/earnings', (req, res) => {
@@ -31,7 +34,7 @@ app.get('/api/referral/earnings', (req, res) => {
   if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
     return res.json({ earnings: 0 });
   }
-  res.json({ earnings: 0 });
+  return res.json({ earnings: 0 });
 });
 
 app.use('/api/health', healthRoutes);
