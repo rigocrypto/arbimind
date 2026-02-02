@@ -9,13 +9,18 @@ import { useState } from 'react';
 
 export default function StrategiesPage() {
   const { strategies, loading } = useStrategies();
-  const { start, stop, activeStrategy } = useEngineContext();
+  const { start, stop, activeStrategy, checkBalance } = useEngineContext();
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(null);
 
-  const handleRun = (id: string) => start(id);
+  const handleRun = (id: string) => {
+    if (!checkBalance()) return;
+    start(id);
+  };
   const handleToggleAuto = (id: string, enabled: boolean) => {
-    if (enabled) start(id);
-    else stop();
+    if (enabled) {
+      if (!checkBalance()) return;
+      start(id);
+    } else stop();
   };
 
   return (

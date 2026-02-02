@@ -175,6 +175,9 @@ export function Header({
               </ConnectButton.Custom>
             </div>
 
+            {/* Revenue info tooltip */}
+            <RevenueTooltip />
+
             {/* Engine Toggle - disabled when wallet not connected */}
             <button
               onClick={isConnected ? onToggle : undefined}

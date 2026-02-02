@@ -15,12 +15,17 @@ export default function HomePage() {
   const { metrics, loading: metricsLoading } = useMetrics();
   const { strategies, loading: strategiesLoading } = useStrategies();
   const { opportunities } = useOpportunities();
-  const { start, stop, activeStrategy } = useEngineContext();
+  const { start, stop, activeStrategy, checkBalance } = useEngineContext();
 
-  const handleRunStrategy = (id: string) => start(id);
+  const handleRunStrategy = (id: string) => {
+    if (!checkBalance()) return;
+    start(id);
+  };
   const handleToggleAuto = (id: string, enabled: boolean) => {
-    if (enabled) start(id);
-    else stop();
+    if (enabled) {
+      if (!checkBalance()) return;
+      start(id);
+    } else stop();
   };
 
   const safeMetrics = metrics || {

@@ -13,12 +13,13 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children, currentPath = '/' }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { isRunning, start, stop } = useEngineContext();
+  const { isRunning, start, stop, checkBalance } = useEngineContext();
 
   const handleToggleEngine = () => {
     if (isRunning) {
       stop();
     } else {
+      if (!checkBalance()) return;
       start();
     }
   };
