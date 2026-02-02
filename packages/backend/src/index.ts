@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 
 import healthRoutes from './routes/health';
 import engineRoutes from './routes/engine';
+import referralRoutes from './routes/referral';
 
 dotenv.config();
 
@@ -33,5 +34,6 @@ const HOST = process.env.HOST || '0.0.0.0';
 app.listen(PORT, HOST, () => {
   console.log(`🚀 ArbiMind Backend @ http://${HOST}:${PORT}`);
   console.log(`   /api/health  - Health check`);
-  console.log(`   /api/engine  - Start/stop strategies`);
+  console.log(`   /api/engine   - Start/stop strategies`);
+  console.log(`   /api/referral - Earnings + claim`);
 });
