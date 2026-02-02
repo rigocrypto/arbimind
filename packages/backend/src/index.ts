@@ -9,9 +9,16 @@ dotenv.config();
 
 const app = express();
 
+const allowedOrigins = process.env.FRONTEND_URL
+  ? process.env.FRONTEND_URL.split(/[\s,]+/).filter(Boolean)
+  : ['http://localhost:3000'];
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, origin);
+      cb(new Error('Not allowed by CORS'));
+    },
     credentials: true,
   })
 );

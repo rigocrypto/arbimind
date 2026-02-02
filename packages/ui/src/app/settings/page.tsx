@@ -89,8 +89,8 @@ export default function SettingsPage() {
                 name="minProfitThreshold"
                 type="number"
                 step="0.001"
-                value={settings.minProfitThreshold}
-                onChange={(e) => handleChange('minProfitThreshold', parseFloat(e.target.value))}
+                value={Number.isFinite(settings.minProfitThreshold) ? settings.minProfitThreshold : 0.01}
+                onChange={(e) => handleChange('minProfitThreshold', parseFloat(e.target.value) || 0.01)}
                 className="w-full bg-dark-900 border border-dark-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500 transition"
               />
               <p className="text-xs text-dark-400 mt-1">Minimum profit required to execute a trade</p>
@@ -106,8 +106,8 @@ export default function SettingsPage() {
                 name="maxGasPrice"
                 type="number"
                 step="1"
-                value={settings.maxGasPrice}
-                onChange={(e) => handleChange('maxGasPrice', parseFloat(e.target.value))}
+                value={Number.isFinite(settings.maxGasPrice) ? settings.maxGasPrice : 50}
+                onChange={(e) => handleChange('maxGasPrice', parseFloat(e.target.value) || 50)}
                 className="w-full bg-dark-900 border border-dark-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500 transition"
               />
               <p className="text-xs text-dark-400 mt-1">Maximum gas price willing to pay per transaction</p>
@@ -123,8 +123,8 @@ export default function SettingsPage() {
                 name="slippageTolerance"
                 type="number"
                 step="0.1"
-                value={settings.slippageTolerance}
-                onChange={(e) => handleChange('slippageTolerance', parseFloat(e.target.value))}
+                value={Number.isFinite(settings.slippageTolerance) ? settings.slippageTolerance : 0.5}
+                onChange={(e) => handleChange('slippageTolerance', parseFloat(e.target.value) || 0.5)}
                 className="w-full bg-dark-900 border border-dark-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500 transition"
               />
               <p className="text-xs text-dark-400 mt-1">Maximum acceptable price slippage</p>
@@ -167,8 +167,8 @@ export default function SettingsPage() {
                 name="maxPositionSize"
                 type="number"
                 step="0.1"
-                value={settings.maxPositionSize}
-                onChange={(e) => handleChange('maxPositionSize', parseFloat(e.target.value))}
+                value={Number.isFinite(settings.maxPositionSize) ? settings.maxPositionSize : 1}
+                onChange={(e) => handleChange('maxPositionSize', parseFloat(e.target.value) || 1)}
                 className="w-full bg-dark-900 border border-dark-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500 transition"
               />
               <p className="text-xs text-dark-400 mt-1">Maximum size per trade position</p>
