@@ -8,6 +8,7 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "npm run dev --workspace=@arbimind/ui",
     "dev:ui": "npm run dev --workspace=@arbimind/ui",
     "dev:bot": "npm run dev --workspace=@arbimind/bot",
     "build": "npm run build --workspaces",

@@ -361,15 +361,40 @@ export function useOpportunities() {
 
 export function useEngine() {
   const [isRunning, setIsRunning] = useState(false);
+  const [activeStrategy, setActiveStrategy] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
-  const start = useCallback(async () => {
+  const fetchStatus = useCallback(async () => {
+    if (!ENABLE_API_CALLS) return;
+    try {
+      const response = await fetch(`${API_BASE}/engine/status`);
+      if (response.ok) {
+        const data = await response.json();
+        const active = data?.active ?? '';
+        setActiveStrategy(typeof active === 'string' ? active : '');
+        setIsRunning(!!active);
+      }
+    } catch {
+      // Ignore - backend may be offline
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 10000);
+    return () => clearInterval(interval);
+  }, [fetchStatus]);
+
+  const start = useCallback(async (strategy: string = 'arbitrage') => {
     setLoading(true);
     try {
       const response = await fetch(`${API_BASE}/engine/start`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strategy }),
       });
       if (response.ok) {
+        setActiveStrategy(strategy);
         setIsRunning(true);
       }
     } catch (error) {
@@ -386,6 +411,7 @@ export function useEngine() {
         method: 'POST',
       });
       if (response.ok) {
+        setActiveStrategy('');
         setIsRunning(false);
       }
     } catch (error) {
@@ -395,7 +421,7 @@ export function useEngine() {
     }
   }, []);
 
-  return { isRunning, loading, start, stop };
+  return { isRunning, activeStrategy, loading, start, stop };
 }
 
 export function useExecute() {

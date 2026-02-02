@@ -1,18 +1,24 @@
 'use client';
 
 import { Play, Pause, Settings } from 'lucide-react';
-import { formatETH, formatPercent } from '@/utils/format';
+import { useAccount } from 'wagmi';
+import { formatETH } from '@/utils/format';
 import type { Strategy } from '@/hooks/useArbiApi';
 
 interface StrategyCardProps {
   strategy: Strategy;
   onRun?: (id: string) => void;
   onToggleAuto?: (id: string, enabled: boolean) => void;
+  /** When set, overrides strategy.active to reflect real engine state */
+  engineActiveStrategy?: string;
 }
 
-export function StrategyCard({ strategy, onRun, onToggleAuto }: StrategyCardProps) {
+export function StrategyCard({ strategy, onRun, onToggleAuto, engineActiveStrategy }: StrategyCardProps) {
+  const { isConnected } = useAccount();
   const allocationPercent = strategy.allocationBps / 100;
-  const isActive = strategy.active && strategy.status === 'active';
+  const isActive = engineActiveStrategy !== undefined
+    ? strategy.id === engineActiveStrategy
+    : (strategy.active && strategy.status === 'active');
   const isPositive = strategy.lastPnl >= 0;
 
   // Calculate progress ring circumference
@@ -88,26 +94,34 @@ export function StrategyCard({ strategy, onRun, onToggleAuto }: StrategyCardProp
       <div className="flex gap-1.5 sm:gap-2">
         <button
           type="button"
-          onClick={() => onRun?.(strategy.id)}
-          className="flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 text-cyan-400 transition-all duration-200 font-medium text-xs sm:text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+          onClick={() => isConnected && onRun?.(strategy.id)}
+          disabled={!isConnected}
+          title={!isConnected ? 'Connect wallet first' : undefined}
+          className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg border font-medium text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all duration-200
+            ${!isConnected
+              ? 'bg-dark-700/50 border-dark-600 text-dark-500 cursor-not-allowed opacity-60'
+              : 'bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-500/30 text-cyan-400 cursor-pointer'
+            }`}
         >
           <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          <span className="hidden sm:inline">Run Now</span>
-          <span className="sm:hidden">Run</span>
+          <span className="hidden sm:inline">{isConnected ? 'Run Now' : 'Connect to Run'}</span>
+          <span className="sm:hidden">{isConnected ? 'Run' : 'Connect'}</span>
         </button>
         <button
           type="button"
-          onClick={() => onToggleAuto?.(strategy.id, !isActive)}
-          className={`
-            flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg border transition-all duration-200 font-medium text-xs sm:text-sm cursor-pointer focus:outline-none focus:ring-2
-            ${isActive
-              ? 'bg-red-500/20 hover:bg-red-500/30 border-red-500/30 text-red-400 focus:ring-red-500/50'
-              : 'bg-green-500/20 hover:bg-green-500/30 border-green-500/30 text-green-400 focus:ring-green-500/50'
-            }
-          `}
+          onClick={() => isConnected && onToggleAuto?.(strategy.id, !isActive)}
+          disabled={!isConnected}
+          title={!isConnected ? 'Connect wallet first' : undefined}
+          className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg border font-medium text-xs sm:text-sm focus:outline-none focus:ring-2 transition-all duration-200
+            ${!isConnected
+              ? 'bg-dark-700/50 border-dark-600 text-dark-500 cursor-not-allowed opacity-60'
+              : isActive
+                ? 'bg-red-500/20 hover:bg-red-500/30 border-red-500/30 text-red-400 focus:ring-red-500/50 cursor-pointer'
+                : 'bg-green-500/20 hover:bg-green-500/30 border-green-500/30 text-green-400 focus:ring-green-500/50 cursor-pointer'
+            }`}
         >
           {isActive ? <Pause className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
-          <span className="hidden sm:inline">{isActive ? 'Pause' : 'Auto'}</span>
+          <span className="hidden sm:inline">{isConnected ? (isActive ? 'Pause' : 'Auto') : 'Connect first'}</span>
         </button>
         <button
           type="button"

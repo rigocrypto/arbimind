@@ -1,24 +1,37 @@
 'use client';
 
-import { Brain, Power, Wallet, Search, Menu } from 'lucide-react';
-import { useState } from 'react';
+import { Brain, Power, Search, Menu, ChevronDown } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { useAccount, useDisconnect } from 'wagmi';
+import { formatAddress } from '@/utils/format';
 
 interface HeaderProps {
   isRunning: boolean;
   onToggle: () => void;
-  onConnectWallet?: () => void;
-  walletConnected?: boolean;
   onMenuClick?: () => void;
 }
 
 export function Header({ 
   isRunning, 
   onToggle, 
-  onConnectWallet, 
-  walletConnected,
   onMenuClick 
 }: HeaderProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [walletDropdownOpen, setWalletDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const { isConnected } = useAccount();
+  const { disconnect } = useDisconnect();
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setWalletDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <header className="sticky top-0 z-30 bg-dark-800/95 backdrop-blur-sm border-b border-cyan-500/20">
@@ -74,31 +87,109 @@ export function Header({
               </span>
             </div>
 
-            {/* Wallet Button - Icon only on mobile */}
-            {onConnectWallet && (
-              <button
-                onClick={onConnectWallet}
-                type="button"
-                className="flex items-center justify-center sm:space-x-2 p-2 sm:px-4 sm:py-2 rounded-lg bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 text-white hover:from-purple-500/30 hover:to-pink-500/30 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-              >
-                <Wallet className="w-4 h-4" />
-                <span className="hidden sm:inline text-sm font-medium">
-                  {walletConnected ? 'Disconnect' : 'Connect'}
-                </span>
-              </button>
-            )}
+            {/* Wallet Connect - RainbowKit */}
+            <div className="flex-shrink-0" ref={dropdownRef}>
+              <ConnectButton.Custom>
+                {({
+                  account,
+                  chain,
+                  openAccountModal,
+                  openChainModal,
+                  openConnectModal,
+                  mounted,
+                }) => {
+                  if (!mounted) {
+                    return (
+                      <div
+                        className="h-9 w-24 sm:w-32 rounded-lg bg-dark-700/50 animate-pulse"
+                        aria-hidden
+                      />
+                    );
+                  }
+                  const connected = account && chain;
+                  if (!connected) {
+                    return (
+                      <button
+                        type="button"
+                        onClick={openConnectModal}
+                        className="flex items-center justify-center sm:space-x-2 p-2 sm:px-4 sm:py-2 rounded-lg bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 text-white hover:from-purple-500/30 hover:to-pink-500/30 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500/50 text-sm font-medium"
+                      >
+                        Connect Wallet
+                      </button>
+                    );
+                  }
+                  if (chain.unsupported) {
+                    return (
+                      <button
+                        type="button"
+                        onClick={openChainModal}
+                        className="flex items-center justify-center p-2 sm:px-4 sm:py-2 rounded-lg bg-red-500/20 border border-red-500/50 text-red-400 text-sm font-medium hover:bg-red-500/30 transition-all"
+                      >
+                        Wrong network
+                      </button>
+                    );
+                  }
+                  return (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setWalletDropdownOpen(!walletDropdownOpen)}
+                        className="flex items-center justify-center sm:space-x-2 p-2 sm:px-3 sm:py-2 rounded-lg bg-dark-700/50 hover:bg-dark-600 border border-dark-600 text-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 text-sm font-medium"
+                      >
+                        <span className="hidden sm:inline">
+                          {account.address ? formatAddress(account.address, 6, 4) : ''}
+                        </span>
+                        <span className="sm:hidden">
+                          {account.address ? `${account.address.slice(0, 6)}...` : ''}
+                        </span>
+                        <ChevronDown className="w-4 h-4 opacity-70" />
+                      </button>
+                      {walletDropdownOpen && (
+                        <div className="absolute right-0 top-full mt-1 py-1 rounded-lg bg-dark-800 border border-dark-600 shadow-xl z-50 min-w-[160px]">
+                          <button
+                            type="button"
+                            onClick={() => { openChainModal(); setWalletDropdownOpen(false); }}
+                            className="w-full px-4 py-2 text-left text-sm text-dark-200 hover:bg-dark-700 transition-colors"
+                          >
+                            Switch Network
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { openAccountModal(); setWalletDropdownOpen(false); }}
+                            className="w-full px-4 py-2 text-left text-sm text-dark-200 hover:bg-dark-700 transition-colors"
+                          >
+                            Account
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { disconnect(); setWalletDropdownOpen(false); }}
+                            className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 transition-colors font-medium"
+                          >
+                            Disconnect
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }}
+              </ConnectButton.Custom>
+            </div>
 
-            {/* Engine Toggle - Icon only on mobile */}
+            {/* Engine Toggle - disabled when wallet not connected */}
             <button
-              onClick={onToggle}
+              onClick={isConnected ? onToggle : undefined}
               type="button"
+              disabled={!isConnected}
+              title={!isConnected ? 'Connect wallet first' : undefined}
               className={`
                 flex items-center justify-center sm:space-x-2 p-2 sm:px-4 sm:py-2 rounded-lg font-medium text-sm
                 transition-all duration-200 shadow-lg
                 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-800
-                ${isRunning
-                  ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white focus:ring-red-500/50'
-                  : 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white focus:ring-green-500/50'
+                ${!isConnected
+                  ? 'bg-dark-700 text-dark-400 cursor-not-allowed opacity-60'
+                  : isRunning
+                    ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white focus:ring-red-500/50 cursor-pointer'
+                    : 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white focus:ring-green-500/50 cursor-pointer'
                 }
               `}
             >

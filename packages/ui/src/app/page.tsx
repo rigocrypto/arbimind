@@ -7,13 +7,21 @@ import { OpportunityFeed } from '@/components/OpportunityFeed';
 import { SystemStatus } from '@/components/SystemStatus';
 import { PNLChart } from '@/components/Charts/PNLChart';
 import { useMetrics, useStrategies, useOpportunities } from '@/hooks/useArbiApi';
+import { useEngineContext } from '@/contexts/EngineContext';
 import { formatETH, formatUSD, formatPercent } from '@/utils/format';
 import { DollarSign, TrendingUp, Activity, Zap, Gauge } from 'lucide-react';
 
 export default function HomePage() {
   const { metrics, loading: metricsLoading } = useMetrics();
   const { strategies, loading: strategiesLoading } = useStrategies();
-  const { opportunities, loading: opportunitiesLoading } = useOpportunities();
+  const { opportunities } = useOpportunities();
+  const { start, stop, activeStrategy } = useEngineContext();
+
+  const handleRunStrategy = (id: string) => start(id);
+  const handleToggleAuto = (id: string, enabled: boolean) => {
+    if (enabled) start(id);
+    else stop();
+  };
 
   const safeMetrics = metrics || {
     profitEth: 0,
@@ -86,21 +94,20 @@ export default function HomePage() {
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           {/* PNL Chart */}
-          <div className="lg:col-span-2 glass-card p-4 sm:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+          <div className="lg:col-span-2 glass-card p-4 sm:p-6 flex flex-col">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4 flex-shrink-0">
               <h3 className="text-base sm:text-lg font-bold text-white">24h Profit & Loss</h3>
               <div className="text-xs sm:text-sm text-dark-400">Realtime · last 24h</div>
             </div>
-            <div className="h-[240px] sm:h-[280px] lg:h-[320px]">
+            <div className="min-h-[200px] flex-1">
               {metricsLoading ? (
-                <div className="h-full flex items-center justify-center text-dark-400">
+                <div className="h-full min-h-[200px] flex items-center justify-center text-dark-400">
                   <div className="animate-pulse">Loading chart...</div>
                 </div>
               ) : (
                 <PNLChart 
                   data={safeMetrics.pnl24h} 
                   timestamps={safeMetrics.timestamp} 
-                  height={320} 
                 />
               )}
             </div>
@@ -137,9 +144,9 @@ export default function HomePage() {
         </div>
 
         {/* Strategies & Opportunities */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-          {/* Strategies */}
-          <div className="lg:col-span-2 space-y-3 sm:space-y-4">
+        <div className="space-y-4 sm:space-y-6">
+          {/* AI Strategies */}
+          <div className="space-y-3 sm:space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-xl sm:text-2xl font-bold text-white">AI Strategies</h2>
               <span className="text-xs sm:text-sm text-dark-400">{strategies.length} active</span>
@@ -149,7 +156,7 @@ export default function HomePage() {
                 Loading strategies...
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 {strategies.slice(0, 4).map((strategy) => (
                   <StrategyCard
                     key={strategy.id}
@@ -162,17 +169,14 @@ export default function HomePage() {
             )}
           </div>
 
-          {/* Opportunities */}
-          <div className="space-y-3 sm:space-y-4">
+          {/* Live Opportunities */}
+          <div className="glass-card p-4 sm:p-6 space-y-3 sm:space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-xl sm:text-2xl font-bold text-white">Live Opportunities</h2>
               <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
             </div>
-            <div className="max-h-[400px] sm:max-h-[500px] lg:max-h-[600px] overflow-hidden">
-              <OpportunityFeed
-                opportunities={opportunities}
-                onExecute={(id) => console.log('Execute opportunity:', id)}
-              />
+            <div className="max-h-[400px] sm:max-h-[500px] overflow-hidden">
+              <OpportunityFeed opportunities={opportunities} />
             </div>
           </div>
         </div>

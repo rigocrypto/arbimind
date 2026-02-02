@@ -4,7 +4,7 @@ import { useState, ReactNode } from 'react';
 import { Sidebar } from '../Sidebar';
 import { Header } from '../Header';
 import { Footer } from '../Footer';
-import { useEngine } from '@/hooks/useArbiApi';
+import { useEngineContext } from '@/contexts/EngineContext';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -13,7 +13,7 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children, currentPath = '/' }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { isRunning, start, stop } = useEngine();
+  const { isRunning, start, stop } = useEngineContext();
 
   const handleToggleEngine = () => {
     if (isRunning) {

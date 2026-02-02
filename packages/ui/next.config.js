@@ -4,6 +4,12 @@ const isDev = process.env.NODE_ENV !== 'production';
 const nextConfig = {
   typescript: { ignoreBuildErrors: true },
   eslint: { ignoreDuringBuilds: true },
+  experimental: {
+    optimizePackageImports: [
+      'wagmi',
+      '@rainbow-me/rainbowkit',
+    ],
+  },
   images: {
     unoptimized: true,
     domains: ['assets.coingecko.com'],

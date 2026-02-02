@@ -3,12 +3,20 @@
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
 import { StrategyCard } from '@/components/StrategyCard';
 import { useStrategies } from '@/hooks/useArbiApi';
-import { Brain, Plus, Settings, Play, Pause, TrendingUp, Activity } from 'lucide-react';
+import { useEngineContext } from '@/contexts/EngineContext';
+import { Brain, Plus, TrendingUp, Activity } from 'lucide-react';
 import { useState } from 'react';
 
 export default function StrategiesPage() {
   const { strategies, loading } = useStrategies();
+  const { start, stop, activeStrategy } = useEngineContext();
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(null);
+
+  const handleRun = (id: string) => start(id);
+  const handleToggleAuto = (id: string, enabled: boolean) => {
+    if (enabled) start(id);
+    else stop();
+  };
 
   return (
     <DashboardLayout currentPath="/strategies">
@@ -74,8 +82,9 @@ export default function StrategiesPage() {
               <StrategyCard
                 key={strategy.id}
                 strategy={strategy}
-                onRun={(id) => console.log('Run strategy:', id)}
-                onToggleAuto={(id, enabled) => console.log('Toggle auto:', id, enabled)}
+                onRun={handleRun}
+                onToggleAuto={handleToggleAuto}
+                engineActiveStrategy={activeStrategy}
               />
             ))}
           </div>
