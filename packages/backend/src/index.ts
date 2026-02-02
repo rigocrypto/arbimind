@@ -25,6 +25,15 @@ app.use(
 );
 app.use(express.json());
 
+// Explicit referral route first (in case router mount has issues)
+app.get('/api/referral/earnings', (req, res) => {
+  const address = req.query.address as string;
+  if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
+    return res.json({ earnings: 0 });
+  }
+  res.json({ earnings: 0 });
+});
+
 app.use('/api/health', healthRoutes);
 app.use('/api/engine', engineRoutes);
 app.use('/api/referral', referralRoutes);
