@@ -12,6 +12,11 @@ const nextConfig = {
     NEXT_PUBLIC_APP_NAME: 'ArbiMind',
     NEXT_PUBLIC_APP_DESCRIPTION: 'The brain of on-chain arbitrage',
   },
+  async rewrites() {
+    return [
+      { source: '/favicon.ico', destination: '/favicon.svg' },
+    ];
+  },
   // CSP is handled by middleware.ts
   // No headers here to avoid conflicts
   async headers() {
