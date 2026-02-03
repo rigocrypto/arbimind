@@ -35,9 +35,10 @@ export async function predictOpportunity(features: number[]): Promise<PredictorR
       const tf = await import('@tensorflow/tfjs-node');
       const model = await tf.loadLayersModel(`file://${MODEL_PATH}`);
       const input = tf.tensor2d([normalized]);
-      const pred = model.predict(input) as tf.Tensor;
-      const confidence = Math.min(1, Math.max(0, pred.dataSync()[0] as number));
-      tf.dispose([input, pred]);
+      const pred = model.predict(input);
+      const tensor = Array.isArray(pred) ? pred[0] : pred;
+      const confidence = Math.min(1, Math.max(0, (tensor as { dataSync: () => Float32Array }).dataSync()[0] as number));
+      tf.dispose([input, tensor]);
       return {
         confidence,
         profitEst: confidence * delta * 100,
