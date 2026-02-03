@@ -1,18 +1,20 @@
 'use client';
 
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { Play, Pause, Settings, Brain } from 'lucide-react';
 import { useAccount } from 'wagmi';
 import { formatETH } from '@/utils/format';
 import type { Strategy } from '@/hooks/useArbiApi';
 import { StrategySettingsModal } from '@/components/StrategySettingsModal';
+import { CompactSparkline } from '@/components/Charts/CompactSparkline';
 
-const STRATEGY_COLORS: Record<string, { bg: string; border: string; text: string; dot: string; ring: string }> = {
-  arbitrage: { bg: 'bg-cyan-500/20', border: 'border-cyan-500/30', text: 'text-cyan-400', dot: 'bg-cyan-500', ring: 'focus:ring-cyan-500/50' },
-  trend: { bg: 'bg-purple-500/20', border: 'border-purple-500/30', text: 'text-purple-400', dot: 'bg-purple-500', ring: 'focus:ring-purple-500/50' },
-  'market-making': { bg: 'bg-green-500/20', border: 'border-green-500/30', text: 'text-green-400', dot: 'bg-green-500', ring: 'focus:ring-green-500/50' },
+const STRATEGY_COLORS: Record<string, { bg: string; border: string; text: string; dot: string; ring: string; gradient: 'cyan' | 'purple' | 'green' | 'orange' }> = {
+  arbitrage: { bg: 'bg-cyan-500/20', border: 'border-cyan-500/30', text: 'text-cyan-400', dot: 'bg-cyan-500', ring: 'focus:ring-cyan-500/50', gradient: 'cyan' as const },
+  trend: { bg: 'bg-purple-500/20', border: 'border-purple-500/30', text: 'text-purple-400', dot: 'bg-purple-500', ring: 'focus:ring-purple-500/50', gradient: 'purple' as const },
+  'market-making': { bg: 'bg-green-500/20', border: 'border-green-500/30', text: 'text-green-400', dot: 'bg-green-500', ring: 'focus:ring-green-500/50', gradient: 'green' as const },
 };
-const DEFAULT_COLOR = { bg: 'bg-amber-500/20', border: 'border-amber-500/30', text: 'text-amber-400', dot: 'bg-amber-500', ring: 'focus:ring-amber-500/50' };
+const DEFAULT_COLOR = { bg: 'bg-amber-500/20', border: 'border-amber-500/30', text: 'text-amber-400', dot: 'bg-amber-500', ring: 'focus:ring-amber-500/50', gradient: 'orange' as const };
 
 interface StrategyCardProps {
   strategy: Strategy;
@@ -20,6 +22,10 @@ interface StrategyCardProps {
   onToggleAuto?: (id: string, enabled: boolean) => void;
   /** When set, overrides strategy.active to reflect real engine state */
   engineActiveStrategy?: string;
+  /** Optional sparkline data for mini-chart */
+  sparklineData?: number[];
+  /** Optional risk level: Low | Med | High */
+  riskLevel?: string;
 }
 
 export function StrategyCard({ strategy, onRun, onToggleAuto, engineActiveStrategy }: StrategyCardProps) {
@@ -34,8 +40,16 @@ export function StrategyCard({ strategy, onRun, onToggleAuto, engineActiveStrate
   const sentiment = strategy.sentiment ?? 0.75;
   const color = STRATEGY_COLORS[strategy.id] ?? DEFAULT_COLOR;
 
+  const riskColor = riskLevel === 'Low' ? 'text-green-400' : riskLevel === 'Med' ? 'text-amber-400' : 'text-red-400';
+
   return (
-    <div className={`glass-card p-4 sm:p-5 space-y-3 compact max-w-sm w-full border ${color.border}`}>
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      whileHover={{ y: -4, transition: { duration: 0.2 } }}
+      className={`glass-card p-4 sm:p-5 space-y-3 compact max-w-sm w-full border ${color.border} hover:shadow-lg hover:shadow-cyan-500/5 transition-shadow`}
+    >
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
@@ -55,7 +69,7 @@ export function StrategyCard({ strategy, onRun, onToggleAuto, engineActiveStrate
         </div>
       </div>
 
-      {/* Stats row: Success %, Profit, Sentiment */}
+      {/* Stats row: Success %, Profit, AI Conf */}
       <div className="grid grid-cols-3 gap-2">
         <div className="p-2 rounded-lg bg-dark-800/50 text-center">
           <div className="text-xs text-dark-400">Success</div>
@@ -64,17 +78,32 @@ export function StrategyCard({ strategy, onRun, onToggleAuto, engineActiveStrate
         <div className="p-2 rounded-lg bg-dark-800/50 text-center">
           <div className="text-xs text-dark-400">Profit</div>
           <div className={`text-sm font-bold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-            {isPositive ? '+' : ''}{formatETH(strategy.lastPnl)}
+            {isPositive ? '+' : ''}{formatETH(strategy.lastPnl)} ETH
           </div>
         </div>
         <div className="p-2 rounded-lg bg-dark-800/50 text-center flex flex-col items-center justify-center">
           <div className="flex items-center gap-1">
             <Brain className="w-3 h-3 text-cyan-400" />
-            <span className="text-xs text-dark-400">AI</span>
+            <span className="text-xs text-dark-400">AI Conf</span>
           </div>
           <div className="text-sm font-bold text-cyan-400">{Math.round(sentiment * 100)}%</div>
         </div>
       </div>
+
+      {/* Risk badge */}
+      {riskLevel && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-dark-400">Risk</span>
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded ${riskColor}`}>{riskLevel}</span>
+        </div>
+      )}
+
+      {/* Mini sparkline */}
+      {sparklineData && sparklineData.length > 0 && (
+        <div className="h-10 -mx-1">
+          <CompactSparkline data={sparklineData} gradient={color.gradient} height={40} />
+        </div>
+      )}
 
       {/* Allocation */}
       <div className="flex items-center justify-between py-2 px-2 rounded-lg bg-dark-800/30">
@@ -130,6 +159,6 @@ export function StrategyCard({ strategy, onRun, onToggleAuto, engineActiveStrate
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
       />
-    </div>
+    </motion.div>
   );
 }

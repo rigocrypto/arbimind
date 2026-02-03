@@ -6,6 +6,7 @@ import { formatETH, formatPercent } from '@/utils/format';
 import { useRelativeTime } from '@/hooks/useRelativeTime';
 import type { Opportunity } from '@/hooks/useArbiApi';
 import { useExecute } from '@/hooks/useArbiApi';
+import { useBalanceGuard } from '@/hooks/useBalanceGuard';
 import { useAccount } from 'wagmi';
 import toast from 'react-hot-toast';
 
@@ -23,14 +24,16 @@ function RelativeTime({ timestamp }: { timestamp: number | string | Date }) {
 export function OpportunityFeed({ opportunities, onExecute }: OpportunityFeedProps) {
   const { execute, loading: executing } = useExecute();
   const { isConnected } = useAccount();
+  const { checkBalance } = useBalanceGuard();
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState<string | null>(null);
 
   const handleExecute = async (id: string) => {
     if (!isConnected) {
-      toast.error('Connect wallet to execute');
+      toast.error('Connect wallet to execute!');
       return;
     }
+    if (!checkBalance()) return; // Toast from useBalanceGuard (0.05 ETH)
     setShowConfirm(null);
     setExecutingId(id);
     try {
@@ -172,7 +175,14 @@ export function OpportunityFeed({ opportunities, onExecute }: OpportunityFeedPro
                       ) : (
                         <button
                           type="button"
-                          onClick={() => (isConnected ? setShowConfirm(opp.id) : toast.error('Connect wallet to execute'))}
+                          onClick={() => {
+                            if (!isConnected) {
+                              toast.error('Connect wallet to execute!');
+                              return;
+                            }
+                            if (!checkBalance()) return;
+                            setShowConfirm(opp.id);
+                          }}
                           disabled={isExecuting || !isConnected}
                           title={!isConnected ? 'Connect wallet first' : undefined}
                           className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 text-cyan-400 hover:from-cyan-500/30 hover:to-purple-500/30 transition-all duration-200 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
