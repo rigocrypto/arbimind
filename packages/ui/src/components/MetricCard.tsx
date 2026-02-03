@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { PNLChart } from './Charts/PNLChart';
+import { CompactSparkline } from './Charts/CompactSparkline';
 
 interface MetricCardProps {
   title: string;
@@ -78,14 +78,10 @@ export function MetricCard({
           )}
         </div>
 
-        {/* Sparkline chart */}
+        {/* Sparkline chart - compact, fits card */}
         {sparklineData && sparklineData.length > 0 && (
-          <div className="mt-3 sm:mt-4 h-12 sm:h-16">
-            <PNLChart 
-              data={sparklineData} 
-              timestamps={sparklineData.map((_, i) => Date.now() - (sparklineData.length - i) * 3600000)}
-              height={64}
-            />
+          <div className="mt-3 sm:mt-4 h-10 sm:h-12 overflow-hidden">
+            <CompactSparkline data={sparklineData} gradient={gradient} height={40} />
           </div>
         )}
       </div>

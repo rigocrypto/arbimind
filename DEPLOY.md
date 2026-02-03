@@ -31,8 +31,18 @@ Use this setup — it avoids Railpack "Error creating build plan" entirely.
 | `RAILWAY_DOCKERFILE_PATH` | `Dockerfile.backend` |
 | `NODE_ENV` | `production` |
 | `FRONTEND_URL` | `https://arbimind.vercel.app` |
+| `ADMIN_API_KEY` | Your secret admin key | Required for `/api/admin/*` |
+| `TREASURY_ADDRESS` | `0x...` | Treasury wallet (admin display) |
+| `EXECUTION_ADDRESS` | `0x...` | Execution/hot wallet (admin display) |
 
 **Redeploy** — Railway uses `Dockerfile.backend` at repo root; Railpack is not used.
+
+### Admin Dashboard (`/admin`)
+
+- **UI**: Visit `/admin`, enter `ADMIN_API_KEY` to login. Key is stored in `localStorage`.
+- **Backend**: All `/api/admin/*` routes require `X-ADMIN-KEY: <ADMIN_API_KEY>` header.
+- **Endpoints**: `GET /api/admin/metrics`, `GET /api/admin/txs`, `GET /api/admin/wallets`, `POST /api/admin/engine/pause`, `POST /api/admin/engine/resume`.
+- **Security**: Never expose `ADMIN_API_KEY` in the UI. Use a strong random string (e.g. `openssl rand -hex 32`).
 
 ---
 

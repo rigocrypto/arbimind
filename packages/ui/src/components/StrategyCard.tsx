@@ -7,6 +7,13 @@ import { formatETH } from '@/utils/format';
 import type { Strategy } from '@/hooks/useArbiApi';
 import { StrategySettingsModal } from '@/components/StrategySettingsModal';
 
+const STRATEGY_COLORS: Record<string, { bg: string; border: string; text: string; dot: string; ring: string }> = {
+  arbitrage: { bg: 'bg-cyan-500/20', border: 'border-cyan-500/30', text: 'text-cyan-400', dot: 'bg-cyan-500', ring: 'focus:ring-cyan-500/50' },
+  trend: { bg: 'bg-purple-500/20', border: 'border-purple-500/30', text: 'text-purple-400', dot: 'bg-purple-500', ring: 'focus:ring-purple-500/50' },
+  'market-making': { bg: 'bg-green-500/20', border: 'border-green-500/30', text: 'text-green-400', dot: 'bg-green-500', ring: 'focus:ring-green-500/50' },
+};
+const DEFAULT_COLOR = { bg: 'bg-amber-500/20', border: 'border-amber-500/30', text: 'text-amber-400', dot: 'bg-amber-500', ring: 'focus:ring-amber-500/50' };
+
 interface StrategyCardProps {
   strategy: Strategy;
   onRun?: (id: string) => void;
@@ -25,19 +32,20 @@ export function StrategyCard({ strategy, onRun, onToggleAuto, engineActiveStrate
   const isPositive = strategy.lastPnl >= 0;
   const successRate = strategy.successRate ?? Math.round(allocationPercent);
   const sentiment = strategy.sentiment ?? 0.75;
+  const color = STRATEGY_COLORS[strategy.id] ?? DEFAULT_COLOR;
 
   return (
-    <div className="glass-card p-4 sm:p-5 space-y-3 compact max-w-sm w-full">
+    <div className={`glass-card p-4 sm:p-5 space-y-3 compact max-w-sm w-full border ${color.border}`}>
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
           <div className={`
             w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0
-            ${isActive ? 'bg-cyan-500/20' : 'bg-dark-700/50'}
+            ${isActive ? color.bg : 'bg-dark-700/50'}
           `}>
             <div className={`
               w-2.5 h-2.5 rounded-full
-              ${isActive ? 'bg-green-500 animate-pulse' : 'bg-dark-500'}
+              ${isActive ? `${color.dot} animate-pulse` : 'bg-dark-500'}
             `} />
           </div>
           <div className="min-w-0 flex-1">
@@ -81,10 +89,10 @@ export function StrategyCard({ strategy, onRun, onToggleAuto, engineActiveStrate
           onClick={() => isConnected && onRun?.(strategy.id)}
           disabled={!isConnected}
           title={!isConnected ? 'Connect wallet first' : undefined}
-          className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border font-medium text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all duration-200
+          className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border font-medium text-xs sm:text-sm focus:outline-none focus:ring-2 transition-all duration-200
             ${!isConnected
               ? 'bg-dark-700/50 border-dark-600 text-dark-500 cursor-not-allowed opacity-60'
-              : 'bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-500/30 text-cyan-400 cursor-pointer'
+              : `${color.bg} hover:opacity-90 ${color.border} ${color.text} ${color.ring} cursor-pointer`
             }`}
         >
           <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4" />

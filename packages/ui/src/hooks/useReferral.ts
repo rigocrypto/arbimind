@@ -47,5 +47,9 @@ export function useReferral() {
     }
   }, [refLink]);
 
-  return { refLink, earnings, copyRefLink };
+  // The address that referred the current user (from ?ref= in URL), for engine/start
+  const storedReferrer =
+    typeof window !== 'undefined' ? localStorage.getItem(REF_STORAGE_KEY) : null;
+
+  return { refLink, earnings, copyRefLink, referrer: storedReferrer };
 }

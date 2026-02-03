@@ -72,7 +72,7 @@ export function PNLChart({ data, timestamps }: PNLChartProps) {
   };
 
   return (
-    <div className="relative w-full h-full min-h-[200px]">
+    <div className="relative w-full h-full min-h-[140px]">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart
           data={chartData}

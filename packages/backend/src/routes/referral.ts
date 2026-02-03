@@ -5,6 +5,20 @@ const router = express.Router();
 // In-memory mock for MVP – replace with Supabase/Postgres when ready
 const earningsByAddress: Record<string, number> = {};
 
+const REF_RATE = parseFloat(process.env.REFERRAL_RATE || '0.1');
+
+/**
+ * Credit referral earnings when a referred user realizes profit.
+ * Called from strategy runners (e.g. runArbitrage) when profit is logged.
+ */
+export function creditReferral(referrerAddress: string, profitEth: number): void {
+  if (!referrerAddress || !/^0x[a-fA-F0-9]{40}$/.test(referrerAddress) || profitEth <= 0) return;
+  const normalized = referrerAddress.toLowerCase();
+  const credit = profitEth * REF_RATE;
+  earningsByAddress[normalized] = (earningsByAddress[normalized] ?? 0) + credit;
+  console.log(`📤 [REFERRAL] Credited ${credit.toFixed(6)} ETH to ${referrerAddress} (${REF_RATE * 100}% of ${profitEth} ETH)`);
+}
+
 /**
  * GET /api/referral/earnings?address=0x...
  * Returns referral earnings for the given address (ETH).

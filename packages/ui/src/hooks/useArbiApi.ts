@@ -324,19 +324,16 @@ export function useOpportunities() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!ENABLE_API_CALLS) {
-      return;
-    }
-
     let intervalId: NodeJS.Timeout | null = null;
-    let timeoutId: NodeJS.Timeout | null = null;
     let isMounted = true;
 
     const fetchOpportunities = async () => {
       if (!isMounted) return;
       
       setLoading(true);
-      const { data, shouldRetry } = await fetchWithFallback('/opportunities', mockOpportunities);
+      const res = await fetch(`${API_BASE}/opportunities`).catch(() => null);
+      const raw = res?.ok ? await res.json().catch(() => null) : null;
+      const data = Array.isArray(raw) ? raw : raw?.data;
       
       if (!isMounted) return;
       
@@ -344,23 +341,15 @@ export function useOpportunities() {
       setLoading(false);
 
       if (intervalId) clearInterval(intervalId);
-      if (timeoutId) clearTimeout(timeoutId);
-
-      if (shouldRetry) {
-        intervalId = setInterval(fetchOpportunities, 60000); // Poll every 60s
-      } else {
-        timeoutId = setTimeout(fetchOpportunities, 300000); // Wait 5 minutes if rate limited
-      }
+      intervalId = setInterval(fetchOpportunities, 30000); // Poll every 30s
     };
 
-    // Stagger initial requests - opportunities after 4s
-    const initialTimeout = setTimeout(fetchOpportunities, 4000);
+    const initialTimeout = setTimeout(fetchOpportunities, 2000);
     
     return () => {
       isMounted = false;
       clearTimeout(initialTimeout);
       if (intervalId) clearInterval(intervalId);
-      if (timeoutId) clearTimeout(timeoutId);
     };
   }, []);
 
@@ -396,10 +385,14 @@ export function useEngine() {
   const start = useCallback(async (strategy: string = 'arbitrage') => {
     setLoading(true);
     try {
+      const referrer =
+        typeof window !== 'undefined' ? localStorage.getItem('arbimind_ref') : null;
+      const body: { strategy: string; referrer?: string } = { strategy };
+      if (referrer && /^0x[a-fA-F0-9]{40}$/.test(referrer)) body.referrer = referrer;
       const response = await fetch(`${API_BASE}/engine/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ strategy }),
+        body: JSON.stringify(body),
       });
       if (response.ok) {
         setActiveStrategy(strategy);
@@ -429,7 +422,34 @@ export function useEngine() {
     }
   }, []);
 
-  return { isRunning, activeStrategy, loading, start, stop };
+  const singleScan = useCallback(async (strategy?: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/engine/single-scan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strategy: strategy || activeStrategy || 'arbitrage' }),
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('Single scan failed:', error);
+      return false;
+    }
+  }, [activeStrategy]);
+
+  const reloadPrices = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/engine/reload-prices`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('Reload prices failed:', error);
+      return false;
+    }
+  }, []);
+
+  return { isRunning, activeStrategy, loading, start, stop, singleScan, reloadPrices };
 }
 
 export function useExecute() {

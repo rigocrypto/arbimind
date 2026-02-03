@@ -2,10 +2,12 @@
 
 import { useState } from 'react';
 import { ArrowRight, Zap, Loader2 } from 'lucide-react';
-import { formatETH, formatPercent, formatGas } from '@/utils/format';
+import { formatETH, formatPercent } from '@/utils/format';
 import { useRelativeTime } from '@/hooks/useRelativeTime';
 import type { Opportunity } from '@/hooks/useArbiApi';
 import { useExecute } from '@/hooks/useArbiApi';
+import { useAccount } from 'wagmi';
+import toast from 'react-hot-toast';
 
 interface OpportunityFeedProps {
   opportunities: Opportunity[];
@@ -20,24 +22,27 @@ function RelativeTime({ timestamp }: { timestamp: number | string | Date }) {
 
 export function OpportunityFeed({ opportunities, onExecute }: OpportunityFeedProps) {
   const { execute, loading: executing } = useExecute();
+  const { isConnected } = useAccount();
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState<string | null>(null);
 
   const handleExecute = async (id: string) => {
+    if (!isConnected) {
+      toast.error('Connect wallet to execute');
+      return;
+    }
     setShowConfirm(null);
     setExecutingId(id);
     try {
       const result = await execute(id);
       if (result.ok) {
         onExecute?.(id);
-        // Show success toast (you can add toast library here)
-        console.log('Execution successful:', result.txHash);
+        toast.success(`Executed! Tx: ${result.txHash?.slice(0, 10)}...`);
       } else {
-        // Show error toast
-        console.error('Execution failed:', result.error);
+        toast.error(result.error ?? 'Execution failed');
       }
     } catch (error) {
-      console.error('Execution error:', error);
+      toast.error('Execution failed');
     } finally {
       setExecutingId(null);
     }
@@ -132,7 +137,7 @@ export function OpportunityFeed({ opportunities, onExecute }: OpportunityFeedPro
                     </td>
                     <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap hidden lg:table-cell">
                       <span className="text-xs sm:text-sm text-dark-400">
-                        {formatGas(opp.gasEst)}
+                        {formatETH(opp.gasEst)} ETH
                       </span>
                     </td>
                     <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
@@ -167,11 +172,12 @@ export function OpportunityFeed({ opportunities, onExecute }: OpportunityFeedPro
                       ) : (
                         <button
                           type="button"
-                          onClick={() => setShowConfirm(opp.id)}
-                          disabled={isExecuting}
+                          onClick={() => (isConnected ? setShowConfirm(opp.id) : toast.error('Connect wallet to execute'))}
+                          disabled={isExecuting || !isConnected}
+                          title={!isConnected ? 'Connect wallet first' : undefined}
                           className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 text-cyan-400 hover:from-cyan-500/30 hover:to-purple-500/30 transition-all duration-200 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
                         >
-                          {isExecuting ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Execute'}
+                          {isExecuting ? <Loader2 className="w-3 h-3 animate-spin" /> : isConnected ? 'Execute' : 'Connect'}
                         </button>
                       )}
                     </td>

@@ -1,6 +1,6 @@
 'use client';
 
-import { Brain, Power, Search, Menu, ChevronDown, Share2 } from 'lucide-react';
+import { Brain, Power, Menu, ChevronDown, Share2 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAccount, useDisconnect } from 'wagmi';
@@ -19,7 +19,6 @@ export function Header({
   onToggle, 
   onMenuClick 
 }: HeaderProps) {
-  const [searchQuery, setSearchQuery] = useState('');
   const [walletDropdownOpen, setWalletDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { isConnected } = useAccount();
@@ -61,22 +60,6 @@ export function Header({
                 </h1>
                 <p className="text-xs text-dark-400 hidden sm:block">The Brain of On-Chain Arbitrage</p>
               </div>
-            </div>
-          </div>
-
-          {/* Center: Search - Hidden on mobile */}
-          <div className="hidden md:flex flex-1 max-w-md mx-4 lg:mx-8">
-            <div className="relative w-full">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-dark-400" />
-              <input
-                id="header-search-opportunities"
-                name="search"
-                type="text"
-                placeholder="Search strategies, opportunities..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 text-sm"
-              />
             </div>
           </div>
 

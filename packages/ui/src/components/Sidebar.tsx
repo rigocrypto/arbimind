@@ -9,6 +9,7 @@ import {
   Settings, 
   Wallet, 
   BookOpen,
+  Shield,
   X
 } from 'lucide-react';
 
@@ -26,6 +27,7 @@ export function Sidebar({ currentPath = '/', isOpen = false, onClose }: SidebarP
     { icon: History, label: 'Trading History', path: '/history' },
     { icon: Wallet, label: 'Wallet', path: '/wallet' },
     { icon: Settings, label: 'Settings', path: '/settings' },
+    { icon: Shield, label: 'Admin', path: '/admin' },
     { icon: BookOpen, label: 'Docs', path: '/docs' },
   ];
 

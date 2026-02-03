@@ -5,6 +5,9 @@ import dotenv from 'dotenv';
 import healthRoutes from './routes/health';
 import engineRoutes from './routes/engine';
 import referralRoutes from './routes/referral';
+import adminRoutes from './routes/admin';
+import opportunitiesRoutes from './routes/opportunities';
+import executeRoutes from './routes/execute';
 
 dotenv.config();
 
@@ -21,6 +24,7 @@ app.use(
       return cb(new Error('Not allowed by CORS'));
     },
     credentials: true,
+    allowedHeaders: ['Content-Type', 'X-ADMIN-KEY'],
   })
 );
 app.use(express.json());
@@ -50,14 +54,20 @@ app.get('/api/referral/earnings', (req, res) => {
 app.use('/api/health', healthRoutes);
 app.use('/api/engine', engineRoutes);
 app.use('/api/referral', referralRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/opportunities', opportunitiesRoutes);
+app.use('/api/execute', executeRoutes);
 
 const PORT = parseInt(process.env.PORT || '8000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 
 app.listen(PORT, HOST, () => {
   console.log(`🚀 ArbiMind Backend @ http://${HOST}:${PORT}`);
-  console.log(`   /api/health  - Health check`);
-  console.log(`   /api/version - Deploy verification`);
-  console.log(`   /api/engine  - Start/stop strategies`);
-  console.log(`   /api/referral - Earnings + claim`);
+  console.log(`   /api/health      - Health check`);
+  console.log(`   /api/version     - Deploy verification`);
+  console.log(`   /api/engine      - Start/stop strategies`);
+  console.log(`   /api/referral    - Earnings + claim`);
+  console.log(`   /api/admin       - Admin dashboard (X-ADMIN-KEY)`);
+  console.log(`   /api/opportunities - Live opportunities`);
+  console.log(`   /api/execute     - Execute opportunity`);
 });

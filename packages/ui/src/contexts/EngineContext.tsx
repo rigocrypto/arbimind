@@ -10,6 +10,8 @@ interface EngineContextValue {
   loading: boolean;
   start: (strategy?: string) => Promise<void>;
   stop: () => Promise<void>;
+  singleScan: (strategy?: string) => Promise<boolean>;
+  reloadPrices: () => Promise<boolean>;
   checkBalance: () => boolean;
 }
 

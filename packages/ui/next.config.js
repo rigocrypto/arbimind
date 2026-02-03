@@ -8,6 +8,7 @@ const nextConfig = {
     optimizePackageImports: [
       'wagmi',
       '@rainbow-me/rainbowkit',
+      'recharts',
     ],
   },
   images: {
