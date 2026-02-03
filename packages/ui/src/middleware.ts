@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(req: NextRequest) {
+  try {
   const res = NextResponse.next();
 
   // Consider this development when NODE_ENV is not 'production'.
@@ -62,6 +63,9 @@ export function middleware(req: NextRequest) {
   }
 
   return res;
+  } catch {
+    return NextResponse.next();
+  }
 }
 
 export const config = {

@@ -1,12 +1,10 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
+import { Suspense } from 'react'
 import './globals.css'
 import { ClientProviders } from '@/providers/ClientProviders'
 
 const inter = Inter({ subsets: ['latin'] })
-
-// Prevent SSG - WalletConnect uses indexedDB (browser-only) during prerender
-export const dynamic = 'force-dynamic'
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -24,6 +22,14 @@ export const metadata: Metadata = {
   },
 }
 
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen bg-dark-900 flex items-center justify-center">
+      <div className="animate-pulse text-dark-400 text-sm">Loading...</div>
+    </div>
+  )
+}
+
 export default function RootLayout({
   children,
 }: {
@@ -32,9 +38,11 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${inter.className} bg-dark-900 text-white min-h-screen w-full overflow-x-hidden`}>
-        <ClientProviders>
-          {children}
-        </ClientProviders>
+        <Suspense fallback={<LoadingFallback />}>
+          <ClientProviders>
+            {children}
+          </ClientProviders>
+        </Suspense>
       </body>
     </html>
   )
