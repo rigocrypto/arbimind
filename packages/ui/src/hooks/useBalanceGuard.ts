@@ -11,8 +11,14 @@ const USDC_BY_CHAIN: Record<number, `0x${string}`> = {
   8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const,  // Base
 };
 
-const MIN_ETH = parseFloat(process.env.NEXT_PUBLIC_MIN_TRADE_ETH || '0.05');
-const MIN_USDC = parseFloat(process.env.NEXT_PUBLIC_MIN_TRADE_USDC || '125');
+const MIN_ETH = (() => {
+  const v = parseFloat(process.env.NEXT_PUBLIC_MIN_TRADE_ETH || '0.05');
+  return Number.isFinite(v) ? v : 0.05;
+})();
+const MIN_USDC = (() => {
+  const v = parseFloat(process.env.NEXT_PUBLIC_MIN_TRADE_USDC || '125');
+  return Number.isFinite(v) ? v : 125;
+})();
 
 export function useBalanceGuard() {
   const { address, isConnected, chainId } = useAccount();
