@@ -1,10 +1,12 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
+import { Inter, Space_Grotesk } from 'next/font/google'
 import { Suspense } from 'react'
 import './globals.css'
 import { ClientProviders } from '@/providers/ClientProviders'
+import { Footer } from '@/components/Footer'
 
-const inter = Inter({ subsets: ['latin'] })
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
+const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-space-grotesk' })
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -36,13 +38,16 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${inter.className} bg-dark-900 text-white min-h-screen w-full overflow-x-hidden`}>
-        <Suspense fallback={<LoadingFallback />}>
-          <ClientProviders>
-            {children}
-          </ClientProviders>
-        </Suspense>
+    <html lang="en" className={`dark ${inter.variable} ${spaceGrotesk.variable}`}>
+      <body className={`${inter.className} bg-dark-900 text-white min-h-screen w-full overflow-x-hidden flex flex-col`}>
+        <div className="flex-1 flex flex-col min-h-0">
+          <Suspense fallback={<LoadingFallback />}>
+            <ClientProviders>
+              {children}
+            </ClientProviders>
+          </Suspense>
+        </div>
+        <Footer />
       </body>
     </html>
   )

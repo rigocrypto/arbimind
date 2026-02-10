@@ -14,7 +14,10 @@
     "build": "pnpm -r --filter @arbimind/ui build",
     "build:all": "npm run build --workspaces",
     "test": "npm run test --workspaces",
-    "lint": "npm run lint --workspaces",
+    "lint": "pnpm run lint:ui",
+    "lint:ui": "pnpm --filter @arbimind/ui lint",
+    "lint:contracts": "pnpm --filter @arbimind/contracts lint",
+    "lint:ts": "pnpm --filter @arbimind/backend lint && pnpm --filter @arbimind/bot lint",
     "typecheck": "pnpm run typecheck --workspace=@arbimind/backend && pnpm run typecheck --workspace=@arbimind/bot && pnpm run type-check --workspace=@arbimind/ui",
     "clean": "npm run clean --workspaces",
     "setup": "npm install"
@@ -44,7 +47,8 @@
       "preact": ">=10.28.2",
       "hono": ">=4.11.7",
       "h3": ">=1.15.5",
-      "diff": ">=4.0.4"
+      "diff": ">=4.0.4",
+      "pino-pretty": "^11.0.0"
     }
   }
 }

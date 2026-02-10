@@ -4,7 +4,7 @@ import { useAccount } from 'wagmi';
 import { useEffect, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+import { API_BASE } from '@/lib/apiConfig';
 const BASE_URL = typeof window !== 'undefined'
   ? window.location.origin
   : 'https://arbimind.vercel.app';

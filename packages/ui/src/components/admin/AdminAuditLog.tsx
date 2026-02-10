@@ -72,6 +72,8 @@ export function AdminAuditLog({ failuresOnly = false, limit = 100 }: AdminAuditL
       <div className="flex items-center gap-3 mb-4">
         <label className="flex items-center gap-2 cursor-pointer">
           <input
+            id="audit-failures-only"
+            name="showFailuresOnly"
             type="checkbox"
             checked={showFailuresOnly}
             onChange={(e) => setShowFailuresOnly(e.target.checked)}

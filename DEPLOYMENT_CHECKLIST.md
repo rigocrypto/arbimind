@@ -1,158 +1,80 @@
-# ArbiMind Multi-Strategy Auto-Trader - Deployment Checklist
+# ArbiMind Deployment Checklist (Railway + Vercel)
 
-## 🚀 Pre-Deployment Setup
+This checklist verifies the full ArbiMind stack after deployment.
 
-### 1. Environment Setup
-- [ ] Install Foundry: `curl -L https://foundry.paradigm.xyz | bash && foundryup`
-- [ ] Verify installation: `forge --version`
-- [ ] Set up Ethereum RPC endpoint (Alchemy, Infura, or local node)
-- [ ] Prepare deployment wallet with sufficient ETH for gas
+## 1) Railway (Backend)
 
-### 2. Environment Variables
-```bash
-# Required for deployment
-export DEPLOYER=0x...          # Your deployment wallet address
-export EXECUTOR=0x...          # Strategy execution wallet address  
-export TREASURY=0x...          # Profit collection address
-export MAX_DAILY_LOSS_WEI=1000000000000000000  # 1 ETH daily loss limit
-export ETHEREUM_RPC_URL=https://eth-mainnet.alchemyapi.io/v2/YOUR_KEY
-export PRIVATE_KEY=0x...       # Deployment wallet private key
+### Required environment variables
+- `ADMIN_API_KEY` (required for `/api/admin/*`)
+- `DATABASE_URL` (required for snapshots + snapshot monitoring)
+- `EVM_ARB_ACCOUNT` (required for EVM portfolio attribution)
+- `SOLANA_ARB_ACCOUNT`
+- `SOLANA_FEE_WALLET`
+- `SOLANA_FEE_PCT`
+- `SOLANA_FEE_MIN_SOL`
 
-# Optional for testing
-export ETHERSCAN_API_KEY=...   # For contract verification
-```
+### Optional environment variables
+- CoinGecko pricing:
+  - `COINGECKO_ENABLED=true`
+  - `COINGECKO_TTL_SECONDS=600`
+  - `COINGECKO_BASE_URL=https://api.coingecko.com/api/v3`
+  - `COINGECKO_API_KEY` (optional)
+- EVM native ETH deposits:
+  - `PORTFOLIO_EVM_SCAN_NATIVE=true`
+  - `PORTFOLIO_EVM_NATIVE_LOOKBACK_DAYS=30`
+  - (Requires Alchemy RPC/key)
 
-### 3. Pre-Deployment Testing
-- [ ] Run `forge build` in `packages/contracts/`
-- [ ] Execute test suite: `forge test --fork-url $ETHEREUM_RPC_URL -vv`
-- [ ] Verify all tests pass (StrategyManager, ArbitrageAdapter, TrendAdapter, MarketMakerAdapter)
-- [ ] Review gas estimates for deployment transactions
+### Verify backend is up
+- `GET /api/health` returns 200
 
-## 🔧 Deployment Process
+## 2) Railway Postgres
+- Postgres plugin attached
+- `DATABASE_URL` set on backend service
 
-### 1. Mainnet Deployment
-```bash
-cd packages/contracts
+## 3) Railway Cron (Daily Snapshots)
+Recommended schedule: **02:05 UTC** (daily)
 
-# Deploy all contracts
-forge script script/DeployStrategyManager.s.sol --rpc-url $ETHEREUM_RPC_URL --broadcast
+Call both chains:
+- `POST /api/admin/snapshots/run?chain=evm&range=30d`
+- `POST /api/admin/snapshots/run?chain=solana&range=30d`
 
-# Verify deployment addresses
-cast call <strategy_manager_address> "owner()"
-cast call <strategy_manager_address> "executor()"
-cast call <strategy_manager_address> "treasury()"
-```
+Headers:
+- `X-ADMIN-KEY: <ADMIN_API_KEY>`
 
-### 2. Post-Deployment Verification
-- [ ] Verify StrategyManager deployment and configuration
-- [ ] Check strategy registrations and allocations
-- [ ] Verify adapter contract addresses
-- [ ] Test emergency functions (pause/unpause)
-- [ ] Verify access controls (owner, executor permissions)
+Expected responses:
+- Success run: `200 { ok: true, acquiredLock: true, ... }`
+- Already running: `200 { ok: false, reason: "already_running", acquiredLock: false, ... }`
 
-### 3. Contract Verification
-```bash
-# Verify on Etherscan (if using mainnet)
-forge verify-contract <contract_address> src/ArbiMindStrategyManager.sol:ArbiMindStrategyManager --etherscan-api-key $ETHERSCAN_API_KEY --chain-id 1
-```
+## 4) Snapshot Monitoring
+Public health endpoints:
+- `GET /api/snapshots/health?chain=evm`
+- `GET /api/snapshots/health?chain=solana`
 
-## 🛡️ Security Checklist
+Expected:
+- `stale: false`
+- `ok: true`
+- `lastOkAt` present
 
-### Access Control
-- [ ] Owner address correctly set
-- [ ] Executor address correctly set
-- [ ] Treasury address correctly set
-- [ ] Daily loss limits appropriate for capital size
-- [ ] Emergency pause functionality tested
+Note: `timeseries.method` may remain `estimated_linear_ramp_to_current_equity` until the first daily snapshot cron completes; validator warns but does not fail.
 
-### Strategy Configuration
-- [ ] Arbitrage strategy: 40% allocation (4000 basis points)
-- [ ] Trend strategy: 30% allocation (3000 basis points)  
-- [ ] Market Making strategy: 30% allocation (3000 basis points)
-- [ ] All strategies enabled and properly configured
+## 5) Vercel (UI)
 
-### Risk Management
-- [ ] Daily loss limits set and tested
-- [ ] Slippage protection configured
-- [ ] Emergency withdrawal functions accessible
-- [ ] Pause functionality operational
+### Required environment variables
+- `NEXT_PUBLIC_API_URL=https://<railway-backend>/api` (must be exactly one URL; no comma/space concatenation)
+- `NEXT_PUBLIC_SOLANA_CLUSTER` (devnet/testnet/mainnet-beta)
+- `NEXT_PUBLIC_SOLANA_ARB_ACCOUNT` (public display)
 
-## 📊 Initial Configuration
+### Verify UI
+- UI loads without console CSP/CORS errors
+- `/docs` works and links resolve
+- `/wallet` loads portfolio section
+- `/solana-wallet` loads portfolio section and wallet connect
 
-### 1. Strategy Parameters
-```bash
-# Set strategy-specific parameters
-# TrendAdapter
-cast send <trend_adapter_address> "setMinConfidence(uint8)" 70 --private-key $PRIVATE_KEY
-cast send <trend_adapter_address> "setMaxSlippage(uint16)" 500 --private-key $PRIVATE_KEY
-
-# ArbitrageAdapter  
-cast send <arbitrage_adapter_address> "setMinProfitWei(uint256)" 10000000000000000 --private-key $PRIVATE_KEY
-
-# MarketMakerAdapter
-# Configure position parameters as needed
-```
-
-### 2. Capital Allocation
-- [ ] Fund StrategyManager with initial capital
-- [ ] Verify allocations are working correctly
-- [ ] Test strategy execution permissions
-- [ ] Monitor initial strategy performance
-
-## 🔍 Monitoring Setup
-
-### 1. Dashboard Integration
-- [ ] Update UI to connect to deployed contracts
-- [ ] Configure real-time monitoring
-- [ ] Set up PnL tracking
-- [ ] Implement strategy control interface
-
-### 2. Alert System
-- [ ] Set up daily loss limit alerts
-- [ ] Configure strategy performance monitoring
-- [ ] Implement emergency notification system
-- [ ] Set up gas price monitoring
-
-## 🎯 Go-Live Checklist
-
-### Final Verification
-- [ ] All contracts deployed and verified
-- [ ] All tests passing on mainnet-fork
-- [ ] Access controls properly configured
-- [ ] Emergency functions tested
-- [ ] Initial capital allocated
-- [ ] Monitoring systems active
-- [ ] Team trained on emergency procedures
-
-### Launch Sequence
-1. **Deploy contracts** (if not already done)
-2. **Verify all configurations**
-3. **Allocate initial capital**
-4. **Enable strategies one by one**
-5. **Monitor performance closely**
-6. **Scale up gradually**
-
-## 🚨 Emergency Procedures
-
-### Immediate Actions
-- **Pause All Strategies**: `cast send <strategy_manager_address> "pause()" --private-key $PRIVATE_KEY`
-- **Emergency Withdraw**: Use emergency withdrawal functions if needed
-- **Contact Team**: Notify all stakeholders immediately
-
-### Recovery Steps
-1. Assess the situation and identify root cause
-2. Implement fixes if needed
-3. Test thoroughly before resuming
-4. Gradually re-enable strategies
-5. Document lessons learned
-
----
-
-## 📞 Support & Resources
-
-- **Foundry Documentation**: https://book.getfoundry.sh/
-- **Etherscan Verification**: https://etherscan.io/apis
-- **Emergency Contacts**: [Your team contacts]
-- **Monitoring Dashboard**: [Your dashboard URL]
-
-**Remember**: Start with small capital allocations and scale up gradually as you gain confidence in the system's performance and stability.
+## 6) Post-deploy smoke tests
+- Portfolio:
+  - `GET /api/portfolio/evm?address=0x...`
+  - `GET /api/portfolio/solana?address=<base58>`
+  - `GET /api/portfolio/*/timeseries?...`
+- Admin (requires header):
+  - `GET /api/admin/snapshots/last-run?chain=evm`
+  - `GET /api/admin/snapshots/last-run?chain=solana`

@@ -7,8 +7,11 @@ import { fadeIn } from '@/lib/animations';
 export function CTA() {
   const handleConnectWallet = () => {
     // Mock wallet connection
-    if (typeof window !== 'undefined' && (window as any).ethereum) {
-      (window as any).ethereum.request({ method: 'eth_requestAccounts' });
+    const ethereum = typeof window !== 'undefined'
+      ? (window as Window & { ethereum?: { request?: (args: { method: string }) => Promise<unknown> } }).ethereum
+      : undefined;
+    if (ethereum?.request) {
+      ethereum.request({ method: 'eth_requestAccounts' });
     } else {
       alert('Please install MetaMask to connect your wallet');
     }
@@ -27,7 +30,7 @@ export function CTA() {
             Start Earning Autonomously
           </h2>
           <p className="text-dark-400 text-lg mb-8 max-w-2xl mx-auto">
-            Connect your wallet and let ArbiMind's AI engine find and execute profitable arbitrage opportunities 24/7.
+            Connect your wallet and let ArbiMind&apos;s AI engine find and execute profitable arbitrage opportunities 24/7.
           </p>
           <motion.button
             onClick={handleConnectWallet}

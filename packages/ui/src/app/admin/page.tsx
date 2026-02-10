@@ -73,10 +73,11 @@ export default function AdminPage() {
               Admin Login
             </h1>
             <p className="text-sm text-dark-400 mb-6">
-              Enter your admin API key to access the dashboard. Set ADMIN_API_KEY in the backend.
+              Enter your admin API key to access the dashboard. Set <code className="text-cyan-400">ADMIN_API_KEY</code> in the backend <code className="text-cyan-400">.env</code> or Railway variables.
             </p>
             <form onSubmit={handleLogin} className="space-y-4" autoComplete="off">
               <input
+                id="admin-api-key"
                 type="password"
                 name="admin-api-key"
                 value={key}
@@ -98,14 +99,22 @@ export default function AdminPage() {
 
   return (
     <DashboardLayout>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold text-white">Owner / Admin Dashboard</h1>
-        <button
-          onClick={handleLogout}
-          className="btn btn-ghost flex items-center gap-2 text-dark-400 hover:text-white"
-        >
-          <LogOut className="w-4 h-4" /> Logout
-        </button>
+        <div className="flex items-center gap-2">
+          <a
+            href="/admin/ai-dashboard"
+            className="btn btn-ghost text-dark-300 hover:text-white"
+          >
+            AI Dashboard
+          </a>
+          <button
+            onClick={handleLogout}
+            className="btn btn-ghost flex items-center gap-2 text-dark-400 hover:text-white"
+          >
+            <LogOut className="w-4 h-4" /> Logout
+          </button>
+        </div>
       </div>
       <AdminDashboard />
     </DashboardLayout>

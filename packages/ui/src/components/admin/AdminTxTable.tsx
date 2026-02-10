@@ -117,6 +117,8 @@ export function AdminTxTable({
       <h3 className="text-lg font-semibold text-white mb-4">Transactions</h3>
       <div className="flex flex-wrap gap-3 mb-4">
         <select
+          id="admin-tx-strategy"
+          name="strategyFilter"
           value={strategyFilter}
           onChange={(e) => onStrategyFilterChange?.(e.target.value)}
           className="input-field text-sm py-1.5"
@@ -129,6 +131,8 @@ export function AdminTxTable({
           ))}
         </select>
         <select
+          id="admin-tx-status"
+          name="statusFilter"
           value={statusFilter}
           onChange={(e) => onStatusFilterChange?.(e.target.value)}
           className="input-field text-sm py-1.5"

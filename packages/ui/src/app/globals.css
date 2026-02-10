@@ -1,5 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
-
+/* Fonts loaded via next/font in layout.tsx to avoid @import order issues */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -18,7 +17,7 @@
 
 @layer components {
   .btn-primary {
-    @apply bg-primary-500 hover:bg-primary-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 cursor-pointer;
+    @apply bg-gradient-to-r from-emerald-500 to-blue-500 hover:from-emerald-400 hover:to-blue-400 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 cursor-pointer;
   }
   
   .btn-secondary {
@@ -46,7 +45,7 @@
   }
   
   .card {
-    @apply bg-dark-800 border border-dark-700 rounded-xl p-6 shadow-lg;
+    @apply bg-black/20 backdrop-blur-md border border-white/10 rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all;
   }
   
   .card-hover {

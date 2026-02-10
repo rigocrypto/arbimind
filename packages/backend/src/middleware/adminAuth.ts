@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { adminStore } from '../store/adminStore';
 
 const ADMIN_KEY = process.env.ADMIN_API_KEY || '';
+const SERVICE_KEY = process.env.AI_SERVICE_KEY || '';
 
 function getClientIp(req: Request): string {
   const ff = req.headers['x-forwarded-for'];
@@ -23,6 +24,17 @@ export function adminAuth(req: Request, res: Response, next: NextFunction): void
     return;
   }
   const key = req.headers['x-admin-key'] as string;
+  const serviceKey = req.headers['x-service-key'] as string;
+
+  const serviceKeyAllowed =
+    SERVICE_KEY &&
+    serviceKey === SERVICE_KEY &&
+    path.startsWith('/ai-dashboard/predictions');
+
+  if (serviceKeyAllowed) {
+    return next();
+  }
+
   if (!key || key !== ADMIN_KEY) {
     adminStore.addAuditEvent({ type: 'admin_auth', ip, path, success: false, meta: { reason: key ? 'invalid_key' : 'missing_key' } });
     res.status(401).json({

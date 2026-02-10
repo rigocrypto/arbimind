@@ -31,18 +31,26 @@ Use this setup — it avoids Railpack "Error creating build plan" entirely.
 | `RAILWAY_DOCKERFILE_PATH` | `Dockerfile.backend` |
 | `NODE_ENV` | `production` |
 | `FRONTEND_URL` | `https://arbimind.vercel.app` |
-| `ADMIN_API_KEY` | Your secret admin key | Required for `/api/admin/*` |
+| `ADMIN_API_KEY` | Your secret admin key (e.g. `openssl rand -hex 32`) |
+| `AI_SERVICE_KEY` | Service-to-service key for AI prediction logging |
 | `TREASURY_ADDRESS` | `0x...` | Treasury wallet (admin display) |
 | `EXECUTION_ADDRESS` | `0x...` | Execution/hot wallet (admin display) |
+| `SOLANA_ARB_ACCOUNT` | Your arb pubkey (base58) |
+| `SOLANA_FEE_WALLET` | Fee destination pubkey (base58) |
+| `SOLANA_FEE_PCT` | `0.5` | Fee % |
+| `SOLANA_FEE_MIN_SOL` | `0.001` | Min fee in SOL |
+| `SOLANA_CLUSTER` | `mainnet-beta` | For Jupiter swaps |
+| `SOLANA_JUPITER_RPC_URL` | `https://api.mainnet-beta.solana.com` | Or paid RPC |
 
 **Redeploy** — Railway uses `Dockerfile.backend` at repo root; Railpack is not used.
 
 ### Admin Dashboard (`/admin`)
 
 - **UI**: Visit `/admin`, enter `ADMIN_API_KEY` to login. Key is stored in `localStorage`.
-- **Backend**: All `/api/admin/*` routes require `X-ADMIN-KEY: <ADMIN_API_KEY>` header.
-- **Endpoints**: `GET /api/admin/metrics`, `GET /api/admin/txs`, `GET /api/admin/wallets`, `POST /api/admin/engine/pause`, `POST /api/admin/engine/resume`.
-- **Security**: Never expose `ADMIN_API_KEY` in the UI. Use a strong random string (e.g. `openssl rand -hex 32`).
+- **Backend (admin-only)**: Most `/api/admin/*` routes require `X-ADMIN-KEY: <ADMIN_API_KEY>` header.
+- **Backend (service key allowed)**: `/api/admin/ai-dashboard/predictions*` accepts `X-SERVICE-KEY: <AI_SERVICE_KEY>` for service-to-service logging and evaluation.
+- **Endpoints (admin)**: `GET /api/admin/metrics`, `GET /api/admin/txs`, `GET /api/admin/wallets`, `POST /api/admin/engine/pause`, `POST /api/admin/engine/resume`.
+- **Security**: Treat both keys as secrets; rotate if leaked. Store in `.env` locally and in deployment secrets in production.
 
 ---
 
@@ -93,7 +101,9 @@ vercel --prod
 |----------|-------|-------|
 | `NEXT_PUBLIC_API_URL` | `https://your-backend.up.railway.app/api` | **Must end with /api** |
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | Your WC project ID | [cloud.walletconnect.com](https://cloud.walletconnect.com) |
-| `NEXT_PUBLIC_ENABLE_API` | `true` | Enable real API calls (optional) |
+| `NEXT_PUBLIC_SOLANA_CLUSTER` | `mainnet-beta` | For Jupiter swaps |
+| `NEXT_PUBLIC_SOLANA_RPC_URL` | (optional) | Custom Solana RPC |
+| `NEXT_PUBLIC_SOLANA_ARB_ACCOUNT` | (optional) | Arb pubkey for display |
 
 ### URL Verification
 
@@ -125,6 +135,16 @@ Write-Host "UI API base: $api"
 1. Backend: set `FRONTEND_URL` = your Vercel URL
 2. UI: set `NEXT_PUBLIC_API_URL` = `https://YOUR_RAILWAY_APP.up.railway.app/api`
 3. Rebuild both after env changes
+
+### Post-Deploy Verify
+
+| Check | Expected |
+|-------|----------|
+| UI loads | No CSP errors, API 200s |
+| `/solana-wallet` | Phantom connect → transfer works (mainnet) |
+| `/docs` | All links work |
+| `/admin` | Admin key auth works |
+| Console/Network | No errors |
 
 ---
 

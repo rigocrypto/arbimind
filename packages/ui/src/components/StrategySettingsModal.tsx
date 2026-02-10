@@ -85,6 +85,8 @@ export function StrategySettingsModal({
               <HelpTooltip content="Min profit threshold. Arbitrage: 0.01 ETH. MM: 0.005 ETH. Higher = safer, fewer trades." />
             </div>
             <input
+              id="strategy-min-profit"
+              name="minProfit"
               type="range"
               min="0.001"
               max="0.1"
@@ -104,6 +106,8 @@ export function StrategySettingsModal({
               <HelpTooltip content="Low: Conservative slippage/gas. High: Aggressive for rare opps." />
             </div>
             <select
+              id="strategy-risk-level"
+              name="riskLevel"
               value={riskLevel}
               onChange={(e) => setRiskLevel(e.target.value)}
               className="w-full px-3 py-3 sm:py-2 rounded-lg bg-dark-700 border border-dark-600 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50 min-h-[44px] sm:min-h-0 text-base sm:text-sm touch-manipulation"
@@ -122,6 +126,8 @@ export function StrategySettingsModal({
               <HelpTooltip content="Gas cap. Under 50 for mainnet opps, 100 for competitive." />
             </div>
             <input
+              id="strategy-max-gas"
+              name="maxGas"
               type="number"
               min="1"
               max="500"

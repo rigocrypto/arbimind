@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
@@ -36,12 +37,12 @@ export default function Error({
           <RefreshCw className="w-4 h-4" />
           Try again
         </button>
-        <a
+        <Link
           href="/"
           className="block text-sm text-dark-400 hover:text-cyan-400 transition"
         >
           Back to home
-        </a>
+        </Link>
       </div>
     </div>
   );

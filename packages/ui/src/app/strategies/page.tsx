@@ -162,10 +162,13 @@ export default function StrategiesPage() {
                 <div className="relative flex-1 min-w-[200px] max-w-sm">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-500" />
                   <input
+                    id="strategies-search"
+                    name="searchPairs"
                     type="text"
                     placeholder="Search custom pairs (e.g. ETH/USDC)"
                     value={searchPairs}
                     onChange={(e) => setSearchPairs(e.target.value)}
+                    autoComplete="off"
                     className="w-full bg-dark-800 border border-dark-600 rounded-lg pl-10 pr-4 py-2.5 text-sm text-white placeholder-dark-500 focus:outline-none focus:border-cyan-500 transition"
                   />
                 </div>
