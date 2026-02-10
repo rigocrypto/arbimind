@@ -77,6 +77,10 @@ TREASURY_ADDRESS=your_treasury_wallet_address
 # Backend (for CORS when UI is separate)
 FRONTEND_URL=http://localhost:3000
 
+# Admin & Service Auth
+ADMIN_API_KEY=your_admin_dashboard_key
+AI_SERVICE_KEY=your_service_to_service_key
+
 # Bot Configuration
 MIN_PROFIT_ETH=0.01
 MAX_GAS_GWEI=50
@@ -118,6 +122,19 @@ ArbiMind includes advanced AI capabilities that transform it into a superintelli
 - Intelligent flash loan vs. working capital decisions
 - Priority scoring for execution timing
 - Dynamic gas limit recommendations
+
+## 🔐 Admin vs Service Authentication
+
+- **ADMIN key** (`ADMIN_API_KEY`): human login for the UI at `/admin` and admin-only routes.
+- **Service key** (`AI_SERVICE_KEY`): service-to-service auth for AI prediction logging/evaluation.
+
+**Routes**
+- Admin-only: most `/api/admin/*` routes and dashboard viewing.
+- Service key allowed: `/api/admin/ai-dashboard/predictions*` (create/list/accuracy/evaluate).
+
+**Rotation & storage**
+- Treat both as secrets; rotate if leaked.
+- Store in `.env` locally and in deployment secrets/variables in production.
 
 For detailed AI setup and configuration, see [AI_SETUP.md](./AI_SETUP.md).
 
@@ -218,6 +235,17 @@ The dashboard provides real-time insights into:
 - **Route Performance**: Success rates by arbitrage path
 - **Transaction Logs**: Detailed execution history
 - **Risk Metrics**: Slippage and failed transaction analysis
+
+## 📝 Development Notes
+
+### Lighthouse
+
+- **Known warning (ignorable)**: The Solana wallet adapter modal inputs (Phantom, Solflare, etc.) are third-party and may trigger "form field should have id or name" / "no label associated" in Lighthouse. These cannot be fixed in our codebase. Our own forms use proper `id`, `name`, and `label htmlFor`.
+
+### Production CSP
+
+- CSP is **skipped in development** (`NODE_ENV !== 'production'`) so dev tooling and wallet adapters work without eval blocking.
+- In production, CSP includes `connect-src https: wss:` (covers Solana RPC, EVM RPCs), `img-src data:` (wallet icons), `style-src 'unsafe-inline'`, and `frame-src` for WalletConnect. Verify `/solana-wallet` connect works after `pnpm build && pnpm start`.
 
 ## 🤝 Contributing
 

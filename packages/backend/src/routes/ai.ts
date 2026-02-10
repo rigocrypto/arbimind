@@ -6,7 +6,8 @@ import { validateRequest } from '../middleware/validation';
 import { 
   predictionSchema, 
   sentimentSchema, 
-  trainingDataSchema 
+  trainingDataSchema,
+  arbPredictionSchema
 } from '../schemas/aiSchemas';
 
 const router = express.Router();
@@ -66,6 +67,48 @@ router.post('/predict', validateRequest(predictionSchema), async (req: Request, 
     res.status(500).json({
       success: false,
       message: 'AI prediction failed',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * @route POST /api/ai/predict-arb
+ * @desc Predict arb opportunity success/profit
+ * @access Private
+ */
+router.post('/predict-arb', validateRequest(arbPredictionSchema), async (req: Request, res: Response) => {
+  try {
+    const { profitPct, volumeUsd, liquidity, slippage, gasPrice } = req.body;
+
+    const prediction = await aiService.predictArb({
+      profitPct,
+      volumeUsd,
+      liquidity,
+      slippage,
+      gasPrice
+    });
+
+    const recommendation = prediction.successProb > 0.7 && prediction.expectedProfitPct > 0.5
+      ? 'EXECUTE'
+      : prediction.successProb > 0.4
+        ? 'WAIT'
+        : 'AVOID';
+
+    res.json({
+      success: true,
+      data: {
+        expectedProfitPct: prediction.expectedProfitPct,
+        successProb: prediction.successProb,
+        recommendation
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Arb prediction failed', { error });
+    res.status(500).json({
+      success: false,
+      message: 'Arb prediction failed',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }

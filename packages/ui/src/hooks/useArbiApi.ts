@@ -4,8 +4,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+import { apiUrl } from '@/lib/apiConfig';
 // Disable API calls by default - set to true when backend is ready
 const ENABLE_API_CALLS = process.env.NEXT_PUBLIC_ENABLE_API === 'true';
 
@@ -145,7 +144,7 @@ async function fetchWithFallback<T>(
   }
 
   try {
-    const response = await fetch(`${API_BASE}${endpoint}`, {
+    const response = await fetch(apiUrl(endpoint.startsWith('/') ? endpoint : `/${endpoint}`), {
       ...options,
       headers: {
         'Content-Type': 'application/json',
@@ -331,7 +330,7 @@ export function useOpportunities() {
       if (!isMounted) return;
       
       setLoading(true);
-      const res = await fetch(`${API_BASE}/opportunities`).catch(() => null);
+      const res = await fetch(apiUrl('/opportunities')).catch(() => null);
       const raw = res?.ok ? await res.json().catch(() => null) : null;
       const data = Array.isArray(raw) ? raw : raw?.data;
       
@@ -364,7 +363,7 @@ export function useEngine() {
   const fetchStatus = useCallback(async () => {
     if (!ENABLE_API_CALLS) return;
     try {
-      const response = await fetch(`${API_BASE}/engine/status`);
+      const response = await fetch(apiUrl('/engine/status'));
       if (response.ok) {
         const data = await response.json();
         const active = data?.active ?? '';
@@ -389,7 +388,7 @@ export function useEngine() {
         typeof window !== 'undefined' ? localStorage.getItem('arbimind_ref') : null;
       const body: { strategy: string; referrer?: string } = { strategy };
       if (referrer && /^0x[a-fA-F0-9]{40}$/.test(referrer)) body.referrer = referrer;
-      const response = await fetch(`${API_BASE}/engine/start`, {
+      const response = await fetch(apiUrl('/engine/start'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -408,7 +407,7 @@ export function useEngine() {
   const stop = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/engine/stop`, {
+      const response = await fetch(apiUrl('/engine/stop'), {
         method: 'POST',
       });
       if (response.ok) {
@@ -424,7 +423,7 @@ export function useEngine() {
 
   const singleScan = useCallback(async (strategy?: string) => {
     try {
-      const response = await fetch(`${API_BASE}/engine/single-scan`, {
+      const response = await fetch(apiUrl('/engine/single-scan'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ strategy: strategy || activeStrategy || 'arbitrage' }),
@@ -438,7 +437,7 @@ export function useEngine() {
 
   const reloadPrices = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/engine/reload-prices`, {
+      const response = await fetch(apiUrl('/engine/reload-prices'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -458,7 +457,7 @@ export function useExecute() {
   const execute = useCallback(async (opportunityId: string): Promise<ExecuteResponse> => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/execute`, {
+      const response = await fetch(apiUrl('/execute'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ opportunityId }),

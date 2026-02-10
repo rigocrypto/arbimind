@@ -20,12 +20,14 @@ interface SidebarProps {
 }
 
 export function Sidebar({ currentPath = '/', isOpen = false, onClose }: SidebarProps) {
+  const proVariant = (process.env.NEXT_PUBLIC_PRO_VARIANT || 'header-center') as 'header-center' | 'sidebar' | 'off';
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
     { icon: Brain, label: 'AI Strategies', path: '/strategies' },
     { icon: TrendingUp, label: 'Arbitrage Feed', path: '/feed' },
     { icon: History, label: 'Trading History', path: '/history' },
     { icon: Wallet, label: 'Wallet', path: '/wallet' },
+    { icon: Wallet, label: 'Solana Wallet', path: '/solana-wallet' },
     { icon: Settings, label: 'Settings', path: '/settings' },
     { icon: Shield, label: 'Admin', path: '/admin' },
     { icon: BookOpen, label: 'Docs', path: '/docs' },
@@ -75,6 +77,18 @@ export function Sidebar({ currentPath = '/', isOpen = false, onClose }: SidebarP
             );
           })}
         </nav>
+
+        {proVariant === 'sidebar' && (
+          <div className="px-4 pb-4">
+            <div className="rounded-2xl bg-black/30 backdrop-blur border border-white/10 p-4">
+              <h3 className="text-lg font-bold text-white mb-2">Pro Unlock</h3>
+              <p className="text-sm text-dark-300 mb-4">0.5% fees → bots + alerts</p>
+              <Link href="/pro" className="btn-primary w-full text-center">
+                Upgrade $9/mo
+              </Link>
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="p-4 border-t border-cyan-500/10">
@@ -139,6 +153,18 @@ export function Sidebar({ currentPath = '/', isOpen = false, onClose }: SidebarP
             );
           })}
         </nav>
+
+        {proVariant === 'sidebar' && (
+          <div className="px-4 pb-4">
+            <div className="rounded-2xl bg-black/30 backdrop-blur border border-white/10 p-4">
+              <h3 className="text-base font-bold text-white mb-2">Pro Unlock</h3>
+              <p className="text-xs text-dark-300 mb-3">0.5% fees → bots + alerts</p>
+              <Link href="/pro" onClick={onClose} className="btn-primary w-full text-center">
+                Upgrade $9/mo
+              </Link>
+            </div>
+          </div>
+        )}
 
         {/* Mobile Footer */}
         <div className="p-4 border-t border-cyan-500/10">

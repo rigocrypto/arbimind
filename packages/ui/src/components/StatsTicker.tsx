@@ -1,10 +1,11 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import type { ComponentType } from 'react';
 import { DollarSign, TrendingUp, Activity, BarChart3 } from 'lucide-react';
 
 interface Stat {
-  icon: any;
+  icon: ComponentType<{ className?: string }>;
   label: string;
   value: string;
   trend?: string;

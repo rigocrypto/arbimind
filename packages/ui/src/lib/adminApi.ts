@@ -3,7 +3,7 @@
  * Pass keyOverride on login to avoid sessionStorage timing issues.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+import { API_BASE } from './apiConfig';
 const ADMIN_KEY_STORAGE = 'arbimind_admin_key';
 
 export function getAdminKey(): string {
@@ -97,6 +97,49 @@ export interface AdminWallets {
   };
 }
 
+export interface AIDexPairResponse {
+  pair: {
+    chainId?: string;
+    dexId?: string;
+    pairAddress?: string;
+    baseToken?: { symbol?: string };
+    quoteToken?: { symbol?: string };
+    priceUsd?: number;
+    priceChange?: { h1?: number; h24?: number };
+    volume?: { h1?: number; h24?: number };
+    liquidity?: { usd?: number };
+    txns?: { h1?: { buys?: number; sells?: number }; h24?: { buys?: number; sells?: number } };
+  };
+  alerts?: { volumeSpike?: boolean; txSpike?: boolean };
+  timestamp?: string;
+}
+
+export interface AIPredictionRow {
+  id: string;
+  createdAt?: string;
+  resolvedAt?: string | null;
+  chain?: string;
+  pairAddress?: string;
+  horizonSec?: number;
+  model?: string;
+  signal?: string;
+  confidence?: number;
+  entryPriceUsd?: number;
+  returnPct?: number;
+  correct?: boolean | null;
+}
+
+export interface AIPredictionAccuracyRow {
+  horizon_sec: number;
+  model: string;
+  total: number;
+  resolved: number;
+  hit_rate: number | null;
+  avg_return_pct?: number | null;
+  median_return_pct?: number | null;
+  avg_confidence?: number | null;
+}
+
 export const adminApi = {
   async getMetrics(range: '24h' | '7d' | '30d' = '24h', keyOverride?: string) {
     return adminFetch<AdminMetrics>(`/admin/metrics?range=${range}`, { keyOverride });
@@ -125,7 +168,89 @@ export const adminApi = {
     if (params?.limit) sp.set('limit', String(params.limit));
     return adminFetch<{ events: AdminAuditEvent[] }>(`/admin/audit?${sp}`);
   },
+  async getSnapshotsLastRun(chain: 'evm' | 'solana') {
+    return adminFetch<{
+      run: {
+        id: string;
+        chain: string;
+        startedAt: string;
+        finishedAt: string | null;
+        ok: boolean | null;
+        usersProcessed: number;
+        successCount: number;
+        failedCount: number;
+        durationMs: number | null;
+        error: string | null;
+      } | null;
+    }>(`/admin/snapshots/last-run?chain=${chain}`);
+  },
+  async getAIDexPair(pairAddress: string) {
+    const sp = new URLSearchParams();
+    sp.set('pair', pairAddress);
+    return adminFetch<AIDexPairResponse>(`/admin/ai-dashboard/dex?${sp.toString()}`);
+  },
+  async getAIDexHistory(pairAddress: string, window: '6h' | '24h' | '7d') {
+    const sp = new URLSearchParams();
+    sp.set('pair', pairAddress);
+    sp.set('window', window);
+    return adminFetch<{
+      pair: string;
+      points: Array<{
+        ts: number;
+        priceUsd?: number;
+        liquidityUsd?: number;
+        volumeH24?: number;
+        buysH1?: number;
+        sellsH1?: number;
+      }>;
+      window: string;
+      timestamp?: string;
+    }>(`/admin/ai-dashboard/dex/history?${sp.toString()}`);
+  },
+  async getAIPredictions(pairAddress: string, window: '6h' | '24h' | '7d', limit = 200) {
+    const sp = new URLSearchParams();
+    sp.set('pair', pairAddress);
+    sp.set('window', window);
+    sp.set('limit', String(limit));
+    return adminFetch<{ rows: AIPredictionRow[] }>(`/admin/ai-dashboard/predictions?${sp.toString()}`);
+  },
+  async getAIPredictionAccuracy(pairAddress: string, window: '6h' | '24h' | '7d') {
+    const sp = new URLSearchParams();
+    sp.set('pair', pairAddress);
+    sp.set('window', window);
+    return adminFetch<{ rows: AIPredictionAccuracyRow[] }>(`/admin/ai-dashboard/predictions/accuracy?${sp.toString()}`);
+  },
+  async evaluateAIPredictions(pairAddress: string) {
+    const sp = new URLSearchParams();
+    sp.set('pair', pairAddress);
+    return adminFetch<{ evaluated: number }>(`/admin/ai-dashboard/predictions/evaluate?${sp.toString()}`, { method: 'POST' });
+  },
+  async createAIPrediction(payload: Record<string, unknown>) {
+    return adminFetch<{ id: string | null }>('/admin/ai-dashboard/predictions', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
 };
+
+/** Public endpoint – no admin key required. */
+export async function getSnapshotsHealth(chain: 'evm' | 'solana'): Promise<{
+  ok: boolean;
+  lastRunAt: string | null;
+  lastOkAt: string | null;
+  stale: boolean;
+} | null> {
+  try {
+    const base = API_BASE.endsWith('/api') ? API_BASE : API_BASE.replace(/\/$/, '');
+    const url = `${base}/snapshots/health?chain=${chain}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
 
 export interface AdminAuditEvent {
   ts: number;

@@ -3,7 +3,6 @@
 import { useState, ReactNode } from 'react';
 import { Sidebar } from '../Sidebar';
 import { Header } from '../Header';
-import { Footer } from '../Footer';
 import { useEngineContext } from '@/contexts/EngineContext';
 
 interface DashboardLayoutProps {
@@ -40,6 +39,7 @@ export function DashboardLayout({ children, currentPath = '/' }: DashboardLayout
           isRunning={isRunning}
           onToggle={handleToggleEngine}
           onMenuClick={() => setSidebarOpen(!sidebarOpen)}
+          currentPath={currentPath}
         />
 
         {/* Page Content */}
@@ -48,9 +48,6 @@ export function DashboardLayout({ children, currentPath = '/' }: DashboardLayout
             {children}
           </div>
         </main>
-
-        {/* Footer */}
-        <Footer />
       </div>
 
       {/* Mobile Sidebar Overlay */}

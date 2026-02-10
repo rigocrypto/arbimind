@@ -8,12 +8,19 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "jest",
+    "train:arb-model": "ts-node scripts/train-arb-model.ts",
+    "load:dataset": "ts-node scripts/load-dataset.ts",
+    "load:dataset-jupiter": "ts-node scripts/load-dataset.ts --jupiter",
+    "load:dataset-dex": "ts-node scripts/load-dataset.ts --dexscreener",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write src/**/*.ts"
   },
   "dependencies": {
     "@sentry/node": "^10.25.0",
+    "@solana/web3.js": "^1.98.4",
+    "@tensorflow/tfjs": "^4.22.0",
+    "@tensorflow/tfjs-node": "^4.22.0",
     "axios": "^1.6.0",
     "bcryptjs": "^2.4.3",
     "compression": "^1.7.4",
@@ -27,10 +34,12 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.0.0",
     "node-cron": "^3.0.3",
+    "pg": "^8.18.0",
     "rate-limiter-flexible": "^5.0.0",
     "redis": "^4.6.10",
     "winston": "^3.11.0",
-    "ws": "^8.14.2"
+    "ws": "^8.14.2",
+    "yargs": "^17.7.2"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -41,6 +50,7 @@
     "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^20.8.0",
     "@types/node-cron": "^3.0.11",
+    "@types/pg": "^8.16.0",
     "@types/ws": "^8.5.8",
     "@typescript-eslint/eslint-plugin": "^6.9.0",
     "@typescript-eslint/parser": "^6.9.0",

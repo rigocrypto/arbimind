@@ -1,5 +1,6 @@
 'use client';
 
+import type { ComponentType } from 'react';
 import { useState } from 'react';
 import { Activity, Server, Wifi, Database, Zap, CheckCircle2, AlertCircle, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { useHealth } from '@/hooks/useArbiApi';
@@ -42,7 +43,7 @@ const statusConfig = {
   },
 };
 
-const serviceIcons: Record<string, any> = {
+const serviceIcons: Record<string, ComponentType<{ className?: string }>> = {
   'Backend API': Server,
   'Bot Engine': Activity,
   'WebSocket': Wifi,

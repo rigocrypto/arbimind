@@ -28,7 +28,14 @@ interface StrategyCardProps {
   riskLevel?: string;
 }
 
-export function StrategyCard({ strategy, onRun, onToggleAuto, engineActiveStrategy }: StrategyCardProps) {
+const DEFAULT_RISK: Record<string, string> = {
+  arbitrage: 'Low',
+  trend: 'Med',
+  'market-making': 'Low',
+};
+
+export function StrategyCard({ strategy, onRun, onToggleAuto, engineActiveStrategy, sparklineData, riskLevel }: StrategyCardProps) {
+  const displayRisk = riskLevel ?? DEFAULT_RISK[strategy.id] ?? 'Low';
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { isConnected } = useAccount();
   const allocationPercent = strategy.allocationBps / 100;
@@ -40,7 +47,7 @@ export function StrategyCard({ strategy, onRun, onToggleAuto, engineActiveStrate
   const sentiment = strategy.sentiment ?? 0.75;
   const color = STRATEGY_COLORS[strategy.id] ?? DEFAULT_COLOR;
 
-  const riskColor = riskLevel === 'Low' ? 'text-green-400' : riskLevel === 'Med' ? 'text-amber-400' : 'text-red-400';
+  const riskColor = displayRisk === 'Low' ? 'text-green-400' : displayRisk === 'Med' ? 'text-amber-400' : 'text-red-400';
 
   return (
     <motion.div
@@ -91,12 +98,10 @@ export function StrategyCard({ strategy, onRun, onToggleAuto, engineActiveStrate
       </div>
 
       {/* Risk badge */}
-      {riskLevel && (
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-dark-400">Risk</span>
-          <span className={`text-xs font-semibold px-2 py-0.5 rounded ${riskColor}`}>{riskLevel}</span>
-        </div>
-      )}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-dark-400">Risk</span>
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded ${riskColor}`}>{displayRisk}</span>
+      </div>
 
       {/* Mini sparkline */}
       {sparklineData && sparklineData.length > 0 && (

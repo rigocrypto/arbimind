@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Brain, Power, Menu, ChevronDown, Share2 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
@@ -7,20 +8,28 @@ import { useAccount, useDisconnect } from 'wagmi';
 import { formatAddress } from '@/utils/format';
 import { RevenueTooltip } from '@/components/RevenueTooltip';
 import { useReferral } from '@/hooks/useReferral';
+import { useHydrated } from '@/hooks/useHydrated';
+import { ChainSwitcherModal } from '@/components/ChainSwitcherModal';
 
 interface HeaderProps {
   isRunning: boolean;
   onToggle: () => void;
   onMenuClick?: () => void;
+  currentPath?: string;
 }
 
 export function Header({ 
   isRunning, 
   onToggle, 
-  onMenuClick 
+  onMenuClick,
+  currentPath = '/',
 }: HeaderProps) {
+  const isSolanaPage = currentPath === '/solana-wallet';
+  const proVariant = (process.env.NEXT_PUBLIC_PRO_VARIANT || 'header-center') as 'header-center' | 'off';
   const [walletDropdownOpen, setWalletDropdownOpen] = useState(false);
+  const [chainSwitcherOpen, setChainSwitcherOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const hydrated = useHydrated();
   const { isConnected } = useAccount();
   const { disconnect } = useDisconnect();
   const { earnings, copyRefLink } = useReferral();
@@ -63,8 +72,26 @@ export function Header({
             </div>
           </div>
 
+          {/* Center: Pro banner */}
+          {proVariant === 'header-center' && (
+            <div className="hidden lg:flex flex-1 items-center justify-center px-4">
+              <Link
+                href="/pro"
+                className="flex w-full max-w-[520px] items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500/20 to-blue-500/20 border border-amber-400/40 hover:from-emerald-500/30 hover:to-blue-500/30 transition-all text-sm"
+              >
+                <div className="min-w-0">
+                  <span className="font-bold text-white">Pro Arbitrage Unlocked</span>
+                  <span className="hidden sm:inline text-dark-300 text-xs ml-2">0.5% tx fee → Auto-bots + premium alerts</span>
+                </div>
+                <span className="shrink-0 bg-amber-300 text-black px-3 py-1 rounded-lg font-bold text-xs hover:bg-amber-200 transition-colors">
+                  Get Pro $9/mo
+                </span>
+              </Link>
+            </div>
+          )}
+
           {/* Right: Controls */}
-          <div className="flex items-center space-x-1.5 sm:space-x-2 lg:space-x-3 flex-shrink-0">
+          <div className="flex items-center space-x-1.5 sm:space-x-2 lg:space-x-3 flex-shrink-0 min-w-0">
             {/* System Status - Icon only on mobile */}
             <div className="flex items-center space-x-1.5 sm:space-x-2 px-2 sm:px-3 py-1.5 rounded-lg bg-dark-700/50 border border-cyan-500/20">
               <div className={`w-2 h-2 rounded-full ${isRunning ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
@@ -73,8 +100,18 @@ export function Header({
               </span>
             </div>
 
-            {/* Wallet Connect - RainbowKit */}
+            {/* Wallet - on Solana page: show EVM link only. Else: EVM RainbowKit */}
             <div className="flex-shrink-0" ref={dropdownRef}>
+              {isSolanaPage ? (
+                <Link
+                  href="/wallet"
+                  className="flex items-center gap-2 p-2 sm:px-4 sm:py-2 rounded-lg bg-dark-700/50 hover:bg-dark-600 border border-dark-600 text-dark-300 hover:text-white transition-all text-sm font-medium"
+                >
+                  EVM Wallet →
+                </Link>
+              ) : !hydrated ? (
+                <div className="h-9 w-24 sm:w-32 rounded-lg bg-dark-700/50 animate-pulse" aria-hidden />
+              ) : (
               <ConnectButton.Custom>
                 {({
                   account,
@@ -108,7 +145,7 @@ export function Header({
                     return (
                       <button
                         type="button"
-                        onClick={openChainModal}
+                        onClick={() => setChainSwitcherOpen(true)}
                         className="flex items-center justify-center p-2 sm:px-4 sm:py-2 rounded-lg bg-red-500/20 border border-red-500/50 text-red-400 text-sm font-medium hover:bg-red-500/30 transition-all"
                       >
                         Wrong network
@@ -131,7 +168,7 @@ export function Header({
                         <ChevronDown className="w-4 h-4 opacity-70" />
                       </button>
                       {walletDropdownOpen && (
-                        <div className="absolute right-0 top-full mt-1 py-1 rounded-lg bg-dark-800 border border-dark-600 shadow-xl z-50 min-w-[160px]">
+                        <div className="absolute right-0 top-full mt-1 py-1 rounded-lg bg-dark-800 border border-dark-600 shadow-xl z-[9999] min-w-[160px]">
                           <button
                             type="button"
                             onClick={() => { copyRefLink(); setWalletDropdownOpen(false); }}
@@ -142,7 +179,7 @@ export function Header({
                           </button>
                           <button
                             type="button"
-                            onClick={() => { openChainModal(); setWalletDropdownOpen(false); }}
+                            onClick={() => { setChainSwitcherOpen(true); setWalletDropdownOpen(false); }}
                             className="w-full px-4 py-2 text-left text-sm text-dark-200 hover:bg-dark-700 transition-colors"
                           >
                             Switch Network
@@ -167,10 +204,16 @@ export function Header({
                   );
                 }}
               </ConnectButton.Custom>
+              )}
             </div>
 
-            {/* Share & Earn - when connected */}
-            {isConnected && (
+            <ChainSwitcherModal
+              isOpen={chainSwitcherOpen}
+              onClose={() => setChainSwitcherOpen(false)}
+            />
+
+            {/* Share & Earn - when connected (EVM only, hide on Solana page) */}
+            {isConnected && !isSolanaPage && (
               <button
                 type="button"
                 onClick={copyRefLink}

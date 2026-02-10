@@ -9,7 +9,7 @@ export interface MetricCardProps {
   title: string;
   value: string | number;
   subtitle?: string;
-  icon?: React.ComponentType<any>;
+  icon?: React.ComponentType<{ className?: string }>;
   gradient?: 'green' | 'cyan' | 'purple' | 'orange' | 'gold';
   sparklineData?: number[];
   loading?: boolean;

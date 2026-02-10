@@ -1,7 +1,7 @@
 'use client';
 
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
-import { BookOpen, Code, Zap, Shield, TrendingUp, Settings, ExternalLink, Github } from 'lucide-react';
+import { BookOpen, Code, Zap, Shield, TrendingUp, Settings, ExternalLink, Github, Lock as LockIcon } from 'lucide-react';
 import Link from 'next/link';
 
 export default function DocsPage() {
@@ -12,9 +12,9 @@ export default function DocsPage() {
       description: 'Get up and running with ArbiMind in minutes',
       color: 'cyan',
       items: [
-        { title: 'Installation Guide', href: '#installation' },
-        { title: 'Configuration', href: '#configuration' },
-        { title: 'First Trade', href: '#first-trade' },
+        { title: 'Installation Guide', href: '/docs/quickstart/installation' },
+        { title: 'Configuration', href: '/docs/quickstart/configuration' },
+        { title: 'First Trade', href: '/docs/quickstart/first-trade' },
       ],
     },
     {
@@ -23,9 +23,9 @@ export default function DocsPage() {
       description: 'Learn about different arbitrage strategies',
       color: 'purple',
       items: [
-        { title: 'Arbitrage V2/V3', href: '#arbitrage-v2-v3' },
-        { title: 'Market Making', href: '#market-making' },
-        { title: 'Trend Following', href: '#trend-following' },
+        { title: 'Arbitrage V2/V3', href: '/docs/strategies/arbitrage-v2-v3' },
+        { title: 'Market Making', href: '/docs/strategies/market-making' },
+        { title: 'Trend Following', href: '/docs/strategies/trend-following' },
       ],
     },
     {
@@ -34,9 +34,18 @@ export default function DocsPage() {
       description: 'Protect your capital with proper risk controls',
       color: 'green',
       items: [
-        { title: 'Position Sizing', href: '#position-sizing' },
-        { title: 'Stop Loss', href: '#stop-loss' },
-        { title: 'Risk Parameters', href: '#risk-parameters' },
+        { title: 'Position Sizing', href: '/docs/risk/position-sizing' },
+        { title: 'Stop Loss', href: '/docs/risk/stop-loss' },
+        { title: 'Risk Parameters', href: '/docs/risk/risk-parameters' },
+      ],
+    },
+    {
+      icon: LockIcon,
+      title: 'Admin',
+      description: 'Admin dashboard setup and access',
+      color: 'amber',
+      items: [
+        { title: 'Admin Setup', href: '/docs/admin/setup' },
       ],
     },
     {
@@ -45,9 +54,9 @@ export default function DocsPage() {
       description: 'Integrate ArbiMind into your applications',
       color: 'orange',
       items: [
-        { title: 'REST API', href: '#rest-api' },
-        { title: 'WebSocket', href: '#websocket' },
-        { title: 'Authentication', href: '#authentication' },
+        { title: 'REST API', href: '/docs/api/rest' },
+        { title: 'WebSocket', href: '/docs/api/websocket' },
+        { title: 'Authentication', href: '/docs/api/authentication' },
       ],
     },
     {
@@ -56,9 +65,9 @@ export default function DocsPage() {
       description: 'Customize your ArbiMind setup',
       color: 'pink',
       items: [
-        { title: 'Environment Variables', href: '#env-vars' },
-        { title: 'Strategy Settings', href: '#strategy-settings' },
-        { title: 'Gas Optimization', href: '#gas-optimization' },
+        { title: 'Environment Variables', href: '/docs/config/environment-variables' },
+        { title: 'Strategy Settings', href: '/docs/config/strategy-settings' },
+        { title: 'Gas Optimization', href: '/docs/config/gas-optimization' },
       ],
     },
   ];
@@ -126,13 +135,13 @@ export default function DocsPage() {
                 <ul className="space-y-2">
                   {section.items.map((item) => (
                     <li key={item.title}>
-                      <a
+                      <Link
                         href={item.href}
                         className="text-sm text-cyan-400 hover:text-cyan-300 transition flex items-center gap-1"
                       >
                         {item.title}
                         <ExternalLink className="w-3 h-3" />
-                      </a>
+                      </Link>
                     </li>
                   ))}
                 </ul>
@@ -144,29 +153,24 @@ export default function DocsPage() {
         {/* Key Concepts */}
         <div className="glass-card p-4 sm:p-6">
           <h2 className="text-xl font-bold text-white mb-4">Key Concepts</h2>
-          <div className="space-y-4">
-            <div className="p-4 rounded-lg bg-dark-800/50 border border-dark-700">
-              <h3 className="font-semibold text-white mb-2">Arbitrage Trading</h3>
-              <p className="text-sm text-dark-300">
-                Arbitrage involves buying and selling the same asset across different markets to profit from
-                price differences. ArbiMind automatically detects these opportunities and executes trades when
-                the profit exceeds your configured threshold.
-              </p>
-            </div>
-            <div className="p-4 rounded-lg bg-dark-800/50 border border-dark-700">
-              <h3 className="font-semibold text-white mb-2">MEV (Maximal Extractable Value)</h3>
-              <p className="text-sm text-dark-300">
-                MEV refers to the maximum value that can be extracted from block production in addition to the
-                standard block reward and gas fees. ArbiMind helps you capture MEV through arbitrage opportunities.
-              </p>
-            </div>
-            <div className="p-4 rounded-lg bg-dark-800/50 border border-dark-700">
-              <h3 className="font-semibold text-white mb-2">Gas Optimization</h3>
-              <p className="text-sm text-dark-300">
-                Successful arbitrage requires careful gas management. ArbiMind optimizes gas usage and only
-                executes trades when the profit exceeds gas costs plus your minimum profit threshold.
-              </p>
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[
+              { title: 'Arbitrage Trading', href: '/docs/concepts/arbitrage-trading' },
+              { title: 'Slippage', href: '/docs/concepts/slippage' },
+              { title: 'Gas & Fees', href: '/docs/concepts/gas-fees' },
+              { title: 'MEV', href: '/docs/concepts/mev' },
+              { title: 'Non-Custodial Signing', href: '/docs/concepts/non-custodial-signing' },
+              { title: 'Fee Model', href: '/docs/concepts/fee-model' },
+            ].map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="p-4 rounded-lg bg-dark-800/50 border border-dark-700 hover:border-cyan-500/50 transition flex items-center justify-between group"
+              >
+                <span className="font-semibold text-white group-hover:text-cyan-400 transition">{item.title}</span>
+                <ExternalLink className="w-4 h-4 text-dark-500 group-hover:text-cyan-400 transition" />
+              </Link>
+            ))}
           </div>
         </div>
 

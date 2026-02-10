@@ -30,6 +30,15 @@ export interface BotConfig {
   maxSlippagePercent: number;
   maxGasPriceGwei: number;
   minLiquidityEth: number;
+
+  // AI Scoring (optional)
+  aiPredictUrl?: string | undefined;
+  aiLogUrl?: string | undefined;
+  aiServiceKey?: string | undefined;
+  aiModelTag?: string | undefined;
+  aiPredictionHorizonSec: number;
+  aiMinSuccessProb: number;
+  aiMinExpectedProfitPct: number;
 }
 
 export const config: BotConfig = {
@@ -56,7 +65,16 @@ export const config: BotConfig = {
   // Risk Management
   maxSlippagePercent: parseFloat(process.env['MAX_SLIPPAGE_PERCENT'] || '1.0'),
   maxGasPriceGwei: parseFloat(process.env['MAX_GAS_PRICE_GWEI'] || '100'),
-  minLiquidityEth: parseFloat(process.env['MIN_LIQUIDITY_ETH'] || '10')
+  minLiquidityEth: parseFloat(process.env['MIN_LIQUIDITY_ETH'] || '10'),
+
+  // AI Scoring (optional)
+  aiPredictUrl: process.env['AI_PREDICT_URL'],
+  aiLogUrl: process.env['AI_LOG_URL'],
+  aiServiceKey: process.env['AI_SERVICE_KEY'],
+  aiModelTag: process.env['AI_MODEL_TAG'],
+  aiPredictionHorizonSec: parseInt(process.env['AI_PREDICTION_HORIZON_SEC'] || '900', 10),
+  aiMinSuccessProb: parseFloat(process.env['AI_MIN_SUCCESS_PROB'] || '0.7'),
+  aiMinExpectedProfitPct: parseFloat(process.env['AI_MIN_EXPECTED_PROFIT_PCT'] || '0.5')
 };
 
 // Validation

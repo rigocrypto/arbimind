@@ -54,6 +54,30 @@ Keep it short — reference exact files and commands the agent should inspect or
    - AI orchestration: `packages/backend/src/services/AIService.ts`, `packages/backend/src/models/*`.
    - Execution paths: `packages/bot/src/services/ArbitrageBot.ts`, `packages/bot/src/services/ExecutionService.ts` and `packages/contracts/src/ArbExecutor.sol`.
 
+
+---
+
+## Solana Wallet & Portfolio Analytics (/solana-wallet)
+- Deposits to `SOLANA_ARB_ACCOUNT` tracked via SystemProgram transfers (main + inner instructions).
+- Portfolio endpoints: `/api/portfolio/solana?address=...` (summary), `/timeseries?...` (equity/PnL/drawdown).
+- Timeseries: ramp-estimated (fallback) or `snapshotted_daily_equity` (Postgres DB).
+- Daily snapshots: `POST /api/admin/snapshots/run?chain=solana` (cron-scheduled).
+- USD prices: CoinGecko cached (5–10min TTL, fallback to static).
+
+## Postgres Snapshots (Daily Portfolio History)
+- Tables: `portfolio_users`, `portfolio_daily_snapshots`, `portfolio_snapshot_runs`.
+- Run: `POST /api/admin/snapshots/run?chain=evm|solana` (advisory lock + batching).
+- Health: `GET /api/snapshots/health?chain=...` (`stale > 36h`).
+- Retention: probabilistic 90-day cleanup.
+
+## Production Validation
+- Run `./scripts/validate-prod.ps1 -BackendBase <URL> -AdminKey <key> -UiBase <UI> -EvmAddress <0x> -SolanaAddress <base58>`
+- Checks: health, snapshots, CSP connect-src, portfolio method, CORS.
+
+## CSP / CORS
+- UI middleware: dynamic `connect-src` includes `NEXT_PUBLIC_API_URL` origin.
+- Backend (Express): hostname check for `localhost`, `*.vercel.app`, `arbimind.vercel.app`.
+
 If anything here is unclear or you want more detail (examples of common edits, test fixtures, or a short checklist for safe deploys), tell me which area to expand and I'll iterate.
 
 ## Quick Code Examples

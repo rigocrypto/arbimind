@@ -6,9 +6,18 @@ import { KpiCards } from './KpiCards';
 import { AdminCharts } from './AdminCharts';
 import { AdminTxTable } from './AdminTxTable';
 import { AdminAuditLog } from './AdminAuditLog';
-import { adminApi, type AdminMetrics, type AdminTx, type AdminWallets } from '@/lib/adminApi';
-import { Pause, Play } from 'lucide-react';
+import { adminApi, getSnapshotsHealth, type AdminMetrics, type AdminTx, type AdminWallets } from '@/lib/adminApi';
+import { Pause, Play, Database } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+function formatTimeAgo(iso: string | null): string {
+  if (!iso) return 'Never';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 60_000) return 'Just now';
+  if (ms < 3600_000) return `${Math.floor(ms / 60_000)}m ago`;
+  if (ms < 86400_000) return `${Math.floor(ms / 3600_000)}h ago`;
+  return `${Math.floor(ms / 86400_000)}d ago`;
+}
 
 type Range = '24h' | '7d' | '30d';
 
@@ -22,21 +31,31 @@ export function AdminDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [strategyFilter, setStrategyFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [snapshotHealth, setSnapshotHealth] = useState<{
+    evm: { lastOkAt: string | null; stale: boolean } | null;
+    solana: { lastOkAt: string | null; stale: boolean } | null;
+  }>({ evm: null, solana: null });
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [mRes, tRes, wRes, eRes] = await Promise.all([
+    const [mRes, tRes, wRes, eRes, evmHealth, solHealth] = await Promise.all([
       adminApi.getMetrics(range),
       adminApi.getTxs({ limit: 50 }),
       adminApi.getWallets(),
       adminApi.getEngineStatus(),
+      getSnapshotsHealth('evm'),
+      getSnapshotsHealth('solana'),
     ]);
     if (mRes.ok && mRes.data) setMetrics(mRes.data);
     else if (!mRes.ok) setError(mRes.error ?? 'Failed to fetch metrics');
     if (tRes.ok && tRes.data) setTxs(tRes.data.txs);
     if (wRes.ok && wRes.data) setWallets(wRes.data);
     if (eRes.ok && eRes.data) setEnginePaused(eRes.data.paused);
+    setSnapshotHealth({
+      evm: evmHealth ? { lastOkAt: evmHealth.lastOkAt, stale: evmHealth.stale } : null,
+      solana: solHealth ? { lastOkAt: solHealth.lastOkAt, stale: solHealth.stale } : null,
+    });
     setLoading(false);
   }, [range]);
 
@@ -95,6 +114,31 @@ export function AdminDashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Snapshots badge */}
+      <div className="card flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Database className="w-5 h-5 text-cyan-400" />
+          <div>
+            <h2 className="text-lg font-semibold text-white">Snapshots</h2>
+            <p className="text-sm text-dark-400">
+              EVM: {snapshotHealth.evm ? formatTimeAgo(snapshotHealth.evm.lastOkAt) : '—'}
+              {snapshotHealth.evm?.stale && (
+                <span className="ml-1.5 inline-flex items-center rounded bg-red-500/20 px-1.5 py-0.5 text-xs text-red-400">
+                  stale
+                </span>
+              )}
+              {' · '}
+              Solana: {snapshotHealth.solana ? formatTimeAgo(snapshotHealth.solana.lastOkAt) : '—'}
+              {snapshotHealth.solana?.stale && (
+                <span className="ml-1.5 inline-flex items-center rounded bg-red-500/20 px-1.5 py-0.5 text-xs text-red-400">
+                  stale
+                </span>
+              )}
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Engine controls */}
       <div className="card flex items-center justify-between">
         <div>

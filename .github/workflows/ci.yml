@@ -58,6 +58,10 @@ jobs:
       - name: Lint
         run: pnpm run lint
 
+      - name: Docs Check
+        working-directory: .
+        run: pnpm --filter @arbimind/ui docs:check
+
       - name: Type Check
         run: pnpm run typecheck
 

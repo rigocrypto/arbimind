@@ -1,0 +1,10 @@
+/* Ensure wallet modal and dropdown appear above all content */
+.wallet-adapter-dropdown-list {
+  z-index: 99999 !important;
+}
+
+.wallet-adapter-modal,
+.wallet-adapter-modal-overlay,
+.wallet-adapter-modal-wrapper {
+  z-index: 99999 !important;
+}

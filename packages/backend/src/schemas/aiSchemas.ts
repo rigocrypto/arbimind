@@ -21,3 +21,11 @@ export const trainingDataSchema = Joi.object({
   modelType: Joi.string().valid('prediction', 'sentiment', 'risk', 'all').required()
 });
 
+export const arbPredictionSchema = Joi.object({
+  profitPct: Joi.number().required(),
+  volumeUsd: Joi.number().required(),
+  liquidity: Joi.number().required(),
+  slippage: Joi.number().required(),
+  gasPrice: Joi.number().required()
+});
+

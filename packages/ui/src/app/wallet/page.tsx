@@ -1,167 +1,405 @@
 'use client';
 
+import { useState, useMemo } from 'react';
+import { motion } from 'framer-motion';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAccount, useBalance, useEnsName } from 'wagmi';
-import { Wallet, Copy, ExternalLink, TrendingUp, DollarSign, Activity } from 'lucide-react';
-import { formatETH, formatUSD } from '@/utils/format';
-import { useState } from 'react';
+import {
+  Wallet,
+  Copy,
+  ExternalLink,
+  TrendingUp,
+  DollarSign,
+  Activity,
+  AlertTriangle,
+  ChevronRight,
+  Shield,
+  Banknote,
+} from 'lucide-react';
+import { formatETH, formatUSD, formatAddress, formatTxHash } from '@/utils/format';
+import { HelpTooltip } from '@/components/HelpTooltip';
+import { ChainSwitcherModal } from '@/components/ChainSwitcherModal';
+import { ArbAccountCard, PerformanceCharts, ActivityTable } from '@/components/portfolio';
+import { usePortfolioSummary, usePortfolioTimeseries } from '@/hooks/usePortfolio';
+import Link from 'next/link';
+import toast from 'react-hot-toast';
+
+const USDC_BY_CHAIN: Record<number, `0x${string}`> = {
+  1: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' as const,
+  42161: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as const,
+  8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const,
+};
+
+const MIN_ETH = parseFloat(process.env.NEXT_PUBLIC_MIN_TRADE_ETH || '0.05');
+const MIN_USDC = parseFloat(process.env.NEXT_PUBLIC_MIN_TRADE_USDC || '125');
+
+// Mock tx history – replace with /api/wallet/txs or viem when wired
+interface TxRow {
+  hash: string;
+  type: 'arb' | 'swap' | 'withdraw' | 'deposit';
+  profitLoss: number;
+  gasEth: number;
+  status: 'success' | 'pending' | 'failed';
+  timestamp: number;
+}
+
+const MOCK_TXS: TxRow[] = [
+  { hash: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd', type: 'arb', profitLoss: 0.0123, gasEth: 0.0012, status: 'success', timestamp: Date.now() - 3600000 },
+  { hash: '0x5678901234abcdef5678901234abcdef5678901234abcdef5678901234abcd', type: 'swap', profitLoss: -0.0005, gasEth: 0.0008, status: 'success', timestamp: Date.now() - 7200000 },
+  { hash: '0x9abc5678901234abcdef5678901234abcdef5678901234abcdef5678901234', type: 'arb', profitLoss: 0.0089, gasEth: 0.001, status: 'success', timestamp: Date.now() - 86400000 },
+];
+
+function WithdrawModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-hidden />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="relative z-[9999] w-full max-w-sm rounded-xl bg-dark-800 border border-dark-600 p-6 shadow-2xl"
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <Shield className="w-6 h-6 text-amber-400" />
+          <h3 className="text-lg font-bold text-white">Withdraw</h3>
+        </div>
+        <p className="text-sm text-dark-300 mb-6">
+          Profits auto-sweep to the treasury. Withdrawals require multisig approval. Contact admin for manual withdrawals.
+        </p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full py-2.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 text-cyan-400 font-medium transition"
+        >
+          OK
+        </button>
+      </motion.div>
+    </div>
+  );
+}
 
 export default function WalletPage() {
-  const { address, isConnected, chain } = useAccount();
-  const { data: balance } = useBalance({
-    address: address,
+  const { address, isConnected, chain, chainId } = useAccount();
+  const { data: ethBalance } = useBalance({ address });
+  const usdcToken = address && chainId ? USDC_BY_CHAIN[chainId] : null;
+  const { data: usdcBalance } = useBalance({
+    address: address ?? undefined,
+    token: usdcToken ?? undefined,
   });
   const { data: ensName } = useEnsName({ address });
-  const [copied, setCopied] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [chainSwitcherOpen, setChainSwitcherOpen] = useState(false);
+  const [txFilter, setTxFilter] = useState<string>('all');
+
+  const ethVal = ethBalance ? parseFloat(ethBalance.formatted) : 0;
+  const usdcVal = usdcBalance ? Number(usdcBalance.formatted) / 1e6 : 0;
+  const isLowBalance = ethVal < MIN_ETH && usdcVal < MIN_USDC;
+  const explorerUrl = chain?.blockExplorers?.default?.url ?? '';
+  const { data: portfolio, isLoading: portfolioLoading, isError: portfolioError, refetch: refetchPortfolio } = usePortfolioSummary('evm', address ?? undefined);
+  const { data: timeseries, isLoading: timeseriesLoading } = usePortfolioTimeseries('evm', address ?? undefined, '30d');
 
   const copyAddress = () => {
     if (address) {
       navigator.clipboard.writeText(address);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      toast.success('Address copied');
     }
   };
 
-  const getExplorerUrl = () => {
-    if (!chain || !address) return '';
-    const explorer = chain.blockExplorers?.default?.url;
-    return explorer ? `${explorer}/address/${address}` : '';
-  };
+  const filteredTxs = useMemo(() => {
+    if (txFilter === 'all') return MOCK_TXS;
+    return MOCK_TXS.filter((t) => t.type === txFilter);
+  }, [txFilter]);
+
+  const getTxTypeLabel = (type: TxRow['type']) =>
+    ({ arb: 'Arbitrage', swap: 'Swap', withdraw: 'Withdraw', deposit: 'Deposit' }[type]);
+  const getStatusColor = (status: TxRow['status']) =>
+    ({ success: 'text-green-400', pending: 'text-amber-400', failed: 'text-red-400' }[status]);
 
   return (
     <DashboardLayout currentPath="/wallet">
-      <div className="space-y-4 sm:space-y-6">
+      <div className="space-y-4 sm:space-y-6 pb-24">
+        {/* Chain switcher */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-cyan-400">EVM</span>
+          <span className="text-dark-600">|</span>
+          <Link
+            href="/solana-wallet"
+            className="text-sm text-dark-400 hover:text-purple-400 transition"
+          >
+            Solana →
+          </Link>
+        </div>
         {/* Header */}
-        <div className="glass-card p-4 sm:p-6 lg:p-8">
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-card p-4 sm:p-6 lg:p-8"
+        >
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
               <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold mb-2 bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
                 Wallet Dashboard
               </h1>
               <p className="text-dark-300 text-sm sm:text-base">
-                Manage your connected wallet, view balances, and track your arbitrage positions.
+                Manage your connected wallet, view balances, and track arbitrage activity.
               </p>
             </div>
-            {!isConnected && (
+            {!isConnected ? (
               <div className="flex-shrink-0">
                 <ConnectButton label="Connect Wallet" />
               </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setChainSwitcherOpen(true)}
+                  className="text-sm text-dark-400 hover:text-cyan-400 transition px-2 py-1 rounded-lg hover:bg-dark-700/50"
+                  title="Switch network"
+                >
+                  {chain?.name || 'Unknown'}
+                </button>
+                <ConnectButton
+                  chainStatus="icon"
+                  accountStatus="address"
+                  showBalance={false}
+                />
+              </div>
             )}
           </div>
-        </div>
+        </motion.div>
 
         {!isConnected ? (
-          <div className="glass-card p-8 sm:p-12 text-center">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="glass-card p-8 sm:p-12 text-center"
+          >
             <Wallet className="w-16 h-16 mx-auto mb-4 text-dark-400" />
             <h2 className="text-xl font-bold text-white mb-2">No Wallet Connected</h2>
-            <p className="text-dark-400 mb-6">Connect your wallet to view your dashboard and manage your positions.</p>
+            <p className="text-dark-400 mb-6">Connect your wallet to view balances and activity.</p>
             <ConnectButton label="Connect Wallet" />
-          </div>
+          </motion.div>
         ) : (
           <>
-            {/* Wallet Info Card */}
-            <div className="glass-card p-4 sm:p-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-                <div>
-                  <h2 className="text-lg sm:text-xl font-bold text-white mb-2">Connected Wallet</h2>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm text-dark-400">
-                      {ensName || `${address?.slice(0, 6)}...${address?.slice(-4)}`}
-                    </span>
-                    <button
-                      onClick={copyAddress}
-                      className="p-1.5 rounded-lg bg-dark-700 hover:bg-dark-600 transition text-dark-300 hover:text-white"
-                      aria-label="Copy address"
-                    >
-                      <Copy className={`w-4 h-4 ${copied ? 'text-green-400' : ''}`} />
-                    </button>
-                    {copied && <span className="text-xs text-green-400">Copied!</span>}
-                    {getExplorerUrl() && (
-                      <a
-                        href={getExplorerUrl()}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-1.5 rounded-lg bg-dark-700 hover:bg-dark-600 transition text-dark-300 hover:text-white"
-                        aria-label="View on explorer"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs text-dark-400 mb-1">Network</div>
-                  <div className="text-sm font-semibold text-white">{chain?.name || 'Unknown'}</div>
-                </div>
+            {/* Balances Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="glass-card p-4 sm:p-6"
+            >
+              <h2 className="text-lg font-bold text-white mb-4">Balances</h2>
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                <span className="text-sm text-dark-400 font-mono">
+                  {ensName || formatAddress(address ?? '')}
+                </span>
+                <button
+                  type="button"
+                  onClick={copyAddress}
+                  className="p-1.5 rounded-lg bg-dark-700 hover:bg-dark-600 transition text-dark-300 hover:text-white"
+                  aria-label="Copy"
+                >
+                  <Copy className="w-4 h-4" />
+                </button>
+                {explorerUrl && address && (
+                  <a
+                    href={`${explorerUrl}/address/${address}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1.5 rounded-lg bg-dark-700 hover:bg-dark-600 transition text-dark-300 hover:text-cyan-400"
+                    aria-label="Explorer"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                )}
               </div>
-
-              {/* Balance */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {isLowBalance && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-sm mb-4">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  Low balance? Deposit {MIN_ETH} ETH or ~${MIN_USDC} USDC to trade.
+                </div>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div className="p-4 rounded-lg bg-dark-800/50 border border-dark-700">
                   <div className="flex items-center gap-2 mb-2">
                     <DollarSign className="w-4 h-4 text-cyan-400" />
-                    <span className="text-xs text-dark-400">Native Balance</span>
+                    <span className="text-xs text-dark-400">ETH</span>
                   </div>
-                  <div className="text-xl font-bold text-white">
-                    {balance ? formatETH(parseFloat(balance.formatted)) : '0.00'} {chain?.nativeCurrency?.symbol || 'ETH'}
-                  </div>
-                  {balance && (
-                    <div className="text-xs text-dark-400 mt-1">
-                      ≈ {formatUSD(parseFloat(balance.formatted) * 3000)} {/* Rough estimate */}
-                    </div>
-                  )}
+                  <div className="text-xl font-bold text-white">{formatETH(ethVal)}</div>
+                  <div className="text-xs text-dark-400 mt-1">≈ {formatUSD(ethVal * 3000)}</div>
                 </div>
-
                 <div className="p-4 rounded-lg bg-dark-800/50 border border-dark-700">
                   <div className="flex items-center gap-2 mb-2">
-                    <TrendingUp className="w-4 h-4 text-green-400" />
+                    <Banknote className="w-4 h-4 text-green-400" />
+                    <span className="text-xs text-dark-400">USDC</span>
+                  </div>
+                  <div className="text-xl font-bold text-white">{usdcVal.toFixed(2)}</div>
+                  <div className="text-xs text-dark-400 mt-1">≈ {formatUSD(usdcVal)}</div>
+                </div>
+                <div className="p-4 rounded-lg bg-dark-800/50 border border-dark-700">
+                  <div className="flex items-center gap-2 mb-2">
+                    <TrendingUp className="w-4 h-4 text-purple-400" />
                     <span className="text-xs text-dark-400">Total PnL</span>
                   </div>
                   <div className="text-xl font-bold text-white">+0.00 ETH</div>
-                  <div className="text-xs text-green-400 mt-1">$0.00</div>
-                </div>
-
-                <div className="p-4 rounded-lg bg-dark-800/50 border border-dark-700">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Activity className="w-4 h-4 text-purple-400" />
-                    <span className="text-xs text-dark-400">Active Positions</span>
-                  </div>
-                  <div className="text-xl font-bold text-white">0</div>
-                  <div className="text-xs text-dark-400 mt-1">No active trades</div>
+                  <div className="text-xs text-dark-400 mt-1">$0.00</div>
                 </div>
               </div>
-            </div>
+            </motion.div>
+
+            {/* Arbitrage Account Portfolio */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.06 }}
+            >
+              <ArbAccountCard
+                summary={portfolio ?? undefined}
+                isLoading={portfolioLoading}
+                isError={portfolioError}
+                onRefresh={() => refetchPortfolio()}
+              />
+            </motion.div>
+
+            {/* Performance Charts */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.08 }}
+            >
+              <PerformanceCharts points={timeseries?.points ?? []} method={timeseries?.method} isLoading={timeseriesLoading} />
+            </motion.div>
+
+            {/* Recent Arb Activity */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.09 }}
+            >
+              <ActivityTable
+                deposits={portfolio?.deposits ?? []}
+                withdrawals={portfolio?.withdrawals ?? []}
+                explorerBaseUrl={explorerUrl}
+                isLoading={portfolioLoading}
+              />
+            </motion.div>
 
             {/* Recent Activity */}
-            <div className="glass-card p-4 sm:p-6">
-              <h3 className="text-lg font-bold text-white mb-4">Recent Activity</h3>
-              <div className="text-center py-8 text-dark-400">
-                <Activity className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                <p>No recent activity</p>
-                <p className="text-xs mt-1">Your arbitrage trades will appear here</p>
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="glass-card p-4 sm:p-6 overflow-hidden"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  Recent Activity
+                  <HelpTooltip content="Last 10 txs. Profits auto-sweep to treasury." />
+                </h3>
+                <select
+                  id="wallet-tx-filter"
+                  name="txFilter"
+                  value={txFilter}
+                  onChange={(e) => setTxFilter(e.target.value)}
+                  className="px-3 py-1.5 rounded-lg bg-dark-800 border border-dark-600 text-sm text-white"
+                >
+                  <option value="all">All</option>
+                  <option value="arb">Arb</option>
+                  <option value="swap">Swap</option>
+                </select>
               </div>
-            </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[500px]">
+                  <thead>
+                    <tr className="border-b border-dark-600">
+                      <th className="text-left py-2 text-xs font-medium text-dark-400 uppercase">Tx</th>
+                      <th className="text-left py-2 text-xs font-medium text-dark-400 uppercase">Type</th>
+                      <th className="text-right py-2 text-xs font-medium text-dark-400 uppercase">P/L</th>
+                      <th className="text-right py-2 text-xs font-medium text-dark-400 uppercase">Gas</th>
+                      <th className="text-right py-2 text-xs font-medium text-dark-400 uppercase">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredTxs.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-dark-400">
+                          <Activity className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                          <p>No activity yet</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredTxs.map((tx) => (
+                        <tr key={tx.hash} className="border-b border-dark-700/50 hover:bg-dark-800/30">
+                          <td className="py-3">
+                            <a
+                              href={explorerUrl ? `${explorerUrl}/tx/${tx.hash}` : '#'}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-cyan-400 hover:underline font-mono text-sm"
+                            >
+                              {formatTxHash(tx.hash)}
+                            </a>
+                          </td>
+                          <td className="py-3 text-sm text-dark-300">{getTxTypeLabel(tx.type)}</td>
+                          <td className={`py-3 text-right font-medium text-sm ${tx.profitLoss >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {tx.profitLoss >= 0 ? '+' : ''}{formatETH(tx.profitLoss)} ETH
+                          </td>
+                          <td className="py-3 text-right text-sm text-dark-400">{formatETH(tx.gasEth)} ETH</td>
+                          <td className={`py-3 text-right text-sm capitalize ${getStatusColor(tx.status)}`}>
+                            {tx.status}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
 
             {/* Quick Actions */}
-            <div className="glass-card p-4 sm:p-6">
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+              className="glass-card p-4 sm:p-6"
+            >
               <h3 className="text-lg font-bold text-white mb-4">Quick Actions</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <button className="px-4 py-3 rounded-lg bg-dark-700/50 hover:bg-dark-600 border border-dark-600 text-white transition-all duration-200 font-medium text-sm">
-                  Fund Wallet
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setWithdrawOpen(true)}
+                  className="flex items-center justify-between p-4 rounded-lg bg-dark-800/50 hover:bg-dark-700/50 border border-dark-600 transition group text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <Banknote className="w-5 h-5 text-green-400" />
+                    <span className="font-medium text-white">Withdraw</span>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-dark-400 group-hover:text-green-400" />
                 </button>
-                <button className="px-4 py-3 rounded-lg bg-dark-700/50 hover:bg-dark-600 border border-dark-600 text-white transition-all duration-200 font-medium text-sm">
-                  View Positions
-                </button>
-                <button className="px-4 py-3 rounded-lg bg-dark-700/50 hover:bg-dark-600 border border-dark-600 text-white transition-all duration-200 font-medium text-sm">
-                  Transaction History
-                </button>
+                <a
+                  href={explorerUrl && address ? `${explorerUrl}/address/${address}` : '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between p-4 rounded-lg bg-dark-800/50 hover:bg-dark-700/50 border border-dark-600 transition group"
+                >
+                  <div className="flex items-center gap-3">
+                    <ExternalLink className="w-5 h-5 text-purple-400" />
+                    <span className="font-medium text-white">Tx Explorer</span>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-dark-400 group-hover:text-purple-400" />
+                </a>
               </div>
-            </div>
+            </motion.div>
           </>
         )}
       </div>
+
+      <WithdrawModal isOpen={withdrawOpen} onClose={() => setWithdrawOpen(false)} />
+      <ChainSwitcherModal
+        isOpen={chainSwitcherOpen}
+        onClose={() => setChainSwitcherOpen(false)}
+      />
     </DashboardLayout>
   );
 }
-

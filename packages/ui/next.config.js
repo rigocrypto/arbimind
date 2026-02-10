@@ -1,4 +1,5 @@
 /** @type {import('next').NextConfig} */
+const path = require('path');
 const isDev = process.env.NODE_ENV !== 'production';
 
 const nextConfig = {
@@ -9,6 +10,8 @@ const nextConfig = {
       'wagmi',
       '@rainbow-me/rainbowkit',
       'recharts',
+      '@solana/wallet-adapter-react',
+      '@solana/wallet-adapter-react-ui',
     ],
   },
   images: {
@@ -35,6 +38,10 @@ const nextConfig = {
     config.resolve.fallback = {
       ...config.resolve.fallback,
       '@react-native-async-storage/async-storage': false,
+    };
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      'pino-pretty': path.resolve(__dirname, 'pino-pretty-stub.js'),
     };
     return config;
   },
