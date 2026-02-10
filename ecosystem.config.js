@@ -1,30 +1,20 @@
-// ecosystem.config.js (root)
 module.exports = {
   apps: [
     {
-      name: 'arbimind-bot',
-      cwd: 'packages/bot',
-      script: 'dist/index.js',
-      watch: false,
+      name: 'arbimind-backend',
+      script: 'packages/backend/dist/index.js',
       env: {
         NODE_ENV: 'production',
-      },
-      instances: 1,
-      exec_mode: 'fork',
-      autorestart: true,
-      max_restarts: 5,
-      min_uptime: '10s',
+        ADMIN_KEY: process.env.ADMIN_KEY,
+      }
     },
     {
-      name: 'arbimind-backend',
-      cwd: 'packages/backend',
-      script: 'dist/index.js',
-      watch: false,
+      name: 'arbimind-bot',
+      script: 'packages/bot/dist/index.js',
       env: {
         NODE_ENV: 'production',
-      },
-      instances: 1,
-      exec_mode: 'fork',
-    },
-  ],
+        AI_SERVICE_KEY: process.env.AI_SERVICE_KEY,
+      }
+    }
+  ]
 };

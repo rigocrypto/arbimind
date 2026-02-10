@@ -3,13 +3,12 @@ WORKDIR /app
 COPY pnpm-lock.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile
 
-COPY packages/backend ./packages/backend
-WORKDIR /app/packages/backend
+COPY packages/bot ./packages/bot
+WORKDIR /app/packages/bot
 RUN pnpm build
 
 FROM node:20-alpine AS runner
-WORKDIR /app/packages/backend
+WORKDIR /app/packages/bot
 COPY --from=builder /app/node_modules ./node_modules
 COPY . .
-EXPOSE 3001
 CMD ["pnpm", "start"]
