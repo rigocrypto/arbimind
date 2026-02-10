@@ -1,6 +1,7 @@
 import { ArbitrageBot } from './services/ArbitrageBot';
 import { validateConfig } from './config';
 import { Logger } from './utils/Logger';
+import { SolanaScanner } from './solana/Scanner';
 
 const logger = new Logger('Main');
 
@@ -12,19 +13,25 @@ async function main(): Promise<void> {
     validateConfig();
     logger.info('✅ Configuration validated');
 
-    // Create and start the bot
+    // Create and start the arbitrage bot
     const bot = new ArbitrageBot();
+    
+    // Create and start the Solana scanner
+    const solanaScanner = new SolanaScanner();
+    solanaScanner.start();
     
     // Handle graceful shutdown
     process.on('SIGINT', () => {
       logger.info('🛑 Received SIGINT, shutting down gracefully...');
       bot.stop();
+      solanaScanner.stop();
       process.exit(0);
     });
 
     process.on('SIGTERM', () => {
       logger.info('🛑 Received SIGTERM, shutting down gracefully...');
       bot.stop();
+      solanaScanner.stop();
       process.exit(0);
     });
 
