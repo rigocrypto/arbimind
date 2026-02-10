@@ -10,6 +10,8 @@ export interface BotConfig {
   ethereumRpcUrl: string;
   privateKey: string;
   treasuryAddress: string;
+  network: 'mainnet' | 'testnet';
+  logOnly: boolean;
   
   // Bot Configuration
   minProfitEth: number;
@@ -43,9 +45,13 @@ export interface BotConfig {
 
 export const config: BotConfig = {
   // Ethereum Configuration
-  ethereumRpcUrl: process.env['ETHEREUM_RPC_URL'] || 'http://localhost:8545',
+  ethereumRpcUrl: (process.env['NETWORK'] || 'mainnet') === 'testnet'
+    ? process.env['ARBITRUM_RPC_URL'] || process.env['ETHEREUM_RPC_URL'] || 'http://localhost:8545'
+    : process.env['ETHEREUM_RPC_URL'] || 'http://localhost:8545',
   privateKey: process.env['PRIVATE_KEY'] || '',
   treasuryAddress: process.env['TREASURY_ADDRESS'] || '',
+  network: (process.env['NETWORK'] || 'mainnet') === 'testnet' ? 'testnet' : 'mainnet',
+  logOnly: (process.env['NETWORK'] || 'mainnet') === 'testnet' || process.env['BOT_LOG_ONLY'] === 'true',
   
   // Bot Configuration
   minProfitEth: parseFloat(process.env['MIN_PROFIT_ETH'] || '0.01'),

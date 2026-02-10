@@ -43,6 +43,7 @@ router.use((req, res, next) => {
 
 const TREASURY = process.env.TREASURY_ADDRESS || '0x0000000000000000000000000000000000000000';
 const EXECUTION = process.env.EXECUTION_ADDRESS || '0x0000000000000000000000000000000000000000';
+const DEXSCREENER_CHAIN_ID = (process.env.DEXSCREENER_CHAIN_ID || 'solana').trim();
 
 function getClientIp(req: Request): string {
   const ff = req.headers['x-forwarded-for'];
@@ -156,7 +157,7 @@ router.get('/ai-dashboard/dex', async (req: Request, res: Response) => {
       return res.status(400).json({ ok: false, error: 'pair_required' });
     }
 
-    const url = `https://api.dexscreener.com/latest/dex/pairs/solana/${pair}`;
+    const url = `https://api.dexscreener.com/latest/dex/pairs/${DEXSCREENER_CHAIN_ID}/${pair}`;
     const r = await fetch(url);
     if (!r.ok) {
       return res.status(502).json({ ok: false, error: 'dexscreener_failed' });
@@ -178,7 +179,7 @@ router.get('/ai-dashboard/dex', async (req: Request, res: Response) => {
     const txSpike = avgH1Tx > 0 && h1Tx / avgH1Tx >= 5;
 
     const now = Date.now();
-    const key = `dex:history:solana:${pair}`;
+    const key = `dex:history:${DEXSCREENER_CHAIN_ID}:${pair}`;
     const existing = dexHistory.get(key) ?? [];
     const last = existing[existing.length - 1];
     if (!last || now - last.ts >= DEDUPE_GAP_MS) {
@@ -235,7 +236,7 @@ router.get('/ai-dashboard/dex/history', (req: Request, res: Response) => {
 
   const window = (req.query.window as string | undefined) ?? '24h';
   const windowMs = parseWindow(window);
-  const key = `dex:history:solana:${pair}`;
+  const key = `dex:history:${DEXSCREENER_CHAIN_ID}:${pair}`;
   const allPoints = dexHistory.get(key) ?? [];
   const points = allPoints.filter((pt) => pt.ts >= Date.now() - windowMs);
   const newest = points[points.length - 1]?.ts;
@@ -265,7 +266,7 @@ router.post('/ai-dashboard/predictions', async (req: Request, res: Response) => 
   try {
     const {
       pairAddress,
-      chain = 'solana',
+      chain = DEXSCREENER_CHAIN_ID,
       horizonSec = 900,
       model,
       signal,
@@ -281,7 +282,7 @@ router.post('/ai-dashboard/predictions', async (req: Request, res: Response) => 
       return res.status(400).json({ ok: false, error: 'pair_required' });
     }
 
-    const key = `dex:history:solana:${pairAddress}`;
+    const key = `dex:history:${chain}:${pairAddress}`;
     const history = dexHistory.get(key) ?? [];
     const last = history[history.length - 1];
     const entry = entryPriceUsd ?? last?.priceUsd ?? null;
@@ -328,7 +329,7 @@ router.post('/ai-dashboard/predictions/evaluate', async (req: Request, res: Resp
   let evaluated = 0;
   for (const p of pending) {
     const targetTs = new Date(p.createdAt).getTime() + p.horizonSec * 1000;
-    const key = `dex:history:solana:${p.pairAddress}`;
+    const key = `dex:history:${p.chain ?? DEXSCREENER_CHAIN_ID}:${p.pairAddress}`;
     const history = dexHistory.get(key) ?? [];
     if (!history.length) continue;
 
