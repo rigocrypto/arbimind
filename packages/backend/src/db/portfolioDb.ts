@@ -388,7 +388,7 @@ export async function listPredictions(
   }
 }
 
-export async function listPendingPredictions(pairAddress?: string): Promise<PredictionRow[]> {
+export async function listPendingPredictions(pairAddress?: string, chain?: string): Promise<PredictionRow[]> {
   const p = getPool();
   if (!p) return [];
   try {
@@ -398,6 +398,10 @@ export async function listPendingPredictions(pairAddress?: string): Promise<Pred
     if (pairAddress) {
       params.push(pairAddress);
       where += ` and pair_address = $${params.length}`;
+    }
+    if (chain) {
+      params.push(chain);
+      where += ` and chain = $${params.length}`;
     }
     const res = await p.query(
       `select id, chain, pair_address, created_at, horizon_sec, signal, entry_price_usd

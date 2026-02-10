@@ -11,11 +11,25 @@ interface MetricsGridProps {
   liquidityUsd: number;
   priceUsd: number;
   alerts?: { volumeSpike?: boolean; txSpike?: boolean };
+  isWatching?: boolean;
+  watchCount?: number;
+  onToggleWatch?: () => void;
 }
 
-export function MetricsGrid({ priceSeries, volumeSeries, liquidityUsd, priceUsd, alerts }: MetricsGridProps) {
+export function MetricsGrid({ priceSeries, volumeSeries, liquidityUsd, priceUsd, alerts, isWatching, watchCount, onToggleWatch }: MetricsGridProps) {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-dark-400">
+          {typeof watchCount === 'number' ? `Watching ${watchCount} pairs` : 'Watchlist inactive'}
+        </div>
+        {onToggleWatch && (
+          <button className="btn btn-ghost text-xs" type="button" onClick={onToggleWatch}>
+            {isWatching ? 'Unwatch' : 'Watch'}
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2">
         <PriceChart data={priceSeries} />
       </div>
@@ -24,6 +38,7 @@ export function MetricsGrid({ priceSeries, volumeSeries, liquidityUsd, priceUsd,
         <VolumeChart data={volumeSeries} />
       </div>
       <AlertsBadges alerts={alerts} />
+      </div>
     </div>
   );
 }

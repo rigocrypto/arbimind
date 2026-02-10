@@ -100,6 +100,7 @@ export interface AdminWallets {
 export interface AIDexPairResponse {
   pair: {
     chainId?: string;
+    chainKey?: string;
     dexId?: string;
     pairAddress?: string;
     baseToken?: { symbol?: string };
@@ -138,6 +139,14 @@ export interface AIPredictionAccuracyRow {
   avg_return_pct?: number | null;
   median_return_pct?: number | null;
   avg_confidence?: number | null;
+}
+
+export interface AIWatchlistItem {
+  chain: string;
+  pairAddress: string;
+  createdAt: number;
+  expiresAt: number;
+  lastPolledAt?: number | null;
 }
 
 export const adminApi = {
@@ -229,6 +238,23 @@ export const adminApi = {
     return adminFetch<{ id: string | null }>('/admin/ai-dashboard/predictions', {
       method: 'POST',
       body: JSON.stringify(payload),
+    });
+  },
+  async getAIWatchlist() {
+    return adminFetch<{ count: number; items: AIWatchlistItem[] }>('/admin/ai-dashboard/watchlist');
+  },
+  async watchAIPair(pairAddress: string, chain?: string, ttlHours?: number) {
+    return adminFetch<{ count: number; item?: AIWatchlistItem }>(`/admin/ai-dashboard/watch`, {
+      method: 'POST',
+      body: JSON.stringify({ pairAddress, chain, ttlHours }),
+    });
+  },
+  async unwatchAIPair(pairAddress: string, chain?: string) {
+    const sp = new URLSearchParams();
+    sp.set('pair', pairAddress);
+    if (chain) sp.set('chain', chain);
+    return adminFetch<{ count: number }>(`/admin/ai-dashboard/watch?${sp.toString()}`, {
+      method: 'DELETE',
     });
   },
 };
