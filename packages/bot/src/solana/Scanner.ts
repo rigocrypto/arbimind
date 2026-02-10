@@ -213,8 +213,50 @@ export class SolanaScanner {
       if (!resp.ok) {
         logger.warn(`Failed to log prediction: ${resp.status}`);
       }
+
+      // Dispatch alert if confidence is high and backend URL is configured
+      if (confidence >= (parseFloat(process.env['ALERT_MIN_CONFIDENCE'] || '0.8'))) {
+        await this.dispatchAlert(payload);
+      }
     } catch (error) {
       logger.debug('Failed to log prediction', {
+        error: error instanceof Error ? error.message : error,
+      });
+    }
+  }
+
+  /**
+   * Dispatch alert for a high-confidence prediction
+   */
+  private async dispatchAlert(prediction: any): Promise<void> {
+    if (!config.aiLogUrl) {
+      logger.debug('Backend URL not configured; skipping alert dispatch');
+      return;
+    }
+
+    try {
+      const alertUrl = config.aiLogUrl.replace(/\/[^/]+$/, '/ai-dashboard/alerts');
+      const resp = await fetch(alertUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-SERVICE-KEY': config.aiServiceKey || '',
+        },
+        body: JSON.stringify({ prediction }),
+      });
+
+      if (!resp.ok) {
+        logger.debug(`Alert dispatch failed: ${resp.status}`);
+        return;
+      }
+
+      const result = await resp.json() as any;
+      logger.info('✉️ Alert dispatched', {
+        pair: prediction.pairAddress,
+        channels: result.dispatched,
+      });
+    } catch (error) {
+      logger.debug('Alert dispatch error', {
         error: error instanceof Error ? error.message : error,
       });
     }

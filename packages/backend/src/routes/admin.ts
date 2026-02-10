@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { adminAuth } from '../middleware/adminAuth';
 import { adminStore } from '../store/adminStore';
+import { dispatchAlert, AlertWebhooks, AlertPrediction } from '../services/AlertService';
 import {
   insertPrediction,
   listPredictions,
@@ -56,6 +57,24 @@ router.use((req, res, next) => {
 const TREASURY = process.env.TREASURY_ADDRESS || '0x0000000000000000000000000000000000000000';
 const EXECUTION = process.env.EXECUTION_ADDRESS || '0x0000000000000000000000000000000000000000';
 const DEXSCREENER_CHAIN_ID = (process.env.DEXSCREENER_CHAIN_ID || 'solana').trim();
+
+/**
+ * Alert Configuration Storage (in-memory)
+ */
+let alertConfig: AlertWebhooks = {
+  telegram: process.env.ALERT_TELEGRAM_TOKEN && process.env.ALERT_TELEGRAM_CHAT_ID
+    ? { token: process.env.ALERT_TELEGRAM_TOKEN, chatId: process.env.ALERT_TELEGRAM_CHAT_ID }
+    : undefined,
+  discord: process.env.ALERT_DISCORD_WEBHOOK,
+  twitter: process.env.ALERT_TWITTER_BEARER_TOKEN,
+  reddit: process.env.ALERT_REDDIT_CLIENT_ID && process.env.ALERT_REDDIT_SECRET && process.env.ALERT_REDDIT_SUBREDDIT
+    ? {
+        clientId: process.env.ALERT_REDDIT_CLIENT_ID,
+        secret: process.env.ALERT_REDDIT_SECRET,
+        subreddit: process.env.ALERT_REDDIT_SUBREDDIT,
+      }
+    : undefined,
+};
 
 function watchKey(chain: string, pair: string): string {
   return `${chain}:${pair}`;
@@ -741,6 +760,100 @@ router.get('/snapshots/last-run', async (req: Request, res: Response) => {
       error: run.error,
     },
   });
+});
+
+/**
+ * GET /api/admin/ai-dashboard/alert-config
+ * Retrieve current alert configuration
+ */
+router.get('/ai-dashboard/alert-config', async (req: Request, res: Response) => {
+  return res.json({
+    ok: true,
+    config: {
+      telegram: alertConfig.telegram ? { chatId: alertConfig.telegram.chatId } : undefined, // Don't send token
+      discord: alertConfig.discord ? true : false,
+      twitter: alertConfig.twitter ? true : false,
+      reddit: alertConfig.reddit ? { subreddit: alertConfig.reddit.subreddit } : undefined, // Don't send credentials
+      minConfidence: parseFloat(process.env.ALERT_MIN_CONFIDENCE || '0.8'),
+    },
+  });
+});
+
+/**
+ * POST /api/admin/ai-dashboard/alert-config
+ * Update alert configuration
+ */
+router.post('/ai-dashboard/alert-config', async (req: Request, res: Response) => {
+  try {
+    const {
+      telegram,
+      discord,
+      twitter,
+      reddit,
+    } = req.body ?? {};
+
+    if (telegram?.token && telegram?.chatId) {
+      alertConfig.telegram = { token: telegram.token, chatId: telegram.chatId };
+    } else {
+      alertConfig.telegram = undefined;
+    }
+
+    if (discord) {
+      alertConfig.discord = discord;
+    } else {
+      alertConfig.discord = undefined;
+    }
+
+    if (twitter) {
+      alertConfig.twitter = twitter;
+    } else {
+      alertConfig.twitter = undefined;
+    }
+
+    if (reddit?.clientId && reddit?.secret && reddit?.subreddit) {
+      alertConfig.reddit = {
+        clientId: reddit.clientId,
+        secret: reddit.secret,
+        subreddit: reddit.subreddit,
+      };
+    } else {
+      alertConfig.reddit = undefined;
+    }
+
+    return res.json({ ok: true, message: 'Alert config updated' });
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      error: 'Failed to update alert config',
+    });
+  }
+});
+
+/**
+ * POST /api/admin/ai-dashboard/alerts
+ * Dispatch alert for a prediction
+ */
+router.post('/ai-dashboard/alerts', async (req: Request, res: Response) => {
+  try {
+    const prediction = req.body?.prediction as AlertPrediction | undefined;
+
+    if (!prediction) {
+      return res.status(400).json({ ok: false, error: 'prediction_required' });
+    }
+
+    const results = await dispatchAlert(prediction, alertConfig);
+
+    return res.json({
+      ok: true,
+      dispatched: results,
+      message: 'Alert dispatched to configured webhooks',
+    });
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      error: 'Failed to dispatch alert',
+    });
+  }
 });
 
 export default router;

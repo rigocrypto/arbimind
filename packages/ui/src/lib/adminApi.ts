@@ -149,6 +149,14 @@ export interface AIWatchlistItem {
   lastPolledAt?: number | null;
 }
 
+export interface AlertConfig {
+  telegram?: { token: string; chatId: string };
+  discord?: string;
+  twitter?: string;
+  reddit?: { clientId: string; secret: string; subreddit: string };
+  minConfidence?: number;
+}
+
 export const adminApi = {
   async getMetrics(range: '24h' | '7d' | '30d' = '24h', keyOverride?: string) {
     return adminFetch<AdminMetrics>(`/admin/metrics?range=${range}`, { keyOverride });
@@ -255,6 +263,33 @@ export const adminApi = {
     if (chain) sp.set('chain', chain);
     return adminFetch<{ count: number }>(`/admin/ai-dashboard/watch?${sp.toString()}`, {
       method: 'DELETE',
+    });
+  },
+
+  // Alert Configuration Methods
+  async getAlertConfig() {
+    return adminFetch<{ config: AlertConfig }>('/admin/ai-dashboard/alert-config');
+  },
+
+  async saveAlertConfig(config: AlertConfig) {
+    return adminFetch<{ message: string }>('/admin/ai-dashboard/alert-config', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    });
+  },
+
+  async dispatchAlert(prediction: {
+    chain: string;
+    pairAddress: string;
+    signal: 'LONG' | 'SHORT' | 'NEUTRAL';
+    confidence: number;
+    entryPriceUsd?: number;
+    reason?: string;
+    horizonSec?: number;
+  }) {
+    return adminFetch<{ dispatched: Record<string, boolean> }>('/admin/ai-dashboard/alerts', {
+      method: 'POST',
+      body: JSON.stringify({ prediction }),
     });
   },
 };
