@@ -1,5 +1,13 @@
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load .env variables FIRST, before importing config
+// Use .env.local for local dev, .env for production
+const envPath = path.resolve(process.cwd(), process.env['NODE_ENV'] === 'production' ? '.env' : '.env.local');
+dotenv.config({ path: envPath });
+
 import { ArbitrageBot } from './services/ArbitrageBot';
-import { validateConfig } from './config';
+import { validateConfig, refreshConfig } from './config';
 import { Logger } from './utils/Logger';
 import { SolanaScanner } from './solana/Scanner';
 
@@ -7,6 +15,9 @@ const logger = new Logger('Main');
 
 async function main(): Promise<void> {
   try {
+    // Refresh config with loaded env vars
+    refreshConfig();
+    
     logger.info('🚀 Starting ArbiMind Arbitrage Bot...');
     
     // Validate configuration
