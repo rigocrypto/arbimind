@@ -61,20 +61,28 @@ const DEXSCREENER_CHAIN_ID = (process.env.DEXSCREENER_CHAIN_ID || 'solana').trim
 /**
  * Alert Configuration Storage (in-memory)
  */
-let alertConfig: AlertWebhooks = {
-  telegram: process.env.ALERT_TELEGRAM_TOKEN && process.env.ALERT_TELEGRAM_CHAT_ID
-    ? { token: process.env.ALERT_TELEGRAM_TOKEN, chatId: process.env.ALERT_TELEGRAM_CHAT_ID }
-    : undefined,
-  discord: process.env.ALERT_DISCORD_WEBHOOK,
-  twitter: process.env.ALERT_TWITTER_BEARER_TOKEN,
-  reddit: process.env.ALERT_REDDIT_CLIENT_ID && process.env.ALERT_REDDIT_SECRET && process.env.ALERT_REDDIT_SUBREDDIT
-    ? {
-        clientId: process.env.ALERT_REDDIT_CLIENT_ID,
-        secret: process.env.ALERT_REDDIT_SECRET,
-        subreddit: process.env.ALERT_REDDIT_SUBREDDIT,
-      }
-    : undefined,
-};
+const alertConfig: AlertWebhooks = {};
+
+// Initialize alert config from env vars
+if (process.env.ALERT_TELEGRAM_TOKEN && process.env.ALERT_TELEGRAM_CHAT_ID) {
+  alertConfig.telegram = {
+    token: process.env.ALERT_TELEGRAM_TOKEN,
+    chatId: process.env.ALERT_TELEGRAM_CHAT_ID,
+  };
+}
+if (process.env.ALERT_DISCORD_WEBHOOK) {
+  alertConfig.discord = process.env.ALERT_DISCORD_WEBHOOK;
+}
+if (process.env.ALERT_TWITTER_BEARER_TOKEN) {
+  alertConfig.twitter = process.env.ALERT_TWITTER_BEARER_TOKEN;
+}
+if (process.env.ALERT_REDDIT_CLIENT_ID && process.env.ALERT_REDDIT_SECRET && process.env.ALERT_REDDIT_SUBREDDIT) {
+  alertConfig.reddit = {
+    clientId: process.env.ALERT_REDDIT_CLIENT_ID,
+    secret: process.env.ALERT_REDDIT_SECRET,
+    subreddit: process.env.ALERT_REDDIT_SUBREDDIT,
+  };
+}
 
 function watchKey(chain: string, pair: string): string {
   return `${chain}:${pair}`;
@@ -795,19 +803,19 @@ router.post('/ai-dashboard/alert-config', async (req: Request, res: Response) =>
     if (telegram?.token && telegram?.chatId) {
       alertConfig.telegram = { token: telegram.token, chatId: telegram.chatId };
     } else {
-      alertConfig.telegram = undefined;
+      delete alertConfig.telegram;
     }
 
     if (discord) {
       alertConfig.discord = discord;
     } else {
-      alertConfig.discord = undefined;
+      delete alertConfig.discord;
     }
 
     if (twitter) {
       alertConfig.twitter = twitter;
     } else {
-      alertConfig.twitter = undefined;
+      delete alertConfig.twitter;
     }
 
     if (reddit?.clientId && reddit?.secret && reddit?.subreddit) {
@@ -817,7 +825,7 @@ router.post('/ai-dashboard/alert-config', async (req: Request, res: Response) =>
         subreddit: reddit.subreddit,
       };
     } else {
-      alertConfig.reddit = undefined;
+      delete alertConfig.reddit;
     }
 
     return res.json({ ok: true, message: 'Alert config updated' });

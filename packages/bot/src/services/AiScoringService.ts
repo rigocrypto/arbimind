@@ -95,7 +95,7 @@ export class AiScoringService {
       });
 
       // Dispatch alert if confidence is high
-      const minConfidence = parseFloat(process.env.ALERT_MIN_CONFIDENCE || '0.8');
+      const minConfidence = parseFloat(process.env['ALERT_MIN_CONFIDENCE'] || '0.8');
       if (payload.confidence >= minConfidence) {
         try {
           const alertUrl = this.config.logUrl.replace(/\/[^/]+$/, '/ai-dashboard/alerts');

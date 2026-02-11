@@ -6,10 +6,10 @@
 import { logger } from '../utils/logger';
 
 export interface AlertWebhooks {
-  telegram?: { token: string; chatId: string };
-  discord?: string;
-  twitter?: string;
-  reddit?: { clientId: string; secret: string; subreddit: string };
+  telegram?: { token: string; chatId: string } | undefined;
+  discord?: string | undefined;
+  twitter?: string | undefined;
+  reddit?: { clientId: string; secret: string; subreddit: string } | undefined;
 }
 
 export interface AlertPrediction {
@@ -17,9 +17,9 @@ export interface AlertPrediction {
   pairAddress: string;
   signal: 'LONG' | 'SHORT' | 'NEUTRAL';
   confidence: number;
-  entryPriceUsd?: number;
+  entryPriceUsd?: number | undefined;
   reason: string;
-  horizonSec?: number;
+  horizonSec?: number | undefined;
 }
 
 /**
