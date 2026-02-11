@@ -93,6 +93,24 @@ export class AiScoringService {
         },
         body: JSON.stringify(payload)
       });
+
+      // Dispatch alert if confidence is high
+      const minConfidence = parseFloat(process.env['ALERT_MIN_CONFIDENCE'] || '0.8');
+      if (payload.confidence >= minConfidence) {
+        try {
+          const alertUrl = this.config.logUrl.replace(/\/[^/]+$/, '/ai-dashboard/alerts');
+          await fetch(alertUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-SERVICE-KEY': this.config.serviceKey
+            },
+            body: JSON.stringify({ prediction: payload })
+          });
+        } catch {
+          // Alert dispatch failed; continue
+        }
+      }
     } catch {
       // no-op
     }

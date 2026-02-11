@@ -319,6 +319,18 @@ export class ArbitrageBot {
    * Execute an arbitrage opportunity
    */
   private async executeArbitrage(opportunity: ArbitrageOpportunity): Promise<boolean> {
+    if (this.botConfig.logOnly) {
+      this.logger.info('Testnet mode: skipping real execution', {
+        tokenA: opportunity.tokenA,
+        tokenB: opportunity.tokenB,
+        dex1: opportunity.dex1,
+        dex2: opportunity.dex2,
+        profit: ethers.formatEther(opportunity.profit),
+        netProfit: ethers.formatEther(opportunity.netProfit)
+      });
+      return true;
+    }
+
     this.logger.info('Executing arbitrage opportunity', {
       tokenA: opportunity.tokenA,
       tokenB: opportunity.tokenB,

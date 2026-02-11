@@ -100,6 +100,7 @@ export interface AdminWallets {
 export interface AIDexPairResponse {
   pair: {
     chainId?: string;
+    chainKey?: string;
     dexId?: string;
     pairAddress?: string;
     baseToken?: { symbol?: string };
@@ -138,6 +139,22 @@ export interface AIPredictionAccuracyRow {
   avg_return_pct?: number | null;
   median_return_pct?: number | null;
   avg_confidence?: number | null;
+}
+
+export interface AIWatchlistItem {
+  chain: string;
+  pairAddress: string;
+  createdAt: number;
+  expiresAt: number;
+  lastPolledAt?: number | null;
+}
+
+export interface AlertConfig {
+  telegram?: { token: string; chatId: string };
+  discord?: string;
+  twitter?: string;
+  reddit?: { clientId: string; secret: string; subreddit: string };
+  minConfidence?: number;
 }
 
 export const adminApi = {
@@ -229,6 +246,50 @@ export const adminApi = {
     return adminFetch<{ id: string | null }>('/admin/ai-dashboard/predictions', {
       method: 'POST',
       body: JSON.stringify(payload),
+    });
+  },
+  async getAIWatchlist() {
+    return adminFetch<{ count: number; items: AIWatchlistItem[] }>('/admin/ai-dashboard/watchlist');
+  },
+  async watchAIPair(pairAddress: string, chain?: string, ttlHours?: number) {
+    return adminFetch<{ count: number; item?: AIWatchlistItem }>(`/admin/ai-dashboard/watch`, {
+      method: 'POST',
+      body: JSON.stringify({ pairAddress, chain, ttlHours }),
+    });
+  },
+  async unwatchAIPair(pairAddress: string, chain?: string) {
+    const sp = new URLSearchParams();
+    sp.set('pair', pairAddress);
+    if (chain) sp.set('chain', chain);
+    return adminFetch<{ count: number }>(`/admin/ai-dashboard/watch?${sp.toString()}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Alert Configuration Methods
+  async getAlertConfig() {
+    return adminFetch<{ config: AlertConfig }>('/admin/ai-dashboard/alert-config');
+  },
+
+  async saveAlertConfig(config: AlertConfig) {
+    return adminFetch<{ message: string }>('/admin/ai-dashboard/alert-config', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    });
+  },
+
+  async dispatchAlert(prediction: {
+    chain: string;
+    pairAddress: string;
+    signal: 'LONG' | 'SHORT' | 'NEUTRAL';
+    confidence: number;
+    entryPriceUsd?: number;
+    reason?: string;
+    horizonSec?: number;
+  }) {
+    return adminFetch<{ dispatched: Record<string, boolean> }>('/admin/ai-dashboard/alerts', {
+      method: 'POST',
+      body: JSON.stringify({ prediction }),
     });
   },
 };

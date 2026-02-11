@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { adminAuth } from '../middleware/adminAuth';
 import { adminStore } from '../store/adminStore';
+import { dispatchAlert, AlertWebhooks, AlertPrediction } from '../services/AlertService';
 import {
   insertPrediction,
   listPredictions,
@@ -21,10 +22,22 @@ type DexSnapshot = {
   sellsH1?: number;
 };
 
+type WatchItem = {
+  chain: string;
+  pairAddress: string;
+  createdAt: number;
+  expiresAt: number;
+  lastPolledAt?: number;
+};
+
 const HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MIN_SAMPLE_GAP_MS = 30 * 1000;
 const DEDUPE_GAP_MS = 20 * 1000;
+const WATCH_TTL_MS = 24 * 60 * 60 * 1000;
+const WATCH_POLL_MS = 30 * 1000;
 const dexHistory = new Map<string, DexSnapshot[]>();
+const watchlist = new Map<string, WatchItem>();
+let watchPollerStarted = false;
 
 router.use(
   rateLimit({
@@ -43,6 +56,133 @@ router.use((req, res, next) => {
 
 const TREASURY = process.env.TREASURY_ADDRESS || '0x0000000000000000000000000000000000000000';
 const EXECUTION = process.env.EXECUTION_ADDRESS || '0x0000000000000000000000000000000000000000';
+const DEXSCREENER_CHAIN_ID = (process.env.DEXSCREENER_CHAIN_ID || 'solana').trim();
+
+/**
+ * Alert Configuration Storage (in-memory)
+ */
+const alertConfig: AlertWebhooks = {};
+
+// Initialize alert config from env vars
+if (process.env.ALERT_TELEGRAM_TOKEN && process.env.ALERT_TELEGRAM_CHAT_ID) {
+  alertConfig.telegram = {
+    token: process.env.ALERT_TELEGRAM_TOKEN,
+    chatId: process.env.ALERT_TELEGRAM_CHAT_ID,
+  };
+}
+if (process.env.ALERT_DISCORD_WEBHOOK) {
+  alertConfig.discord = process.env.ALERT_DISCORD_WEBHOOK;
+}
+if (process.env.ALERT_TWITTER_BEARER_TOKEN) {
+  alertConfig.twitter = process.env.ALERT_TWITTER_BEARER_TOKEN;
+}
+if (process.env.ALERT_REDDIT_CLIENT_ID && process.env.ALERT_REDDIT_SECRET && process.env.ALERT_REDDIT_SUBREDDIT) {
+  alertConfig.reddit = {
+    clientId: process.env.ALERT_REDDIT_CLIENT_ID,
+    secret: process.env.ALERT_REDDIT_SECRET,
+    subreddit: process.env.ALERT_REDDIT_SUBREDDIT,
+  };
+}
+
+function watchKey(chain: string, pair: string): string {
+  return `${chain}:${pair}`;
+}
+
+function pruneWatchlist(): void {
+  const now = Date.now();
+  for (const [key, item] of watchlist.entries()) {
+    if (item.expiresAt <= now) watchlist.delete(key);
+  }
+}
+
+function recordDexSnapshot(chain: string, pair: string, p: any): DexSnapshot[] {
+  const now = Date.now();
+  const key = `dex:history:${chain}:${pair}`;
+  const existing = dexHistory.get(key) ?? [];
+  const last = existing[existing.length - 1];
+
+  if (!last || now - last.ts >= DEDUPE_GAP_MS) {
+    if (!last || now - last.ts >= MIN_SAMPLE_GAP_MS) {
+      existing.push({
+        ts: now,
+        priceUsd: Number(p?.priceUsd ?? 0),
+        liquidityUsd: Number(p?.liquidity?.usd ?? 0),
+        volumeH24: Number(p?.volume?.h24 ?? 0),
+        buysH1: Number(p?.txns?.h1?.buys ?? 0),
+        sellsH1: Number(p?.txns?.h1?.sells ?? 0),
+      });
+    }
+  }
+
+  const cutoff = now - HISTORY_WINDOW_MS;
+  const trimmed = existing.filter((pt) => pt.ts >= cutoff);
+  dexHistory.set(key, trimmed);
+  return trimmed;
+}
+
+async function fetchDexPair(chain: string, pair: string): Promise<any | null> {
+  const url = `https://api.dexscreener.com/latest/dex/pairs/${chain}/${pair}`;
+  const r = await fetch(url);
+  if (!r.ok) return null;
+  const data = (await r.json()) as { pairs?: Array<any> };
+  return data.pairs?.[0] ?? null;
+}
+
+async function evaluatePendingPredictions(chain: string, pair?: string, neutralThreshold = 0.1): Promise<number> {
+  const pending = await listPendingPredictions(pair, chain);
+  if (!pending.length) return 0;
+  let evaluated = 0;
+  for (const p of pending) {
+    const targetTs = new Date(p.createdAt).getTime() + p.horizonSec * 1000;
+    const key = `dex:history:${chain}:${p.pairAddress}`;
+    const history = dexHistory.get(key) ?? [];
+    if (!history.length) continue;
+
+    const nearest = findNearest(history, targetTs);
+    if (!nearest?.priceUsd || !p.entryPriceUsd) continue;
+
+    const returnPct = ((nearest.priceUsd - p.entryPriceUsd) / p.entryPriceUsd) * 100;
+    const signal = (p.signal ?? '').toUpperCase();
+    const correct = signal === 'SHORT'
+      ? returnPct < 0
+      : signal === 'NEUTRAL'
+        ? Math.abs(returnPct) < neutralThreshold
+        : returnPct > 0;
+
+    const ok = await updatePredictionResult(p.id, {
+      resolvedAt: new Date(targetTs),
+      exitPriceUsd: nearest.priceUsd,
+      returnPct,
+      correct,
+    });
+    if (ok) evaluated++;
+  }
+  return evaluated;
+}
+
+function startWatchlistPoller(): void {
+  if (watchPollerStarted) return;
+  watchPollerStarted = true;
+
+  setInterval(async () => {
+    pruneWatchlist();
+    const items = Array.from(watchlist.values());
+    if (!items.length) return;
+
+    for (const item of items) {
+      try {
+        const pairData = await fetchDexPair(item.chain, item.pairAddress);
+        if (!pairData) continue;
+        recordDexSnapshot(item.chain, item.pairAddress, pairData);
+        await evaluatePendingPredictions(item.chain, item.pairAddress);
+        item.lastPolledAt = Date.now();
+        watchlist.set(watchKey(item.chain, item.pairAddress), item);
+      } catch {
+        // ignore transient errors
+      }
+    }
+  }, WATCH_POLL_MS);
+}
 
 function getClientIp(req: Request): string {
   const ff = req.headers['x-forwarded-for'];
@@ -156,13 +296,10 @@ router.get('/ai-dashboard/dex', async (req: Request, res: Response) => {
       return res.status(400).json({ ok: false, error: 'pair_required' });
     }
 
-    const url = `https://api.dexscreener.com/latest/dex/pairs/solana/${pair}`;
-    const r = await fetch(url);
-    if (!r.ok) {
+    const p = await fetchDexPair(DEXSCREENER_CHAIN_ID, pair);
+    if (!p) {
       return res.status(502).json({ ok: false, error: 'dexscreener_failed' });
     }
-    const data = (await r.json()) as { pairs?: Array<any> };
-    const p = data.pairs?.[0];
     if (!p) {
       return res.status(404).json({ ok: false, error: 'pair_not_found' });
     }
@@ -177,31 +314,13 @@ router.get('/ai-dashboard/dex', async (req: Request, res: Response) => {
     const avgH1Tx = h24Tx > 0 ? h24Tx / 24 : 0;
     const txSpike = avgH1Tx > 0 && h1Tx / avgH1Tx >= 5;
 
-    const now = Date.now();
-    const key = `dex:history:solana:${pair}`;
-    const existing = dexHistory.get(key) ?? [];
-    const last = existing[existing.length - 1];
-    if (!last || now - last.ts >= DEDUPE_GAP_MS) {
-      if (!last || now - last.ts >= MIN_SAMPLE_GAP_MS) {
-        existing.push({
-          ts: now,
-          priceUsd: Number(p?.priceUsd ?? 0),
-          liquidityUsd: Number(p?.liquidity?.usd ?? 0),
-          volumeH24: h24Vol,
-          buysH1: Number(p?.txns?.h1?.buys ?? 0),
-          sellsH1: Number(p?.txns?.h1?.sells ?? 0),
-        });
-      }
-    }
-
-    const cutoff = now - HISTORY_WINDOW_MS;
-    const trimmed = existing.filter((pt) => pt.ts >= cutoff);
-    dexHistory.set(key, trimmed);
+    const trimmed = recordDexSnapshot(DEXSCREENER_CHAIN_ID, pair, p);
 
     return res.json({
       ok: true,
       pair: {
         chainId: p?.chainId,
+        chainKey: DEXSCREENER_CHAIN_ID,
         dexId: p?.dexId,
         pairAddress: p?.pairAddress,
         baseToken: p?.baseToken,
@@ -235,7 +354,7 @@ router.get('/ai-dashboard/dex/history', (req: Request, res: Response) => {
 
   const window = (req.query.window as string | undefined) ?? '24h';
   const windowMs = parseWindow(window);
-  const key = `dex:history:solana:${pair}`;
+  const key = `dex:history:${DEXSCREENER_CHAIN_ID}:${pair}`;
   const allPoints = dexHistory.get(key) ?? [];
   const points = allPoints.filter((pt) => pt.ts >= Date.now() - windowMs);
   const newest = points[points.length - 1]?.ts;
@@ -265,7 +384,7 @@ router.post('/ai-dashboard/predictions', async (req: Request, res: Response) => 
   try {
     const {
       pairAddress,
-      chain = 'solana',
+      chain = DEXSCREENER_CHAIN_ID,
       horizonSec = 900,
       model,
       signal,
@@ -281,7 +400,7 @@ router.post('/ai-dashboard/predictions', async (req: Request, res: Response) => 
       return res.status(400).json({ ok: false, error: 'pair_required' });
     }
 
-    const key = `dex:history:solana:${pairAddress}`;
+    const key = `dex:history:${chain}:${pairAddress}`;
     const history = dexHistory.get(key) ?? [];
     const last = history[history.length - 1];
     const entry = entryPriceUsd ?? last?.priceUsd ?? null;
@@ -322,37 +441,62 @@ router.get('/ai-dashboard/predictions', async (req: Request, res: Response) => {
  */
 router.post('/ai-dashboard/predictions/evaluate', async (req: Request, res: Response) => {
   const pair = (req.query.pair as string | undefined)?.trim();
+  const chain = (req.query.chain as string | undefined)?.trim() || DEXSCREENER_CHAIN_ID;
   const neutralThreshold = Number(req.query.neutralThreshold ?? 0.1);
-  const pending = await listPendingPredictions(pair);
-
-  let evaluated = 0;
-  for (const p of pending) {
-    const targetTs = new Date(p.createdAt).getTime() + p.horizonSec * 1000;
-    const key = `dex:history:solana:${p.pairAddress}`;
-    const history = dexHistory.get(key) ?? [];
-    if (!history.length) continue;
-
-    const nearest = findNearest(history, targetTs);
-    if (!nearest?.priceUsd || !p.entryPriceUsd) continue;
-
-    const returnPct = ((nearest.priceUsd - p.entryPriceUsd) / p.entryPriceUsd) * 100;
-    const signal = (p.signal ?? '').toUpperCase();
-    const correct = signal === 'SHORT'
-      ? returnPct < 0
-      : signal === 'NEUTRAL'
-        ? Math.abs(returnPct) < neutralThreshold
-        : returnPct > 0;
-
-    const ok = await updatePredictionResult(p.id, {
-      resolvedAt: new Date(targetTs),
-      exitPriceUsd: nearest.priceUsd,
-      returnPct,
-      correct,
-    });
-    if (ok) evaluated++;
-  }
-
+  const evaluated = await evaluatePendingPredictions(chain, pair, neutralThreshold);
   return res.json({ ok: true, evaluated });
+});
+
+/**
+ * GET /api/admin/ai-dashboard/watchlist
+ */
+router.get('/ai-dashboard/watchlist', (_req: Request, res: Response) => {
+  pruneWatchlist();
+  const items = Array.from(watchlist.values()).map((item) => ({
+    chain: item.chain,
+    pairAddress: item.pairAddress,
+    createdAt: item.createdAt,
+    expiresAt: item.expiresAt,
+    lastPolledAt: item.lastPolledAt ?? null,
+  }));
+  return res.json({ ok: true, count: items.length, items });
+});
+
+/**
+ * POST /api/admin/ai-dashboard/watch
+ */
+router.post('/ai-dashboard/watch', (req: Request, res: Response) => {
+  const pairAddress = (req.body?.pairAddress as string | undefined)?.trim();
+  const chain = ((req.body?.chain as string | undefined)?.trim() || DEXSCREENER_CHAIN_ID);
+  const ttlHours = Number(req.body?.ttlHours ?? 24);
+  if (!pairAddress) return res.status(400).json({ ok: false, error: 'pair_required' });
+
+  const now = Date.now();
+  const expiresAt = now + Math.max(ttlHours, 1) * 60 * 60 * 1000;
+  const item: WatchItem = {
+    chain,
+    pairAddress,
+    createdAt: now,
+    expiresAt,
+  };
+  watchlist.set(watchKey(chain, pairAddress), item);
+  startWatchlistPoller();
+  pruneWatchlist();
+
+  return res.json({ ok: true, item, count: watchlist.size });
+});
+
+/**
+ * DELETE /api/admin/ai-dashboard/watch?pair=...&chain=...
+ */
+router.delete('/ai-dashboard/watch', (req: Request, res: Response) => {
+  const pairAddress = (req.query.pair as string | undefined)?.trim();
+  const chain = ((req.query.chain as string | undefined)?.trim() || DEXSCREENER_CHAIN_ID);
+  if (!pairAddress) return res.status(400).json({ ok: false, error: 'pair_required' });
+
+  watchlist.delete(watchKey(chain, pairAddress));
+  pruneWatchlist();
+  return res.json({ ok: true, count: watchlist.size });
 });
 
 /**
@@ -624,6 +768,100 @@ router.get('/snapshots/last-run', async (req: Request, res: Response) => {
       error: run.error,
     },
   });
+});
+
+/**
+ * GET /api/admin/ai-dashboard/alert-config
+ * Retrieve current alert configuration
+ */
+router.get('/ai-dashboard/alert-config', async (req: Request, res: Response) => {
+  return res.json({
+    ok: true,
+    config: {
+      telegram: alertConfig.telegram ? { chatId: alertConfig.telegram.chatId } : undefined, // Don't send token
+      discord: alertConfig.discord ? true : false,
+      twitter: alertConfig.twitter ? true : false,
+      reddit: alertConfig.reddit ? { subreddit: alertConfig.reddit.subreddit } : undefined, // Don't send credentials
+      minConfidence: parseFloat(process.env.ALERT_MIN_CONFIDENCE || '0.8'),
+    },
+  });
+});
+
+/**
+ * POST /api/admin/ai-dashboard/alert-config
+ * Update alert configuration
+ */
+router.post('/ai-dashboard/alert-config', async (req: Request, res: Response) => {
+  try {
+    const {
+      telegram,
+      discord,
+      twitter,
+      reddit,
+    } = req.body ?? {};
+
+    if (telegram?.token && telegram?.chatId) {
+      alertConfig.telegram = { token: telegram.token, chatId: telegram.chatId };
+    } else {
+      delete alertConfig.telegram;
+    }
+
+    if (discord) {
+      alertConfig.discord = discord;
+    } else {
+      delete alertConfig.discord;
+    }
+
+    if (twitter) {
+      alertConfig.twitter = twitter;
+    } else {
+      delete alertConfig.twitter;
+    }
+
+    if (reddit?.clientId && reddit?.secret && reddit?.subreddit) {
+      alertConfig.reddit = {
+        clientId: reddit.clientId,
+        secret: reddit.secret,
+        subreddit: reddit.subreddit,
+      };
+    } else {
+      delete alertConfig.reddit;
+    }
+
+    return res.json({ ok: true, message: 'Alert config updated' });
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      error: 'Failed to update alert config',
+    });
+  }
+});
+
+/**
+ * POST /api/admin/ai-dashboard/alerts
+ * Dispatch alert for a prediction
+ */
+router.post('/ai-dashboard/alerts', async (req: Request, res: Response) => {
+  try {
+    const prediction = req.body?.prediction as AlertPrediction | undefined;
+
+    if (!prediction) {
+      return res.status(400).json({ ok: false, error: 'prediction_required' });
+    }
+
+    const results = await dispatchAlert(prediction, alertConfig);
+
+    return res.json({
+      ok: true,
+      dispatched: results,
+      message: 'Alert dispatched to configured webhooks',
+    });
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      error: 'Failed to dispatch alert',
+    });
+  }
 });
 
 export default router;

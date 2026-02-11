@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
-import type { AIDexPairResponse, AIPredictionAccuracyRow, AIPredictionRow } from '@/lib/adminApi';
+import type { AIDexPairResponse, AIPredictionAccuracyRow, AIPredictionRow, AIWatchlistItem } from '@/lib/adminApi';
 import { adminApi, hasAdminKey } from '@/lib/adminApi';
 import { PairSearch } from './components/PairSearch';
 import { MetricsGrid } from './components/MetricsGrid';
@@ -28,6 +28,8 @@ export default function AIDashboardPage() {
   const [devConfidence, setDevConfidence] = useState('0.7');
   const [devModel, setDevModel] = useState('dev-model');
   const [devHorizon, setDevHorizon] = useState('900');
+  const [watchlistItems, setWatchlistItems] = useState<AIWatchlistItem[]>([]);
+  const [watchingCount, setWatchingCount] = useState(0);
 
   const authed = useMemo(() => hasAdminKey(), []);
 
@@ -61,6 +63,13 @@ export default function AIDashboardPage() {
 
     const accRes = await adminApi.getAIPredictionAccuracy(pairAddress, window);
     if (accRes.ok) setAccuracyRows(accRes.data?.rows ?? []);
+
+    const watchRes = await adminApi.getAIWatchlist();
+    if (watchRes.ok) {
+      setWatchlistItems(watchRes.data?.items ?? []);
+      setWatchingCount(watchRes.data?.count ?? 0);
+    }
+
     setLoading(false);
   };
 
@@ -193,11 +202,32 @@ export default function AIDashboardPage() {
     setEvaluating(false);
   };
 
+  const chainKey = data?.pair?.chainKey ?? data?.pair?.chainId ?? 'solana';
+  const isWatching = watchlistItems.some((item) => item.chain === chainKey && item.pairAddress === pair);
+
+  const handleToggleWatch = async () => {
+    if (!pair) return;
+    try {
+      if (isWatching) {
+        await adminApi.unwatchAIPair(chainKey, pair);
+      } else {
+        await adminApi.watchAIPair(chainKey, pair);
+      }
+      const watchRes = await adminApi.getAIWatchlist();
+      if (watchRes.ok) {
+        setWatchlistItems(watchRes.data?.items ?? []);
+        setWatchingCount(watchRes.data?.count ?? 0);
+      }
+    } catch (e) {
+      console.error('Failed to toggle watch:', e);
+    }
+  };
+
   const handleDevLog = async () => {
     if (!pair) return;
     await adminApi.createAIPrediction({
       pairAddress: pair,
-      chain: 'solana',
+      chain: chainKey,
       horizonSec: Number(devHorizon) || 900,
       model: devModel,
       signal: devSignal,
@@ -282,6 +312,9 @@ export default function AIDashboardPage() {
               liquidityUsd={liquidityUsd}
               priceUsd={priceUsd}
               alerts={data.alerts}
+              isWatching={isWatching}
+              watchCount={watchingCount}
+              onToggleWatch={handleToggleWatch}
             />
           )}
 
