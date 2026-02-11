@@ -9,6 +9,7 @@
     ],
     "allowJs": true,
     "skipLibCheck": true,
+    "disableSizeLimit": true,
     "strict": false,
     "noEmit": true,
     "incremental": true,
