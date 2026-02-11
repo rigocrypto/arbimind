@@ -45,28 +45,31 @@ export interface BotConfig {
   aiMinExpectedProfitPct: number;
 }
 
-const isTestnet = (process.env['NETWORK'] || 'mainnet') === 'testnet';
-const evmChain = (process.env['EVM_CHAIN'] || 'arbitrum').toLowerCase();
-
 function getEvmChainConfig() {
+  const isTestnet = (process.env['NETWORK'] || 'mainnet') === 'testnet';
+  const evmChain = (process.env['EVM_CHAIN'] || 'arbitrum').toLowerCase();
+  
   if (evmChain === 'polygon') {
     return {
       viemChain: isTestnet ? polygonAmoy : polygon,
       chainId: isTestnet ? 80002 : 137,
-      rpcUrl: process.env['POLYGON_RPC_URL']
+      rpcUrl: process.env['POLYGON_RPC_URL'],
+      name: evmChain
     };
   }
   if (evmChain === 'ethereum') {
     return {
       viemChain: isTestnet ? sepolia : mainnet,
       chainId: isTestnet ? 11155111 : 1,
-      rpcUrl: process.env['ETHEREUM_RPC_URL']
+      rpcUrl: process.env['ETHEREUM_RPC_URL'],
+      name: evmChain
     };
   }
   return {
     viemChain: isTestnet ? arbitrumSepolia : arbitrum,
     chainId: isTestnet ? 421614 : 42161,
-    rpcUrl: process.env['ARBITRUM_RPC_URL'] || process.env['ETHEREUM_RPC_URL']
+    rpcUrl: process.env['ARBITRUM_RPC_URL'] || process.env['ETHEREUM_RPC_URL'],
+    name: 'arbitrum'
   };
 }
 
@@ -76,14 +79,18 @@ export const viemChain = evmChainConfig.viemChain;
 
 // Create config object with current environment variables
 function createConfig(): BotConfig {
+  const chainConfig = getEvmChainConfig();
+  const isTestnet = (process.env['NETWORK'] || 'mainnet') === 'testnet';
+  const evmChain = (process.env['EVM_CHAIN'] || 'arbitrum').toLowerCase();
+  
   return {
     // Ethereum Configuration
-    ethereumRpcUrl: getEvmChainConfig().rpcUrl || 'http://localhost:8545',
+    ethereumRpcUrl: chainConfig.rpcUrl || 'http://localhost:8545',
     privateKey: process.env['PRIVATE_KEY'] || '',
     treasuryAddress: process.env['TREASURY_ADDRESS'] || '',
     network: isTestnet ? 'testnet' : 'mainnet',
     evmChain: evmChain === 'polygon' || evmChain === 'ethereum' ? (evmChain as 'polygon' | 'ethereum') : 'arbitrum',
-    evmChainId: getEvmChainConfig().chainId,
+    evmChainId: chainConfig.chainId,
     logOnly: isTestnet || process.env['BOT_LOG_ONLY'] === 'true',
     
     // Bot Configuration
@@ -130,25 +137,32 @@ export function validateConfig(): void {
   const privateKey = process.env['PRIVATE_KEY'] || '';
   const treasuryAddress = process.env['TREASURY_ADDRESS'] || '';
   const ethereumRpcUrl = process.env['ETHEREUM_RPC_URL'] || process.env['ARBITRUM_RPC_URL'] || process.env['POLYGON_RPC_URL'] || '';
+  const logOnly = process.env['LOG_ONLY'] === 'true' || (process.env['NETWORK'] || 'mainnet') === 'testnet';
 
-  const requiredFields: Record<string, string> = {
-    privateKey,
-    treasuryAddress,
-    ethereumRpcUrl
-  };
-  
-  for (const [field, value] of Object.entries(requiredFields)) {
-    if (!value) {
-      throw new Error(`Missing required configuration: ${field}`);
+  // Always require RPC URL
+  if (!ethereumRpcUrl) {
+    throw new Error('Missing required configuration: ethereumRpcUrl (set ETHEREUM_RPC_URL or chain-specific RPC_URL)');
+  }
+
+  // If trading, require private key and treasury
+  if (!logOnly) {
+    if (!privateKey) {
+      throw new Error('Missing required configuration: privateKey (set PRIVATE_KEY or LOG_ONLY=true for logging-only mode)');
+    }
+    
+    if (!treasuryAddress) {
+      throw new Error('Missing required configuration: treasuryAddress (set TREASURY_ADDRESS or LOG_ONLY=true)');
     }
   }
   
-  if (privateKey.length !== 66 || !privateKey.startsWith('0x')) {
-    throw new Error('Invalid private key format');
+  // Validate private key format if present
+  if (privateKey && (privateKey.length !== 66 || !privateKey.startsWith('0x'))) {
+    throw new Error('Invalid private key format (must be 66 chars starting with 0x)');
   }
   
-  if (!treasuryAddress.startsWith('0x') || treasuryAddress.length !== 42) {
-    throw new Error('Invalid treasury address format');
+  // Validate treasury address format if present
+  if (treasuryAddress && (!treasuryAddress.startsWith('0x') || treasuryAddress.length !== 42)) {
+    throw new Error('Invalid treasury address format (must be 42 chars starting with 0x)');
   }
 }
 

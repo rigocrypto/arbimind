@@ -1,3 +1,6 @@
+import { loadEnv } from './bootstrapEnv';
+loadEnv();
+
 import { AIOrchestrator } from './ai/AIOrchestrator';
 import { Logger } from './utils/Logger';
 

@@ -1,13 +1,10 @@
-import dotenv from 'dotenv';
-import path from 'path';
+import { loadEnv } from './bootstrapEnv';
 
-// Load .env variables FIRST, before importing config
-// Use .env.local for local dev, .env for production
-const envPath = path.resolve(process.cwd(), process.env['NODE_ENV'] === 'production' ? '.env' : '.env.local');
-dotenv.config({ path: envPath });
+// Load environment variables FIRST, before importing anything else
+loadEnv();
 
 import { ArbitrageBot } from './services/ArbitrageBot';
-import { validateConfig, refreshConfig } from './config';
+import { validateConfig, refreshConfig, config } from './config';
 import { Logger } from './utils/Logger';
 import { SolanaScanner } from './solana/Scanner';
 
@@ -23,6 +20,13 @@ async function main(): Promise<void> {
     // Validate configuration
     validateConfig();
     logger.info('✅ Configuration validated');
+    
+    // Log selected chain
+    logger.info(`📡 Selected chain: ${config.evmChain} (chainId=${config.evmChainId})`);
+    logger.info(`🌐 RPC: ${config.ethereumRpcUrl.split('/').slice(0, 3).join('/')}/...`);
+    if (config.logOnly) {
+      logger.info('📊 Running in LOG_ONLY mode (no trades will be executed)');
+    }
 
     // Create and start the arbitrage bot
     const bot = new ArbitrageBot();

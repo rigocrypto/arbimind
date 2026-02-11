@@ -2,6 +2,9 @@
 /**
  * Run: pnpm tsx src/run-predictor.ts
  */
+import { loadEnv } from './bootstrapEnv';
+loadEnv();
+
 import { predictOpportunity } from './ai/predictor';
 
 async function main() {
