@@ -2,9 +2,9 @@
 cmds = ["corepack disable"]
 
 [phases.install]
-cmds = ["npm i -g pnpm && pnpm install --frozen-lockfile"]
+cmds = ["npx pnpm@latest install --frozen-lockfile"]
 [phases.build]
-cmds = ["pnpm --filter @arbimind/bot build"]
+cmds = ["npx pnpm@latest --filter @arbimind/bot build"]
 
 [start]
-cmd = "pnpm --filter @arbimind/bot start"
+cmd = "npx pnpm@latest --filter @arbimind/bot start"
