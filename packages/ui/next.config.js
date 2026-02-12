@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
+const path = require('path');
+
 const nextConfig = {
   typescript: {
     // Unblock builds when transitive crypto deps hit TS depth limits.
@@ -42,6 +44,14 @@ const nextConfig = {
         ]
       }
     ]
+  },
+  webpack: (config) => {
+    config.resolve = config.resolve || {};
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      'pino-pretty': path.join(__dirname, 'pino-pretty-stub.js')
+    };
+    return config;
   },
   output: process.env['NEXT_OUTPUT'] === 'standalone' ? 'standalone' : undefined
 };
