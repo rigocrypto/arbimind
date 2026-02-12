@@ -6,4 +6,5 @@ dist
 logs/
 .env.local
 .env*.local
+testnet-credentials-NEW.env
 pnpm-debug.log*
