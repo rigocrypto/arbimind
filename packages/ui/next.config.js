@@ -5,6 +5,22 @@ const nextConfig = {
     ignoreBuildErrors: true
   },
   async headers() {
+    // Build connect-src dynamically from NEXT_PUBLIC_API_URL
+    const apiUrl = (process.env.NEXT_PUBLIC_API_URL || '').trim();
+    let backendOrigin = '';
+    if (apiUrl) {
+      try {
+        const url = new URL(apiUrl);
+        backendOrigin = ` ${url.origin}`;
+      } catch {
+        // Fallback for invalid URL
+        backendOrigin = ' http://localhost:8001 https://arbimind-production.up.railway.app';
+      }
+    } else {
+      // Default to localhost + production backend
+      backendOrigin = ' http://localhost:8001 https://arbimind-production.up.railway.app';
+    }
+
     return [
       {
         source: '/admin/:path*',
@@ -16,7 +32,7 @@ const nextConfig = {
               "script-src 'self' 'unsafe-eval' 'unsafe-inline';",
               "style-src 'self' 'unsafe-inline';",
               "img-src 'self' data: blob: https://dexscreener.com https://api.dexscreener.com;",
-              "connect-src 'self' https://api.dexscreener.com https://your-backend-domain.com wss:;",
+              `connect-src 'self' https://api.dexscreener.com${backendOrigin} wss: ws:;`,
               "frame-ancestors 'none';"
             ].join('; ')
           },

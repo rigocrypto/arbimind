@@ -19,6 +19,8 @@ if (!process.env.ADMIN_KEY?.trim() && !process.env.ADMIN_API_KEY?.trim()) {
 }
 
 const app = express();
+// Trust Railway/edge proxy so rate-limit uses X-Forwarded-For safely.
+app.set('trust proxy', 1);
 
 const aiService = new AIService();
 setAIService(aiService);

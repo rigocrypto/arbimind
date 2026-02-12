@@ -15,6 +15,16 @@ const JUP_SWAP = 'https://quote-api.jup.ag/v6/swap';
 const WSOL = 'So11111111111111111111111111111111111111112';
 const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
+type JupiterQuoteResponse = {
+  inAmount: string;
+  outAmount: string;
+  priceImpactPct?: string;
+};
+
+type JupiterSwapResponse = {
+  swapTransaction?: string;
+};
+
 function feeLamportsFromSolAmount(solAmount: number): number {
   const pct = Number(process.env.SOLANA_FEE_PCT ?? '0.5');
   const minSol = Number(process.env.SOLANA_FEE_MIN_SOL ?? '0.001');
@@ -95,7 +105,7 @@ router.post('/swap-tx', async (req: Request, res: Response) => {
       return res.status(502).json({ error: 'Jupiter quote failed', details: txt });
     }
 
-    const quote = await quoteRes.json();
+    const quote = (await quoteRes.json()) as JupiterQuoteResponse;
     if (!quote || !quote.outAmount) {
       return res.status(400).json({ error: 'No Jupiter route found' });
     }
@@ -116,8 +126,8 @@ router.post('/swap-tx', async (req: Request, res: Response) => {
       return res.status(502).json({ error: 'Jupiter swap build failed', details: txt });
     }
 
-    const swapJson = await swapRes.json();
-    const swapTxB64 = swapJson?.swapTransaction;
+    const swapJson = (await swapRes.json()) as JupiterSwapResponse;
+    const swapTxB64 = swapJson.swapTransaction;
     if (!swapTxB64) {
       return res.status(502).json({ error: 'Missing swapTransaction from Jupiter' });
     }

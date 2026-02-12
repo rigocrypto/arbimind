@@ -20,7 +20,7 @@ const SOLSCAN_TX_SUFFIX = IS_MAINNET ? '' : '?cluster=devnet';
 
 export default function SolanaWalletPageClient() {
   const { connection } = useConnection();
-  const { publicKey, connected, sendTransaction } = useWallet();
+  const { publicKey, connected, sendTransaction, wallets } = useWallet();
   const [loading, setLoading] = useState<string | null>(null);
   const address = publicKey?.toBase58();
   const { data: portfolio, isLoading: portfolioLoading, isError: portfolioError, refetch: refetchPortfolio } = usePortfolioSummary('solana', address);
@@ -219,6 +219,19 @@ export default function SolanaWalletPageClient() {
             <p className="text-dark-400 mb-6">
               Connect Phantom or Solflare to start. Use Devnet for testing (solfaucet.com).
             </p>
+            {wallets.length === 0 && (
+              <div className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-left text-sm text-amber-200">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                  <div>
+                    <p className="font-medium">No Solana wallet detected.</p>
+                    <p className="text-amber-200/80">
+                      Enable your wallet extension for localhost, then reload this page.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="overflow-visible">
               <WalletMultiButton className="!bg-gradient-to-r !from-purple-500 !to-pink-500 !rounded-lg !font-medium !inline-flex" />
             </div>
