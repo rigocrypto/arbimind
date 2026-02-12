@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { adminStore } from '../store/adminStore';
 
-const ADMIN_KEY = process.env.ADMIN_API_KEY || '';
+// Support both ADMIN_KEY (Railway standard) and legacy ADMIN_API_KEY
+const ADMIN_KEY = process.env.ADMIN_KEY || process.env.ADMIN_API_KEY || '';
 const SERVICE_KEY = process.env.AI_SERVICE_KEY || '';
 
 function getClientIp(req: Request): string {
@@ -18,7 +19,7 @@ export function adminAuth(req: Request, res: Response, next: NextFunction): void
     adminStore.addAuditEvent({ type: 'admin_auth', ip, path, success: false, meta: { reason: 'config_missing' } });
     res.status(503).json({
       ok: false,
-      error: 'Admin API not configured (ADMIN_API_KEY missing)',
+      error: 'Admin API not configured (ADMIN_KEY or ADMIN_API_KEY missing)',
       version: '1.0',
     });
     return;

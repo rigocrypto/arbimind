@@ -10,7 +10,7 @@ Write-Host "   $newKey" -ForegroundColor Green
 Write-Host "   WARNING: TESTNET ONLY - Never use in production!`n" -ForegroundColor Red
 
 # 2. Generate admin API keys
-Write-Host "2. NEW ADMIN_API_KEY:" -ForegroundColor Yellow
+Write-Host "2. NEW ADMIN_KEY:" -ForegroundColor Yellow
 $adminKey = -join ((1..32) | ForEach-Object { 
     $chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     $chars[(Get-Random -Maximum $chars.Length)]
@@ -47,7 +47,7 @@ TREASURY_ADDRESS=<YOUR-METAMASK-TESTNET-ADDRESS>
 ARB_EXECUTOR_ADDRESS=<YOUR-DEPLOYED-CONTRACT-ADDRESS>
 
 # Admin keys
-ADMIN_API_KEY=$adminKey
+ADMIN_KEY=$adminKey
 AI_SERVICE_KEY=$aiKey
 
 # Alerts (generate manually)

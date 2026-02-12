@@ -14,8 +14,8 @@ import snapshotsRoutes from './routes/snapshots';
 import aiRoutes, { setAIService } from './routes/ai';
 import { AIService } from './services/AIService';
 
-if (!process.env.ADMIN_API_KEY?.trim()) {
-  console.warn('⚠️  ADMIN_API_KEY not set – /api/admin/* will return 503. Add it to .env or Railway vars.');
+if (!process.env.ADMIN_KEY?.trim() && !process.env.ADMIN_API_KEY?.trim()) {
+  console.warn('⚠️  ADMIN_KEY not set – /api/admin/* will return 503. Add it to .env or Railway vars.');
 }
 
 const app = express();
