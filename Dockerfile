@@ -10,8 +10,8 @@ RUN npm install -g pnpm
 # Copy source
 COPY . .
 
-# Build contracts
-RUN cd packages/contracts && forge build
+# Build contracts (skip for bot/backend contexts)
+# RUN cd packages/contracts && forge build
 
 # Build bot & backend
 RUN pnpm install --frozen-lockfile
