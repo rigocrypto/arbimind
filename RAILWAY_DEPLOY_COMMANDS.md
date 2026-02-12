@@ -2,6 +2,8 @@
 
 Copy-paste commands for deploying ArbiMind testnet to Railway (backend + bot) and Vercel (UI).
 
+**WARNING:** Replace `<placeholders>` with actual values from `testnet-credentials-NEW.env`. Never commit credentials to git.
+
 ---
 
 ## Prerequisites
@@ -20,7 +22,7 @@ Copy-paste commands for deploying ArbiMind testnet to Railway (backend + bot) an
 railway login
 railway init  # → Create new project → name: arbimind-testnet
 
-# Set environment variables (use YOUR rotated values)
+# Set environment variables (replace <placeholders> with values from testnet-credentials-NEW.env)
 railway variables set `
   NODE_ENV=production `
   PORT=8001 `
@@ -29,8 +31,8 @@ railway variables set `
   SOLANA_RPC_URL=https://api.devnet.solana.com `
   POLYGON_RPC_URL=https://rpc-amoy.polygon.technology `
   DEXSCREENER_CHAIN_ID=polygon `
-  ADMIN_KEY=p4g47OFU1GL4Q6KBFCavVMubhf68xVnN `
-  AI_SERVICE_KEY=rzzggkt8Feh2IzWb1Uq5t6aQJwYkd3dF `
+  ADMIN_KEY=<from-testnet-credentials-NEW.env> `
+  AI_SERVICE_KEY=<from-testnet-credentials-NEW.env> `
   FRONTEND_URL=https://arbimind.vercel.app
 
 # Deploy backend
@@ -58,22 +60,22 @@ Invoke-RestMethod https://backend-production-xxxx.up.railway.app/api/health
 # Create bot service in same project
 railway service create bot
 
-# Set environment variables (replace <backend-url> with step 1 output)
+# Set environment variables (replace <placeholders>, ensure AI_SERVICE_KEY matches backend)
 railway variables set `
   NODE_ENV=production `
   NETWORK=testnet `
   LOG_ONLY=true `
   EVM_CHAIN=polygon `
   POLYGON_RPC_URL=https://rpc-amoy.polygon.technology `
-  AI_SERVICE_KEY=rzzggkt8Feh2IzWb1Uq5t6aQJwYkd3dF `
+  AI_SERVICE_KEY=<same-as-backend> `
   AI_LOG_URL=https://backend-production-xxxx.up.railway.app/api/admin/ai-dashboard/predictions `
   SOLANA_RPC_URL=https://api.devnet.solana.com `
   SOLANA_WATCHED_POOLS=4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4pT8Az4D `
   SOLANA_SCAN_INTERVAL_SEC=10 `
   ALERT_MIN_CONFIDENCE=0.8 `
-  ALERT_TELEGRAM_TOKEN=<YOUR-NEW-TELEGRAM-TOKEN> `
-  ALERT_TELEGRAM_CHAT_ID=<YOUR-CHAT-ID> `
-  ALERT_DISCORD_WEBHOOK=<YOUR-NEW-DISCORD-WEBHOOK> `
+  ALERT_TELEGRAM_TOKEN=<from-botfather> `
+  ALERT_TELEGRAM_CHAT_ID=<your-chat-id> `
+  ALERT_DISCORD_WEBHOOK=<from-discord> `
   --service bot
 
 # Deploy bot
@@ -126,7 +128,7 @@ vercel --prod
 ## 4. Quick Health Checks
 
 ```powershell
-# Backend health
+# Backend health (replace <backend-url> with your Railway URL)
 $backend = "https://backend-production-xxxx.up.railway.app"
 Invoke-RestMethod "$backend/api/health"
 
@@ -151,7 +153,7 @@ start https://arbimind.vercel.app/admin/ai-dashboard
 railway variables --service backend | Select-String "AI_SERVICE_KEY"
 railway variables --service bot | Select-String "AI_SERVICE_KEY"
 
-# Update bot if mismatch
+# Update bot if mismatch (use value from testnet-credentials-NEW.env)
 railway variables set AI_SERVICE_KEY=<correct-value> --service bot
 railway up --service bot
 ```
@@ -168,8 +170,8 @@ railway up --service backend
 
 ### Backend missing ADMIN_KEY:
 ```powershell
-# Add it (supports both ADMIN_KEY and legacy ADMIN_API_KEY)
-railway variables set ADMIN_KEY=p4g47OFU1GL4Q6KBFCavVMubhf68xVnN --service backend
+# Add it (use value from testnet-credentials-NEW.env)
+railway variables set ADMIN_KEY=<from-credentials-file> --service backend
 railway up --service backend
 ```
 
@@ -191,13 +193,13 @@ git push --tags
 ## Environment Variable Reference
 
 ### Backend Required:
-- `ADMIN_KEY` or `ADMIN_API_KEY` - Admin dashboard auth (32-char)
-- `AI_SERVICE_KEY` - Bot-to-backend auth (32-char, must match bot)
+- `ADMIN_KEY` or `ADMIN_API_KEY` - Admin dashboard auth (from testnet-credentials-NEW.env)
+- `AI_SERVICE_KEY` - Bot-to-backend auth (must match bot, from credentials file)
 - `POLYGON_RPC_URL` - Polygon Amoy RPC
 - `FRONTEND_URL` - Vercel UI URL (for CORS)
 
 ### Bot Required:
-- `AI_SERVICE_KEY` - Must match backend (32-char)
+- `AI_SERVICE_KEY` - Must match backend (from testnet-credentials-NEW.env)
 - `AI_LOG_URL` - Backend predictions endpoint (NOT `AI_API_URL`)
 - `EVM_CHAIN=polygon` - Use Polygon Amoy
 - `NETWORK=testnet` - Enables LOG_ONLY mode
