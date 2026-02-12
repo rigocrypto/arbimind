@@ -4,7 +4,9 @@ dist
 .vercel
 *.log
 logs/
+.env
 .env.local
 .env*.local
+*-credentials*.env
 testnet-credentials-NEW.env
 pnpm-debug.log*
