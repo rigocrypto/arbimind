@@ -2,7 +2,7 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "pnpm --filter @arbimind/bot build"
+    "buildCommand": "npm i -g pnpm && pnpm --filter @arbimind/bot build"
   },
   "deploy": {
     "startCommand": "pnpm --filter @arbimind/bot start"
