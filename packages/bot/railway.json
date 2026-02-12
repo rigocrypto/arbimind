@@ -2,10 +2,10 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "pnpm --filter @arbimind/bot build"
+    "buildCommand": "cd packages/bot && pnpm build"
   },
   "deploy": {
-    "startCommand": "pnpm --filter @arbimind/bot start",
+    "startCommand": "cd packages/bot && pnpm start",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
