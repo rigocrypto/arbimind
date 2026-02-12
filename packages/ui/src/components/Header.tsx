@@ -74,14 +74,16 @@ export function Header({
 
           {/* Center: Pro banner */}
           {proVariant === 'header-center' && (
-            <div className="hidden lg:flex flex-1 items-center justify-center px-4">
+            <div className="hidden lg:flex flex-1 min-w-0 items-center justify-center px-4">
               <Link
                 href="/pro"
-                className="flex w-full max-w-[520px] items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500/20 to-blue-500/20 border border-amber-400/40 hover:from-emerald-500/30 hover:to-blue-500/30 transition-all text-sm"
+                className="flex w-full max-w-[420px] xl:max-w-[520px] items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500/20 to-blue-500/20 border border-amber-400/40 hover:from-emerald-500/30 hover:to-blue-500/30 transition-all text-sm"
               >
-                <div className="min-w-0">
-                  <span className="font-bold text-white">Pro Arbitrage Unlocked</span>
-                  <span className="hidden sm:inline text-dark-300 text-xs ml-2">0.5% tx fee → Auto-bots + premium alerts</span>
+                <div className="min-w-0 overflow-hidden">
+                  <span className="font-bold text-white truncate">Pro Arbitrage Unlocked</span>
+                  <span className="hidden sm:inline text-dark-300 text-xs ml-2 truncate">
+                    0.5% tx fee → Auto-bots + premium alerts
+                  </span>
                 </div>
                 <span className="shrink-0 bg-amber-300 text-black px-3 py-1 rounded-lg font-bold text-xs hover:bg-amber-200 transition-colors">
                   Get Pro $9/mo

@@ -7,6 +7,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiUrl } from '@/lib/apiConfig';
 // Disable API calls by default - set to true when backend is ready
 const ENABLE_API_CALLS = process.env.NEXT_PUBLIC_ENABLE_API === 'true';
+// Enable public metrics/strategies only when backend exposes endpoints.
+const ENABLE_PUBLIC_METRICS = process.env.NEXT_PUBLIC_PUBLIC_METRICS === 'true';
 
 // Types
 export interface HealthStatus {
@@ -162,6 +164,9 @@ async function fetchWithFallback<T>(
     }
     
     // Fall back to mock data on 404 or other errors
+    if (response.status === 404) {
+      return { data: mockData, shouldRetry: false };
+    }
     return { data: mockData, shouldRetry: true };
   } catch (error) {
     // Network errors - use mock data, but don't spam retries
@@ -227,7 +232,7 @@ export function useMetrics() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!ENABLE_API_CALLS) {
+    if (!ENABLE_API_CALLS || !ENABLE_PUBLIC_METRICS) {
       return;
     }
 
@@ -275,7 +280,7 @@ export function useStrategies() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!ENABLE_API_CALLS) {
+    if (!ENABLE_API_CALLS || !ENABLE_PUBLIC_METRICS) {
       return;
     }
 
