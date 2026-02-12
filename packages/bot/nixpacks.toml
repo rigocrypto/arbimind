@@ -1,8 +1,8 @@
 [phases.setup]
-cmds = ["npm i -g pnpm", "corepack disable"]
+cmds = ["corepack disable"]
 
 [phases.install]
-cmds = ["pnpm install --frozen-lockfile"]
+cmds = ["npm i -g pnpm && pnpm install --frozen-lockfile"]
 [phases.build]
 cmds = ["pnpm --filter @arbimind/bot build"]
 
