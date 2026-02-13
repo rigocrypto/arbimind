@@ -6,5 +6,15 @@
 **/.git
 .env*
 logs
+
+# Exclude UI and contracts packages
 packages/ui
+packages/ui/**
 packages/contracts
+packages/contracts/**
+
+# Explicitly include bot and backend packages
+!packages/bot/
+!packages/bot/**
+!packages/backend/
+!packages/backend/**
