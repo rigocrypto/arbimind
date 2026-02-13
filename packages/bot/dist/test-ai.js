@@ -1,5 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+const bootstrapEnv_1 = require("./bootstrapEnv");
+(0, bootstrapEnv_1.loadEnv)();
 const AIOrchestrator_1 = require("./ai/AIOrchestrator");
 const Logger_1 = require("./utils/Logger");
 async function testAI() {
@@ -74,4 +76,3 @@ testAI().then(() => {
     console.error('Test failed:', error);
     process.exit(1);
 });
-//# sourceMappingURL=test-ai.js.map

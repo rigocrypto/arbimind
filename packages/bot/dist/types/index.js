@@ -8,4 +8,3 @@ var LogLevel;
     LogLevel["INFO"] = "info";
     LogLevel["DEBUG"] = "debug";
 })(LogLevel || (exports.LogLevel = LogLevel = {}));
-//# sourceMappingURL=index.js.map

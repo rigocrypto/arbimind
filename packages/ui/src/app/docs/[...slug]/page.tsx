@@ -1,6 +1,6 @@
+export const dynamic = 'force-dynamic';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { DashboardLayout } from '@/components/Layout/DashboardLayout';
 import { DOCS_CONTENT, DOC_PATHS } from '../lib/docsContent';
 import { ChevronLeft, ExternalLink, Pencil } from 'lucide-react';
 
@@ -102,64 +102,9 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
   }
 
   return (
-    <DashboardLayout currentPath="/docs">
-      <div className="max-w-3xl">
-        <Link
-          href="/docs"
-          className="inline-flex items-center gap-1 text-sm text-dark-400 hover:text-cyan-400 mb-6 transition"
-        >
-          <ChevronLeft className="w-4 h-4" />
-          Back to Docs
-        </Link>
-        <div className="flex items-start justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">{doc.title}</h1>
-            <p className="text-dark-400 text-sm">{doc.description}</p>
-          </div>
-          <a
-            href={`https://github.com/rigocrypto/arbimind/blob/${process.env.VERCEL_GIT_COMMIT_REF || process.env.NEXT_PUBLIC_DOCS_EDIT_BRANCH || 'main'}/packages/ui/src/app/docs/lib/docsContent.ts`}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="flex items-center gap-1.5 text-xs text-dark-500 hover:text-cyan-400 transition shrink-0"
-            title="Edit docsContent.ts"
-          >
-            <Pencil className="w-3.5 h-3.5" />
-            Edit this page
-          </a>
-        </div>
-        <div className="glass-card p-4 sm:p-6">
-          {doc.sections.map((section, i) => (
-            <DocContentSection
-              key={i}
-              heading={section.heading}
-              content={section.content}
-            />
-          ))}
-        </div>
-        {doc.related && doc.related.length > 0 && (
-          <div className="mt-8 pt-6 border-t border-dark-700">
-            <h3 className="text-sm font-medium text-dark-400 mb-3">Related</h3>
-            <ul className="flex flex-wrap gap-2">
-              {doc.related.map((r) => {
-                const item = DOCS_CONTENT[r];
-                const title = item?.title ?? r;
-                return (
-                  <li key={r}>
-                    <Link
-                      href={`/docs/${r}`}
-                      className="inline-flex items-center gap-1 text-sm text-cyan-400 hover:text-cyan-300 transition"
-                    >
-                      {title}
-                      <ExternalLink className="w-3 h-3" />
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
-      </div>
-    </DashboardLayout>
+    <div className="max-w-3xl mx-auto p-8 space-y-8">
+      <div>Docs page content goes here.</div>
+    </div>
   );
 }
 

@@ -1,7 +1,9 @@
-import { loadEnv } from './bootstrapEnv';
 
+console.log('DEBUG: index.ts entrypoint reached');
+import { loadEnv } from './bootstrapEnv';
 // Load environment variables FIRST, before importing anything else
 loadEnv();
+console.log('DEBUG: .env loaded');
 
 import { ArbitrageBot } from './services/ArbitrageBot';
 import { validateConfig, refreshConfig, config } from './config';

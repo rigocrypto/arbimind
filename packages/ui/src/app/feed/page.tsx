@@ -1,4 +1,6 @@
+
 'use client';
+export const dynamic = 'force-dynamic';
 
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
 import { Activity } from 'lucide-react';

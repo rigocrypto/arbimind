@@ -13,4 +13,3 @@ class PriceService {
     }
 }
 exports.PriceService = PriceService;
-//# sourceMappingURL=PriceService.js.map

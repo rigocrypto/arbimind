@@ -7,26 +7,51 @@ const config_2 = require("../config");
 const PriceService_1 = require("./PriceService");
 const ExecutionService_1 = require("./ExecutionService");
 const Logger_1 = require("../utils/Logger");
-// AI orchestrator imports removed (not used in current flow)
+const AiScoringService_1 = require("./AiScoringService");
 class ArbitrageBot {
     provider;
     wallet;
     priceService;
     executionService;
+    aiScoringService;
+    botConfig;
+    tokenPairs;
     // AI orchestrator currently unused in main loop; keep for future use
     // private aiOrchestrator: AIOrchestrator | undefined;
     logger;
     isRunning = false;
     stats;
     // last scan timestamp removed (not currently read anywhere)
-    constructor() {
-        this.provider = new ethers_1.ethers.JsonRpcProvider(config_1.config.ethereumRpcUrl);
-        this.wallet = new ethers_1.ethers.Wallet(config_1.config.privateKey, this.provider);
-        this.priceService = new PriceService_1.PriceService(this.provider);
-        this.executionService = new ExecutionService_1.ExecutionService(this.wallet, config_1.config.arbExecutorAddress);
+    constructor(deps = {}) {
+        this.logger = deps.logger ?? new Logger_1.Logger('ArbitrageBot');
+        this.botConfig = { ...config_1.config, ...deps.config };
+        this.provider = deps.provider ?? new ethers_1.ethers.JsonRpcProvider(this.botConfig.ethereumRpcUrl);
+        // Only create wallet if privateKey is valid
+        if (this.botConfig.privateKey &&
+            this.botConfig.privateKey.length === 66 &&
+            this.botConfig.privateKey.startsWith('0x')) {
+            this.wallet = deps.wallet ?? new ethers_1.ethers.Wallet(this.botConfig.privateKey, this.provider);
+            this.logger.info(`✅ Wallet loaded: ${this.wallet.address}`);
+        }
+        else {
+            this.wallet = undefined;
+            this.logger.warn('⚠️ LOG_ONLY: No valid PRIVATE_KEY, running without wallet.');
+        }
+        this.priceService = deps.priceService ?? new PriceService_1.PriceService(this.provider);
+        this.executionService = deps.executionService ?? new ExecutionService_1.ExecutionService(this.wallet, this.botConfig.arbExecutorAddress);
+        const aiConfig = this.botConfig.aiPredictUrl
+            ? {
+                predictUrl: this.botConfig.aiPredictUrl,
+                ...(this.botConfig.aiLogUrl ? { logUrl: this.botConfig.aiLogUrl } : {}),
+                ...(this.botConfig.aiServiceKey ? { serviceKey: this.botConfig.aiServiceKey } : {}),
+                ...(this.botConfig.aiModelTag ? { modelTag: this.botConfig.aiModelTag } : {}),
+                ...(this.botConfig.aiPredictionHorizonSec ? { horizonSec: this.botConfig.aiPredictionHorizonSec } : {})
+            }
+            : undefined;
+        this.aiScoringService = deps.aiScoringService ?? (aiConfig ? new AiScoringService_1.AiScoringService(aiConfig) : undefined);
         // AI orchestrator initialization deferred until used
         // this.aiOrchestrator = new AIOrchestrator();
-        this.logger = new Logger_1.Logger('ArbitrageBot');
+        this.tokenPairs = deps.tokenPairs ?? config_1.TOKEN_PAIRS;
         this.stats = {
             totalOpportunities: 0,
             successfulTrades: 0,
@@ -75,7 +100,7 @@ class ArbitrageBot {
         while (this.isRunning) {
             try {
                 await this.scanForOpportunities();
-                await this.sleep(config_1.config.scanIntervalMs);
+                await this.sleep(this.botConfig.scanIntervalMs);
             }
             catch (error) {
                 this.logger.error('Error in main loop', { error: error instanceof Error ? error.message : error });
@@ -84,17 +109,32 @@ class ArbitrageBot {
         }
     }
     /**
+     * Run a single scan + execute cycle (useful for tests)
+     */
+    async runCycle() {
+        return this.scanForOpportunities();
+    }
+    /**
      * Scan for arbitrage opportunities across all configured pairs and DEXes
      */
     async scanForOpportunities() {
         const startTime = Date.now();
+        let opportunitiesFound = 0;
+        let executed = 0;
+        let scoredOpps = 0;
         this.logger.debug('Scanning for arbitrage opportunities...');
-        for (const pair of config_1.TOKEN_PAIRS) {
+        for (const pair of this.tokenPairs) {
             try {
                 const opportunities = await this.findOpportunitiesForPair(pair.tokenA, pair.tokenB);
+                opportunitiesFound += opportunities.length;
                 for (const opportunity of opportunities) {
-                    if (this.isProfitable(opportunity)) {
-                        await this.executeArbitrage(opportunity);
+                    const { approved, scored } = await this.isAiApproved(opportunity);
+                    if (scored)
+                        scoredOpps++;
+                    if (this.isProfitable(opportunity) && approved) {
+                        const success = await this.executeArbitrage(opportunity);
+                        if (success)
+                            executed++;
                     }
                 }
             }
@@ -106,6 +146,7 @@ class ArbitrageBot {
         }
         const scanDuration = Date.now() - startTime;
         this.logger.debug(`Scan completed in ${scanDuration}ms`);
+        return { opportunitiesFound, executed, scoredOpps };
     }
     /**
      * Find arbitrage opportunities for a specific token pair
@@ -184,22 +225,61 @@ class ArbitrageBot {
      */
     isProfitable(opportunity) {
         const netProfitEth = ethers_1.ethers.formatEther(opportunity.netProfit);
-        const minProfitEth = config_1.config.minProfitEth;
+        const minProfitEth = this.botConfig.minProfitEth;
         if (parseFloat(netProfitEth) < minProfitEth) {
             return false;
         }
         // Check gas price
         const currentGasPrice = this.getCurrentGasPrice();
-        if (currentGasPrice > config_1.config.maxGasGwei) {
+        const currentGasGwei = currentGasPrice / 1e9;
+        if (currentGasGwei > this.botConfig.maxGasGwei) {
             this.logger.debug('Gas price too high, skipping opportunity');
             return false;
         }
         return true;
     }
+    async isAiApproved(opportunity) {
+        if (!this.aiScoringService)
+            return { approved: true, scored: false };
+        try {
+            const prediction = await this.aiScoringService.scoreOpportunity(opportunity, {
+                chain: 'evm',
+                pairAddress: `${opportunity.tokenA}-${opportunity.tokenB}`
+            });
+            if (!prediction)
+                return { approved: true, scored: true };
+            const approved = prediction.successProb >= this.botConfig.aiMinSuccessProb &&
+                prediction.expectedProfitPct >= this.botConfig.aiMinExpectedProfitPct;
+            if (!approved) {
+                this.logger.debug('AI rejected opportunity', {
+                    successProb: prediction.successProb,
+                    expectedProfitPct: prediction.expectedProfitPct
+                });
+            }
+            return { approved, scored: true };
+        }
+        catch (error) {
+            this.logger.debug('AI scoring failed, defaulting to execute', {
+                error: error instanceof Error ? error.message : error
+            });
+            return { approved: true, scored: true };
+        }
+    }
     /**
      * Execute an arbitrage opportunity
      */
     async executeArbitrage(opportunity) {
+        if (this.botConfig.logOnly) {
+            this.logger.info('Testnet mode: skipping real execution', {
+                tokenA: opportunity.tokenA,
+                tokenB: opportunity.tokenB,
+                dex1: opportunity.dex1,
+                dex2: opportunity.dex2,
+                profit: ethers_1.ethers.formatEther(opportunity.profit),
+                netProfit: ethers_1.ethers.formatEther(opportunity.netProfit)
+            });
+            return true;
+        }
         this.logger.info('Executing arbitrage opportunity', {
             tokenA: opportunity.tokenA,
             tokenB: opportunity.tokenB,
@@ -220,6 +300,8 @@ class ArbitrageBot {
                     profit: ethers_1.ethers.formatEther(result.profit),
                     gasUsed: result.gasUsed
                 });
+                this.updateStats();
+                return true;
             }
             else {
                 this.stats.failedTrades++;
@@ -227,8 +309,9 @@ class ArbitrageBot {
                     error: result.error,
                     gasUsed: result.gasUsed
                 });
+                this.updateStats();
+                return false;
             }
-            this.updateStats();
         }
         catch (error) {
             this.stats.failedTrades++;
@@ -236,6 +319,7 @@ class ArbitrageBot {
                 error: error instanceof Error ? error.message : error
             });
             this.updateStats();
+            return false;
         }
     }
     /**
@@ -274,13 +358,13 @@ class ArbitrageBot {
         if (!this.wallet.address) {
             throw new Error('Invalid wallet configuration');
         }
-        if (!config_1.config.arbExecutorAddress) {
+        if (!this.botConfig.arbExecutorAddress) {
             throw new Error('ArbExecutor address not configured');
         }
         this.logger.info('Bot setup validated', {
             walletAddress: this.wallet.address,
-            executorAddress: config_1.config.arbExecutorAddress,
-            treasuryAddress: config_1.config.treasuryAddress
+            executorAddress: this.botConfig.arbExecutorAddress,
+            treasuryAddress: this.botConfig.treasuryAddress
         });
     }
     /**
@@ -291,4 +375,3 @@ class ArbitrageBot {
     }
 }
 exports.ArbitrageBot = ArbitrageBot;
-//# sourceMappingURL=ArbitrageBot.js.map

@@ -199,4 +199,3 @@ class SentimentAnalyzer {
     }
 }
 exports.SentimentAnalyzer = SentimentAnalyzer;
-//# sourceMappingURL=SentimentAnalyzer.js.map

@@ -225,4 +225,3 @@ class SimpleOpportunityModel {
     }
 }
 exports.SimpleOpportunityModel = SimpleOpportunityModel;
-//# sourceMappingURL=SimpleOpportunityModel.js.map

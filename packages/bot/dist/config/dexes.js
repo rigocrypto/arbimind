@@ -1,10 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ENABLED_DEXES = exports.DEX_CONFIG = void 0;
-exports.getDexConfig = getDexConfig;
-exports.getEnabledDexes = getEnabledDexes;
-exports.getDexRouter = getDexRouter;
-exports.getDexFee = getDexFee;
+exports.getDexFee = exports.getDexRouter = exports.getEnabledDexes = exports.getDexConfig = exports.ENABLED_DEXES = exports.DEX_CONFIG = void 0;
 exports.DEX_CONFIG = {
     UNISWAP_V2: {
         name: "Uniswap V2",
@@ -59,13 +55,16 @@ function getDexConfig(dexName) {
     }
     return config;
 }
+exports.getDexConfig = getDexConfig;
 function getEnabledDexes() {
     return exports.ENABLED_DEXES;
 }
+exports.getEnabledDexes = getEnabledDexes;
 function getDexRouter(dexName) {
     return getDexConfig(dexName).router;
 }
+exports.getDexRouter = getDexRouter;
 function getDexFee(dexName) {
     return getDexConfig(dexName).fee;
 }
-//# sourceMappingURL=dexes.js.map
+exports.getDexFee = getDexFee;

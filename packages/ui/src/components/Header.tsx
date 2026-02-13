@@ -1,7 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import { Brain, Power, Menu, ChevronDown, Share2 } from 'lucide-react';
+import { Brain, Power, Menu, ChevronDown, Share2, LayoutDashboard, TrendingUp, History, Settings, Wallet, BookOpen, Shield } from 'lucide-react';
+  // Navigation items (from Sidebar)
+  const navItems = [
+    { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
+    { icon: Brain, label: 'AI Strategies', path: '/strategies' },
+    { icon: TrendingUp, label: 'Arbitrage Feed', path: '/feed' },
+    { icon: History, label: 'Trading History', path: '/history' },
+    { icon: Wallet, label: 'Wallet', path: '/wallet' },
+    { icon: Wallet, label: 'Solana Wallet', path: '/solana-wallet' },
+    { icon: Settings, label: 'Settings', path: '/settings' },
+    { icon: Shield, label: 'Admin', path: '/admin' },
+    { icon: BookOpen, label: 'Docs', path: '/docs' },
+  ];
 import { useState, useRef, useEffect } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAccount, useDisconnect } from 'wagmi';
@@ -48,17 +60,8 @@ export function Header({
     <header className="sticky top-0 z-30 bg-dark-800/95 backdrop-blur-sm border-b border-cyan-500/20">
       <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8">
         <div className="flex items-center justify-between h-14 sm:h-16">
-          {/* Left: Logo & Menu */}
+          {/* Left: Logo */}
           <div className="flex items-center space-x-2 sm:space-x-4 min-w-0">
-            <button
-              onClick={onMenuClick}
-              className="lg:hidden p-2 rounded-lg hover:bg-dark-700 transition-colors flex-shrink-0"
-              aria-label="Toggle menu"
-              type="button"
-            >
-              <Menu className="w-5 h-5 text-white" />
-            </button>
-            
             <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
               <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-cyan-500 via-purple-500 to-pink-500 rounded-lg flex items-center justify-center shadow-lg shadow-cyan-500/50 flex-shrink-0">
                 <Brain className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
@@ -72,25 +75,23 @@ export function Header({
             </div>
           </div>
 
-          {/* Center: Pro banner */}
-          {proVariant === 'header-center' && (
-            <div className="hidden lg:flex flex-1 min-w-0 items-center justify-center px-4">
-              <Link
-                href="/pro"
-                className="flex w-full max-w-[420px] xl:max-w-[520px] items-center justify-between gap-2 sm:gap-3 px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500/20 to-blue-500/20 border border-amber-400/40 hover:from-emerald-500/30 hover:to-blue-500/30 transition-all text-sm"
-              >
-                <div className="min-w-0 overflow-hidden">
-                  <span className="font-bold text-white truncate">Pro Arbitrage Unlocked</span>
-                  <span className="hidden sm:inline text-dark-300 text-xs ml-2 truncate">
-                    0.5% tx fee → Auto-bots + premium alerts
-                  </span>
-                </div>
-                <span className="shrink-0 bg-amber-300 text-black px-3 py-1 rounded-lg font-bold text-xs hover:bg-amber-200 transition-colors">
-                  Get Pro $9/mo
-                </span>
-              </Link>
-            </div>
-          )}
+          {/* Center: Navigation */}
+          <nav className="hidden lg:flex flex-1 items-center justify-center space-x-2">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentPath === item.path;
+              return (
+                <Link
+                  key={item.path}
+                  href={item.path}
+                  className={`flex items-center space-x-2 px-3 py-2 rounded-lg font-medium transition-all duration-200 ${isActive ? 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 text-cyan-400' : 'text-dark-300 hover:text-white hover:bg-dark-700/50'}`}
+                >
+                  <Icon className={`w-5 h-5 ${isActive ? 'text-cyan-400' : 'text-dark-400 group-hover:text-cyan-400'}`} />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
 
           {/* Right: Controls */}
           <div className="flex items-center space-x-1.5 sm:space-x-2 lg:space-x-3 flex-shrink-0 min-w-0">
