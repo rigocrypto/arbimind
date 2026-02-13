@@ -429,7 +429,11 @@ export class ArbitrageBot {
     }
 
     if (!this.botConfig.arbExecutorAddress) {
-      throw new Error('ArbExecutor address not configured');
+      if (!this.botConfig.logOnly) {
+        throw new Error('ArbExecutor address not configured');
+      } else {
+        this.logger.warn('⚠️ LOG_ONLY: ArbExecutor address not configured; bot will scan only and not execute trades.');
+      }
     }
 
     this.logger.info('Bot setup validated', {
