@@ -41,6 +41,7 @@ export class ArbitrageBot {
   // last scan timestamp removed (not currently read anywhere)
 
   constructor(deps: ArbitrageBotDependencies = {}) {
+    this.logger = deps.logger ?? new Logger('ArbitrageBot');
     this.botConfig = { ...config, ...deps.config };
     this.provider = deps.provider ?? new ethers.JsonRpcProvider(this.botConfig.ethereumRpcUrl);
     // Only create wallet if privateKey is valid
@@ -50,10 +51,10 @@ export class ArbitrageBot {
       this.botConfig.privateKey.startsWith('0x')
     ) {
       this.wallet = deps.wallet ?? new ethers.Wallet(this.botConfig.privateKey, this.provider);
-      this.logger?.info?.(`✅ Wallet loaded: ${this.wallet.address}`);
+      this.logger.info(`✅ Wallet loaded: ${this.wallet.address}`);
     } else {
       this.wallet = undefined as any;
-      this.logger?.warn?.('⚠️ LOG_ONLY: No valid PRIVATE_KEY, running without wallet.');
+      this.logger.warn('⚠️ LOG_ONLY: No valid PRIVATE_KEY, running without wallet.');
     }
     this.priceService = deps.priceService ?? new PriceService(this.provider);
     this.executionService = deps.executionService ?? new ExecutionService(this.wallet, this.botConfig.arbExecutorAddress);
@@ -68,9 +69,8 @@ export class ArbitrageBot {
       : undefined;
 
     this.aiScoringService = deps.aiScoringService ?? (aiConfig ? new AiScoringService(aiConfig) : undefined);
-  // AI orchestrator initialization deferred until used
-  // this.aiOrchestrator = new AIOrchestrator();
-    this.logger = deps.logger ?? new Logger('ArbitrageBot');
+    // AI orchestrator initialization deferred until used
+    // this.aiOrchestrator = new AIOrchestrator();
     this.tokenPairs = deps.tokenPairs ?? TOKEN_PAIRS;
     
     this.stats = {
