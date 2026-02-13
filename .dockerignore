@@ -7,5 +7,4 @@
 .env*
 logs
 packages/ui
-packages/bot
 packages/contracts
