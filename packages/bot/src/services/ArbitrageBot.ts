@@ -43,7 +43,18 @@ export class ArbitrageBot {
   constructor(deps: ArbitrageBotDependencies = {}) {
     this.botConfig = { ...config, ...deps.config };
     this.provider = deps.provider ?? new ethers.JsonRpcProvider(this.botConfig.ethereumRpcUrl);
-    this.wallet = deps.wallet ?? new ethers.Wallet(this.botConfig.privateKey, this.provider);
+    // Only create wallet if privateKey is valid
+    if (
+      this.botConfig.privateKey &&
+      this.botConfig.privateKey.length === 66 &&
+      this.botConfig.privateKey.startsWith('0x')
+    ) {
+      this.wallet = deps.wallet ?? new ethers.Wallet(this.botConfig.privateKey, this.provider);
+      this.logger?.info?.(`✅ Wallet loaded: ${this.wallet.address}`);
+    } else {
+      this.wallet = undefined as any;
+      this.logger?.warn?.('⚠️ LOG_ONLY: No valid PRIVATE_KEY, running without wallet.');
+    }
     this.priceService = deps.priceService ?? new PriceService(this.provider);
     this.executionService = deps.executionService ?? new ExecutionService(this.wallet, this.botConfig.arbExecutorAddress);
     const aiConfig = this.botConfig.aiPredictUrl

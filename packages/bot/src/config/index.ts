@@ -133,7 +133,7 @@ export function refreshConfig(): void {
 // Validation
 export function validateConfig(): void {
   // Re-read environment variables at validation time (they're set by dotenv.config() at startup)
-  const privateKey = process.env['PRIVATE_KEY'] || '';
+  const privateKey = process.env['PRIVATE_KEY']?.trim() || '';
   const treasuryAddress = process.env['TREASURY_ADDRESS'] || '';
   const ethereumRpcUrl = process.env['ETHEREUM_RPC_URL'] || process.env['ARBITRUM_RPC_URL'] || process.env['POLYGON_RPC_URL'] || '';
   const logOnly = process.env['LOG_ONLY'] === 'true' || (process.env['NETWORK'] || 'mainnet') === 'testnet';
@@ -148,20 +148,23 @@ export function validateConfig(): void {
     if (!privateKey) {
       throw new Error('Missing required configuration: privateKey (set PRIVATE_KEY or LOG_ONLY=true for logging-only mode)');
     }
-    
     if (!treasuryAddress) {
       throw new Error('Missing required configuration: treasuryAddress (set TREASURY_ADDRESS or LOG_ONLY=true)');
     }
-  }
-  
-  // Validate private key format if present
-  if (privateKey && (privateKey.length !== 66 || !privateKey.startsWith('0x'))) {
-    throw new Error('Invalid private key format (must be 66 chars starting with 0x)');
-  }
-  
-  // Validate treasury address format if present
-  if (treasuryAddress && (!treasuryAddress.startsWith('0x') || treasuryAddress.length !== 42)) {
-    throw new Error('Invalid treasury address format (must be 42 chars starting with 0x)');
+    // Validate private key format if present
+    if (privateKey.length !== 66 || !privateKey.startsWith('0x')) {
+      throw new Error('Invalid private key format (must be 66 chars starting with 0x)');
+    }
+    // Validate treasury address format if present
+    if (treasuryAddress && (!treasuryAddress.startsWith('0x') || treasuryAddress.length !== 42)) {
+      throw new Error('Invalid treasury address format (must be 42 chars starting with 0x)');
+    }
+  } else {
+    // LOG_ONLY: warn if key is missing/invalid, but do not throw
+    if (!privateKey || privateKey.length !== 66 || !privateKey.startsWith('0x')) {
+      // eslint-disable-next-line no-console
+      console.warn('⚠️ LOG_ONLY: PRIVATE_KEY missing or invalid, running without wallet.');
+    }
   }
 }
 
