@@ -1,4 +1,3 @@
-import dotenv from 'dotenv';
 import { arbitrum, arbitrumSepolia, mainnet, polygon, polygonAmoy, sepolia } from 'viem/chains';
 import { ALLOWLISTED_TOKENS, TOKEN_PAIRS } from './tokens';
 import { DEX_CONFIG, ENABLED_DEXES } from './dexes';
