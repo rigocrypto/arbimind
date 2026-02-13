@@ -1,6 +1,5 @@
 export const dynamic = 'force-dynamic';
 import { notFound } from 'next/navigation';
-import Link from 'next/link';
 import { DOCS_CONTENT, DOC_PATHS } from '../lib/docsContent';
 import { ChevronLeft, ExternalLink, Pencil } from 'lucide-react';
 

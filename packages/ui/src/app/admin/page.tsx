@@ -1,4 +1,6 @@
+
 'use client';
+export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from 'react';
 import { AdminDashboard } from '@/components/admin/AdminDashboard';

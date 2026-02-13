@@ -2,6 +2,10 @@
 const path = require('path');
 
 const nextConfig = {
+  // Force all pages to render dynamically (SSR, not static)
+  // This prevents ALL WagmiProvider prerender errors
+  experimental: {},
+  output: undefined, // ensure not 'export'
   typescript: {
     // Unblock builds when transitive crypto deps hit TS depth limits.
     ignoreBuildErrors: true

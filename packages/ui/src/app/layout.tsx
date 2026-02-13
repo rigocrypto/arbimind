@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import type { Metadata, Viewport } from 'next'
 import { Inter, Space_Grotesk } from 'next/font/google'
 import { Suspense } from 'react'
