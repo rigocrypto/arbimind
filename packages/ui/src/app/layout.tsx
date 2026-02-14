@@ -3,7 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter, Space_Grotesk } from 'next/font/google'
 import { Suspense } from 'react'
 import './globals.css'
-import { ClientProviders } from '@/providers/ClientProviders'
+import { Providers } from '@/components/Providers'
 import { Footer } from '@/components/Footer'
 import { Header } from '@/components/Header'
 import { MobileBottomBar } from '@/components/Layout/MobileBottomBar'
@@ -43,16 +43,16 @@ export default function RootLayout({
   return (
     <html lang="en" className={`dark ${inter.variable} ${spaceGrotesk.variable}`}>
       <body className={`${inter.className} bg-dark-900 text-white min-h-screen w-full overflow-x-hidden flex flex-col`}>
-        <Header />
-        <main className="flex-1 flex flex-col min-h-0 pt-16 pb-16">
-          <Suspense fallback={<LoadingFallback />}>
-            <ClientProviders>
+        <Providers>
+          <Header />
+          <main className="flex-1 flex flex-col min-h-0 pt-16 pb-16">
+            <Suspense fallback={<LoadingFallback />}>
               {children}
-            </ClientProviders>
-          </Suspense>
-        </main>
-        <MobileBottomBar />
-        <Footer />
+            </Suspense>
+          </main>
+          <MobileBottomBar />
+          <Footer />
+        </Providers>
       </body>
     </html>
   )

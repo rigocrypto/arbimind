@@ -270,7 +270,7 @@ importers:
         specifier: ^1.98.4
         version: 1.98.4(bufferutil@4.1.0)(typescript@5.3.3)(utf-8-validate@5.0.10)
       '@tanstack/react-query':
-        specifier: ^5.90.9
+        specifier: ^5.90.16
         version: 5.90.16(react@18.2.0)
       '@tanstack/react-table':
         specifier: ^8.21.3
@@ -312,10 +312,10 @@ importers:
         specifier: ^2.0.0
         version: 2.6.0
       viem:
-        specifier: ^2.39.0
+        specifier: ^2.45.2
         version: 2.45.2(bufferutil@4.1.0)(typescript@5.3.3)(utf-8-validate@5.0.10)(zod@3.25.76)
       wagmi:
-        specifier: ^2.19.4
+        specifier: ^2.19.5
         version: 2.19.5(@react-native-async-storage/async-storage@1.24.0(react-native@0.83.1(@babel/core@7.29.0)(@types/react@18.3.27)(bufferutil@4.1.0)(react@18.2.0)(utf-8-validate@5.0.10)))(@tanstack/query-core@5.90.16)(@tanstack/react-query@5.90.16(react@18.2.0))(@types/react@18.3.27)(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(react-native@0.83.1(@babel/core@7.29.0)(@types/react@18.3.27)(bufferutil@4.1.0)(react@18.2.0)(utf-8-validate@5.0.10))(react@18.2.0)(typescript@5.3.3)(utf-8-validate@5.0.10)(viem@2.45.2(bufferutil@4.1.0)(typescript@5.3.3)(utf-8-validate@5.0.10)(zod@3.25.76))(zod@3.25.76)
     devDependencies:
       '@next/swc-wasm-nodejs':
