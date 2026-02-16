@@ -172,7 +172,6 @@ export default function HomePage() {
             </div>
             <AnalystCharts
               strategies={strategies}
-              pnl24h={safeMetrics.pnl24h}
               timestamps={safeMetrics.timestamp}
               totalTrades={safeMetrics.totalTrades}
             />
@@ -190,10 +189,16 @@ export default function HomePage() {
               <div className="flex flex-col gap-2">
                 <button
                   type="button"
-                  onClick={() => handleGuardedAction(async () => {
-                    const ok = await singleScan();
-                    ok ? toast.success('Single scan started') : toast.error('Scan failed');
-                  })}
+                  onClick={() =>
+                    handleGuardedAction(async () => {
+                      const ok = await singleScan();
+                      if (ok) {
+                        toast.success('Single scan started');
+                      } else {
+                        toast.error('Scan failed');
+                      }
+                    })
+                  }
                   disabled={!isConnected}
                   title={!isConnected ? 'Connect wallet first' : undefined}
                   className="w-full px-4 py-2.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 text-cyan-400 transition-all duration-200 font-medium text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -227,7 +232,11 @@ export default function HomePage() {
                       return;
                     }
                     const ok = await reloadPrices();
-                    ok ? toast.success('Prices refreshed') : toast.error('Reload failed');
+                    if (ok) {
+                      toast.success('Prices refreshed');
+                    } else {
+                      toast.error('Reload failed');
+                    }
                   }}
                   disabled={!isConnected}
                   title={!isConnected ? 'Connect wallet first' : undefined}
@@ -253,16 +262,18 @@ export default function HomePage() {
                 Loading strategies...
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                {strategies.slice(0, 4).map((strategy) => (
-                  <StrategyCard
-                    key={strategy.id}
-                    strategy={strategy}
-                    engineActiveStrategy={activeStrategy}
-                    onRun={handleRunStrategy}
-                    onToggleAuto={handleToggleAuto}
-                  />
-                ))}
+              <div className="w-full flex justify-center">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 justify-items-center">
+                  {strategies.slice(0, 4).map((strategy) => (
+                    <StrategyCard
+                      key={strategy.id}
+                      strategy={strategy}
+                      engineActiveStrategy={activeStrategy}
+                      onRun={handleRunStrategy}
+                      onToggleAuto={handleToggleAuto}
+                    />
+                  ))}
+                </div>
               </div>
             )}
           </div>

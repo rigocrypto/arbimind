@@ -6,17 +6,7 @@ import { DashboardLayout } from '@/components/Layout/DashboardLayout';
 import { StrategyCard } from '@/components/StrategyCard';
 import { useStrategies } from '@/hooks/useArbiApi';
 import { useEngineContext } from '@/contexts/EngineContext';
-import {
-  Brain,
-  Plus,
-  TrendingUp,
-  Activity,
-  HelpCircle,
-  ChevronDown,
-  Search,
-  Zap,
-  ArrowRight,
-} from 'lucide-react';
+import { Brain, Plus, Activity, HelpCircle, ChevronDown, Search, Zap, ArrowRight } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 // Enhanced mock data per prompt spec
@@ -247,24 +237,26 @@ export default function StrategiesPage() {
             </button>
           </motion.div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-            {displayStrategies.map((strategy, i) => (
-              <motion.div
-                key={strategy.id}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.05 * i }}
-              >
-                <StrategyCard
-                  strategy={strategy}
-                  onRun={handleRun}
-                  onToggleAuto={handleToggleAuto}
-                  engineActiveStrategy={activeStrategy}
-                  sparklineData={getSparkline(strategy.id, strategy.lastPnl)}
-                  riskLevel={STRATEGY_OVERRIDES[strategy.id]?.riskLevel}
-                />
-              </motion.div>
-            ))}
+          <div className="flex justify-center">
+            <div className="inline-grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+              {displayStrategies.map((strategy, i) => (
+                <motion.div
+                  key={strategy.id}
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.05 * i }}
+                >
+                  <StrategyCard
+                    strategy={strategy}
+                    onRun={handleRun}
+                    onToggleAuto={handleToggleAuto}
+                    engineActiveStrategy={activeStrategy}
+                    sparklineData={getSparkline(strategy.id, strategy.lastPnl)}
+                    riskLevel={STRATEGY_OVERRIDES[strategy.id]?.riskLevel}
+                  />
+                </motion.div>
+              ))}
+            </div>
           </div>
         )}
 

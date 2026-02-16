@@ -1,6 +1,6 @@
 'use client';
 
-import { Brain, Power, Wallet, Activity } from 'lucide-react';
+import { Brain, Power, Wallet } from 'lucide-react';
 
 interface DashboardHeaderProps {
   isRunning: boolean;

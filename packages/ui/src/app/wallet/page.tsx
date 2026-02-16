@@ -5,7 +5,6 @@ export const dynamic = 'force-dynamic';
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAccount, useBalance, useEnsName } from 'wagmi';
 import {
   Wallet,
@@ -26,6 +25,7 @@ import { ArbAccountCard, PerformanceCharts, ActivityTable } from '@/components/p
 import { usePortfolioSummary, usePortfolioTimeseries } from '@/hooks/usePortfolio';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import Image from 'next/image';
 
 const USDC_BY_CHAIN: Record<number, `0x${string}`> = {
   1: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' as const,
@@ -132,42 +132,106 @@ export default function WalletPage() {
             Solana →
           </Link>
         </div>
-        {/* Header */}
+        {/* Hero section with animated background and feature cards */}
         <motion.div
-          initial={{ opacity: 0, y: -8 }}
+          initial={{ opacity: 0, y: -16 }}
           animate={{ opacity: 1, y: 0 }}
-          className="glass-card p-4 sm:p-6 lg:p-8"
+          className="relative overflow-visible rounded-2xl bg-gradient-to-br from-[#191a2a] via-[#1a1b2e] to-[#23244a] shadow-xl px-6 py-10 sm:py-14 sm:px-12 mb-4"
         >
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            <div>
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold mb-2 bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-                Wallet Dashboard
+          {/* Animated blobs */}
+          <div className="absolute inset-0 pointer-events-none select-none z-0">
+            <div className="absolute -top-10 -left-10 w-40 h-40 bg-gradient-to-br from-cyan-400/30 to-purple-400/20 rounded-full blur-2xl opacity-60 animate-pulse" />
+            <div className="absolute -bottom-12 -right-12 w-56 h-56 bg-gradient-to-br from-pink-500/20 to-purple-400/10 rounded-full blur-2xl opacity-50 animate-pulse" />
+          </div>
+          <div className="relative z-10 flex flex-col lg:flex-row items-center gap-6 lg:gap-12">
+            <div className="flex flex-col items-center lg:items-start gap-3 flex-1">
+              <h1 className="text-3xl sm:text-4xl font-extrabold bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-1 text-center lg:text-left">
+                EVM Wallet Dashboard
               </h1>
-              <p className="text-dark-300 text-sm sm:text-base">
+              <p className="text-dark-200 text-base sm:text-lg max-w-md text-center lg:text-left">
                 Manage your connected wallet, view balances, and track arbitrage activity.
               </p>
-            </div>
-            {!isConnected ? (
-              <div className="flex-shrink-0">
-                <ConnectButton label="Connect Wallet" />
+              {/* Feature cards */}
+              <div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
+                {[{
+                  icon: <Banknote className="w-6 h-6 text-cyan-400" />, title: 'Multi-chain ready', desc: 'Switch between Ethereum, Arbitrum, Optimism, and Base instantly.'
+                }, {
+                  icon: <TrendingUp className="w-6 h-6 text-purple-400" />, title: 'Fast execution', desc: 'Lightning-fast arbitrage and swaps with optimized routing.'
+                }, {
+                  icon: <DollarSign className="w-6 h-6 text-green-400" />, title: 'Fee-aware routing', desc: 'Smart fee detection for best net returns.'
+                }].map((card) => (
+                  <motion.div
+                    key={card.title}
+                    whileHover={{ scale: 1.06, y: -6, boxShadow: '0 8px 32px 0 rgba(80,200,255,0.18)' }}
+                    whileTap={{ scale: 0.98 }}
+                    tabIndex={0}
+                    className="p-5 rounded-xl bg-dark-800/60 border border-dark-700 shadow-lg transition-all cursor-pointer group focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                    style={{ perspective: 600 }}
+                    onMouseMove={e => {
+                      const card = e.currentTarget;
+                      const rect = card.getBoundingClientRect();
+                      const x = e.clientX - rect.left;
+                      const y = e.clientY - rect.top;
+                      const centerX = rect.width / 2;
+                      const centerY = rect.height / 2;
+                      const rotateX = ((y - centerY) / centerY) * 8;
+                      const rotateY = ((x - centerX) / centerX) * -8;
+                      card.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(1.06)`;
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.transform = '';
+                    }}
+                    onFocus={e => {
+                      e.currentTarget.style.boxShadow = '0 8px 32px 0 rgba(80,200,255,0.18)';
+                    }}
+                    onBlur={e => {
+                      e.currentTarget.style.boxShadow = '';
+                    }}
+                  >
+                    <div className="flex items-center gap-3 mb-2">{card.icon}<span className="text-lg font-bold text-white">{card.title}</span></div>
+                    <div className="text-sm text-dark-300">{card.desc}</div>
+                  </motion.div>
+                ))}
               </div>
+            </div>
+            <div className="flex flex-1 items-center justify-center min-h-[160px]">
+              <Image
+                src="/evm/ethereum-logo.svg"
+                alt="Ethereum Logo"
+                width={160}
+                height={160}
+                className="rounded-full shadow-2xl border-2 border-cyan-400/40 object-contain"
+                priority
+              />
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row items-center gap-3 mt-8 justify-center">
+            {!isConnected ? (
+                <></>
             ) : (
-              <div className="flex items-center gap-2">
+              <>
                 <button
                   type="button"
                   onClick={() => setChainSwitcherOpen(true)}
-                  className="text-sm text-dark-400 hover:text-cyan-400 transition px-2 py-1 rounded-lg hover:bg-dark-700/50"
-                  title="Switch network"
+                  className="px-6 py-2 rounded-lg bg-gradient-to-r from-cyan-500/80 to-purple-500/80 text-white font-semibold shadow-md hover:from-cyan-500 hover:to-purple-500 transition"
                 >
-                  {chain?.name || 'Unknown'}
+                  Switch Network
                 </button>
-                <ConnectButton
-                  chainStatus="icon"
-                  accountStatus="address"
-                  showBalance={false}
-                />
-              </div>
+                {explorerUrl && address && (
+                  <a
+                    href={`${explorerUrl}/address/${address}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-6 py-2 rounded-lg bg-gradient-to-r from-purple-500/80 to-pink-500/80 text-white font-semibold shadow-md hover:from-purple-500 hover:to-pink-500 transition"
+                  >
+                    View on Explorer
+                  </a>
+                )}
+              </>
             )}
+          </div>
+          <div className="mt-4 text-xs text-dark-400 text-center">
+            Solana is available via network switching. <Link href="/solana-wallet" className="text-purple-400 underline hover:text-cyan-400">Try Solana Wallet</Link>
           </div>
         </motion.div>
 
@@ -180,7 +244,6 @@ export default function WalletPage() {
             <Wallet className="w-16 h-16 mx-auto mb-4 text-dark-400" />
             <h2 className="text-xl font-bold text-white mb-2">No Wallet Connected</h2>
             <p className="text-dark-400 mb-6">Connect your wallet to view balances and activity.</p>
-            <ConnectButton label="Connect Wallet" />
           </motion.div>
         ) : (
           <>

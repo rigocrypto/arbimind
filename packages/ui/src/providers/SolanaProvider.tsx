@@ -3,7 +3,6 @@
 import { useCallback, useMemo } from 'react';
 import { ConnectionProvider, WalletProvider as SolanaWalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
-import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
 import { clusterApiUrl } from '@solana/web3.js';
 import toast from 'react-hot-toast';
 const CLUSTERS = ['devnet', 'mainnet-beta', 'testnet'] as const;
@@ -17,11 +16,8 @@ export function SolanaProvider({ children }: { children: React.ReactNode }) {
     if (CUSTOM_RPC) return CUSTOM_RPC;
     return clusterApiUrl(CLUSTER);
   }, []);
-  // Use explicit adapters to avoid Wallet Standard injection issues on some Windows setups.
-  const wallets = useMemo(
-    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
-    []
-  );
+  // No explicit adapters: rely on Wallet Standard (Phantom, Solflare, etc. auto-register)
+  const wallets = useMemo(() => [], []);
 
   const onError = useCallback((err: Error) => {
     const msg = err?.message ?? '';

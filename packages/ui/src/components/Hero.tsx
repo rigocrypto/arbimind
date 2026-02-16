@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion';
 import { ArrowRight, BookOpen } from 'lucide-react';
 import Link from 'next/link';
-import { float, fadeIn } from '@/lib/animations';
+import { fadeIn } from '@/lib/animations';
 
 export function Hero() {
   return (

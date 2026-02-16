@@ -1,11 +1,15 @@
 export const dynamic = 'force-dynamic';
+
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { DOCS_CONTENT, DOC_PATHS } from '../lib/docsContent';
+import type { ReactNode } from 'react';
 import { ChevronLeft, ExternalLink, Pencil } from 'lucide-react';
+
+import { DOCS_CONTENT, DOC_PATHS } from '../lib/docsContent';
 
 function DocContentSection({ heading, content }: { heading: string; content: string }) {
   const parts = content.split(/(```[\s\S]*?```)/g);
-  const elements: React.ReactNode[] = [];
+  const elements: ReactNode[] = [];
   let key = 0;
   for (const part of parts) {
     if (part.startsWith('```') && part.endsWith('```')) {
@@ -17,12 +21,12 @@ function DocContentSection({ heading, content }: { heading: string; content: str
           key={key++}
           className="overflow-x-auto p-4 rounded-lg bg-dark-800 border border-dark-600 text-sm font-mono text-dark-200"
         >
-          <code>{code}</code>
+          <code data-language={lang || undefined}>{code}</code>
         </pre>
       );
     } else {
       const lines = part.split('\n');
-      const nodes: React.ReactNode[] = [];
+      const nodes: ReactNode[] = [];
       let inTable = false;
       let tableRows: string[] = [];
       const flushTable = () => {
@@ -100,9 +104,59 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
     notFound();
   }
 
+  const editUrl =
+    'https://github.com/rigocrypto/ArbiMind/blob/main/packages/ui/src/app/docs/lib/docsContent.ts';
+
   return (
-    <div className="max-w-3xl mx-auto p-8 space-y-8">
-      <div>Docs page content goes here.</div>
+    <div className="max-w-3xl mx-auto px-6 py-8 space-y-8">
+      <Link
+        href="/docs"
+        className="inline-flex items-center gap-2 text-sm text-cyan-400 hover:text-cyan-300 transition"
+      >
+        <ChevronLeft className="w-4 h-4" />
+        Back to docs index
+      </Link>
+
+      <header className="space-y-3">
+        <h1 className="text-3xl font-bold text-white">{doc.title}</h1>
+        <p className="text-dark-300 text-sm sm:text-base">{doc.description}</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <a
+            href={editUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-xs text-dark-300 hover:text-cyan-300 transition"
+          >
+            <Pencil className="w-4 h-4" />
+            Edit docsContent.ts
+          </a>
+        </div>
+      </header>
+
+      <div className="space-y-6">
+        {doc.sections.map((section) => (
+          <DocContentSection key={section.heading} heading={section.heading} content={section.content} />
+        ))}
+      </div>
+
+      {doc.related?.length ? (
+        <aside className="border-t border-dark-700 pt-4">
+          <h2 className="text-sm font-semibold text-white mb-3">Related</h2>
+          <ul className="space-y-2">
+            {doc.related.map((rel) => (
+              <li key={rel}>
+                <Link
+                  href={`/docs/${rel}`}
+                  className="inline-flex items-center gap-2 text-sm text-cyan-400 hover:text-cyan-300 transition"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  {DOCS_CONTENT[rel]?.title ?? rel}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      ) : null}
     </div>
   );
 }

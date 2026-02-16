@@ -1,6 +1,5 @@
 "use client";
 
-import React from 'react';
 import { motion } from 'framer-motion';
 import { MetricCard } from '@/components/MetricCard';
 import { SystemStatus } from '@/components/SystemStatus';
@@ -9,14 +8,13 @@ import { OpportunityFeed } from '@/components/OpportunityFeed';
 import { StrategyCard } from '@/components/StrategyCard';
 import { useMetrics, useStrategies, useOpportunities } from '@/hooks/useArbiApi';
 import { formatETH, formatUSD, formatPercent } from '@/utils/format';
-import { DollarSign, TrendingUp, Activity, Zap } from 'lucide-react';
 
 const fadeIn = { hidden: { opacity: 0, y: 8 }, enter: { opacity: 1, y: 0 } };
 
 export function HomeDashboard() {
-  const { metrics, loading: metricsLoading } = useMetrics();
+  const { metrics } = useMetrics();
   const { strategies, loading: strategiesLoading } = useStrategies();
-  const { opportunities, loading: opportunitiesLoading } = useOpportunities();
+  const { opportunities } = useOpportunities();
 
   const safeMetrics = metrics || {
     profitEth: 0,
@@ -70,7 +68,7 @@ export function HomeDashboard() {
             <div className="text-sm text-dark-400">Realtime · last 24h</div>
           </div>
           <div className="h-[320px]">
-            <PNLChart data={safeMetrics.pnl24h} timestamps={safeMetrics.timestamp} height={320} />
+            <PNLChart data={safeMetrics.pnl24h} timestamps={safeMetrics.timestamp} />
           </div>
         </motion.div>
 

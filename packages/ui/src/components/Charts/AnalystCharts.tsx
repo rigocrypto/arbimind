@@ -20,12 +20,11 @@ const COLORS = ['#06b6d4', '#8b5cf6', '#22c55e', '#f59e0b'];
 
 interface AnalystChartsProps {
   strategies: Strategy[];
-  pnl24h: number[];
   timestamps: number[];
   totalTrades: number;
 }
 
-export function AnalystCharts({ strategies, pnl24h, timestamps, totalTrades }: AnalystChartsProps) {
+export function AnalystCharts({ strategies, timestamps, totalTrades }: AnalystChartsProps) {
   const strategyData = useMemo(() => {
     return strategies.slice(0, 4).map((s) => ({
       name: s.name,

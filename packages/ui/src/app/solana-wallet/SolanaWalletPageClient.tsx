@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { VersionedTransaction } from '@solana/web3.js';
 import Link from 'next/link';
@@ -25,7 +25,6 @@ export default function SolanaWalletPageClient() {
   const address = publicKey?.toBase58();
   const { data: portfolio, isLoading: portfolioLoading, isError: portfolioError, refetch: refetchPortfolio } = usePortfolioSummary('solana', address);
   const { data: timeseries, isLoading: timeseriesLoading } = usePortfolioTimeseries('solana', address, '30d');
-  const solscanTxUrl = (sig: string) => `${SOLSCAN_BASE}/tx/${sig}${SOLSCAN_TX_SUFFIX}`;
 
   // Transfer form state
   const [transferDestination, setTransferDestination] = useState<'arb' | 'external'>('arb');
@@ -187,23 +186,51 @@ export default function SolanaWalletPageClient() {
           <span className="text-sm font-medium text-cyan-400">Solana</span>
         </div>
 
-        {/* Header */}
+        {/* Hero Section with Solana Logo and Parallax */}
         <motion.div
-          initial={{ opacity: 0, y: -8 }}
+          initial={{ opacity: 0, y: -16 }}
           animate={{ opacity: 1, y: 0 }}
-          className="glass-card p-4 sm:p-6 lg:p-8 overflow-visible"
+          className="relative overflow-visible rounded-2xl bg-gradient-to-br from-[#191a2a] via-[#1a1b2e] to-[#23244a] shadow-xl px-6 py-10 sm:py-14 sm:px-12 mb-4"
         >
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold mb-2 bg-gradient-to-r from-purple-400 via-pink-400 to-cyan-400 bg-clip-text text-transparent">
+          {/* Parallax background shapes */}
+          <div className="absolute inset-0 pointer-events-none select-none">
+            <div className="absolute -top-10 -left-10 w-40 h-40 bg-gradient-to-br from-purple-500/30 to-cyan-400/20 rounded-full blur-2xl opacity-60 animate-pulse" />
+            <div className="absolute -bottom-12 -right-12 w-56 h-56 bg-gradient-to-br from-pink-500/20 to-purple-400/10 rounded-full blur-2xl opacity-50 animate-pulse" />
+          </div>
+          <div className="relative z-10 flex flex-col lg:flex-row items-center gap-6 lg:gap-12">
+            <div className="flex flex-col items-center lg:items-start gap-3 flex-1">
+              <h1 className="text-3xl sm:text-4xl font-extrabold bg-gradient-to-r from-purple-400 via-pink-400 to-cyan-400 bg-clip-text text-transparent mb-1 text-center lg:text-left">
                 Solana Arbitrage Wallet
               </h1>
-              <p className="text-dark-300 text-sm sm:text-base">
-                Connect Phantom or Solflare to swap and transfer on Solana Devnet.
+              <p className="text-dark-200 text-base sm:text-lg max-w-md text-center lg:text-left">
+                Premium Solana experience. Connect Phantom or Solflare to swap, transfer, and track your portfolio. Powered by ArbiMind.
               </p>
+              <div className="flex flex-wrap gap-2 mt-2 justify-center lg:justify-start">
+                <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-gradient-to-r from-purple-600/80 to-pink-500/80 text-xs font-semibold text-white shadow-sm">
+                  <Wallet className="w-4 h-4" /> Wallet Connect
+                </span>
+                <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-gradient-to-r from-cyan-500/80 to-blue-400/80 text-xs font-semibold text-white shadow-sm">
+                  <ArrowRightLeft className="w-4 h-4" /> Instant Swaps
+                </span>
+                <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-gradient-to-r from-green-400/80 to-cyan-400/80 text-xs font-semibold text-white shadow-sm">
+                  <Send className="w-4 h-4" /> Fast Transfers
+                </span>
+              </div>
             </div>
-            <div className="flex items-center gap-3 overflow-visible">
-              <WalletMultiButton className="!bg-gradient-to-r !from-purple-500 !to-pink-500 !rounded-lg !font-medium" />
+            <div className="flex flex-1 items-center justify-center min-h-[160px]">
+              <picture>
+                <source srcSet="/solana/solana-logo.webp" type="image/webp" />
+                <source srcSet="/solana/solana-logo.png" type="image/png" />
+                <source srcSet="/solana/solana-logo.jpg" type="image/jpeg" />
+                <Image src="/solana/solana-logo.png" alt="Solana Logo" width={200} height={200} className="rounded-full shadow-2xl border-2 border-purple-500/40 object-contain" priority />
+              </picture>
+              {/* Only show connected state here, remove extra connect button */}
+              {connected && address && (
+                <div className="rounded-xl bg-dark-900/80 border border-cyan-500/30 px-6 py-4 flex flex-col items-center gap-2 shadow-md mt-4">
+                  <span className="text-xs text-dark-400">Connected as</span>
+                  <span className="font-mono text-cyan-300 text-sm break-all">{address}</span>
+                </div>
+              )}
             </div>
           </div>
         </motion.div>
@@ -212,12 +239,12 @@ export default function SolanaWalletPageClient() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="glass-card p-8 sm:p-12 text-center overflow-visible"
+            className="glass-card p-8 sm:p-12 text-center overflow-visible mt-6"
           >
             <Wallet className="w-16 h-16 mx-auto mb-4 text-dark-400" />
-            <h2 className="text-xl font-bold text-white mb-2">Connect Solana Wallet</h2>
-            <p className="text-dark-400 mb-6">
-              Connect Phantom or Solflare to start. Use Devnet for testing (solfaucet.com).
+            <h2 className="text-xl font-bold text-white mb-2">Ready to Experience Solana Like Never Before?</h2>
+            <p className="text-dark-400 mb-6 text-lg font-medium">
+              🚀 Dive into lightning-fast swaps, instant transfers, and real-time portfolio analytics. Connect your wallet and be among the first to try the next-gen Solana trading experience—now live on ArbiMind!
             </p>
             {wallets.length === 0 && (
               <div className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-left text-sm text-amber-200">
@@ -232,9 +259,7 @@ export default function SolanaWalletPageClient() {
                 </div>
               </div>
             )}
-            <div className="overflow-visible">
-              <WalletMultiButton className="!bg-gradient-to-r !from-purple-500 !to-pink-500 !rounded-lg !font-medium !inline-flex" />
-            </div>
+            {/* Connect button removed, use only the one in the header */}
           </motion.div>
         ) : (
           <>

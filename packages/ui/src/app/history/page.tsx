@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
-import { History, TrendingUp, TrendingDown, Clock, ExternalLink, Search } from 'lucide-react';
+import { History, TrendingUp, TrendingDown, ExternalLink, Search } from 'lucide-react';
 import { formatETH, formatUSD } from '@/utils/format';
 import { useState } from 'react';
 

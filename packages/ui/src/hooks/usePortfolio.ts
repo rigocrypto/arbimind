@@ -1,4 +1,10 @@
-'use client';
+// Custom error type for portfolio errors
+interface PortfolioError extends Error {
+  status?: number;
+  response?: unknown;
+}
+// 'use client';
+// Next.js client directive (should be at top, but TypeScript expects no stray expressions)
 
 import { useQuery } from '@tanstack/react-query';
 import { API_BASE } from '@/lib/apiConfig';
@@ -52,13 +58,17 @@ export function usePortfolioSummary(chain: PortfolioChain | null, address: strin
       const res = await fetch(url);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || res.statusText || 'Portfolio fetch failed');
+        // Attach status for retry logic
+        const error: PortfolioError = new Error(err.error || res.statusText || 'Portfolio fetch failed');
+        error.status = res.status;
+        throw error;
       }
       return res.json();
     },
     enabled: !!(chain && address),
     refetchInterval: REFETCH_INTERVAL_MS,
     staleTime: 15_000,
+    retry: 0,
   });
 }
 
@@ -78,12 +88,15 @@ export function usePortfolioTimeseries(
       const res = await fetch(url);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || res.statusText || 'Timeseries fetch failed');
+        const error: PortfolioError = new Error(err.error || res.statusText || 'Timeseries fetch failed');
+        error.status = res.status;
+        throw error;
       }
       return res.json();
     },
     enabled: !!(chain && address),
     refetchInterval: REFETCH_INTERVAL_MS,
     staleTime: 30_000,
+    retry: 0,
   });
 }

@@ -33,10 +33,9 @@ const formatTime = (ts: number) => {
 interface PNLChartProps {
   data: number[];
   timestamps: number[];
-  height?: number;
 }
 
-export function PNLChart({ data, timestamps, height }: PNLChartProps) {
+export function PNLChart({ data, timestamps }: PNLChartProps) {
   const chartData = useMemo(() => {
     if (data.length && timestamps.length && data.length === timestamps.length) {
       const start = data[0] ?? 0;

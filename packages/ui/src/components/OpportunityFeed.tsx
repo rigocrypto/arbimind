@@ -22,7 +22,7 @@ function RelativeTime({ timestamp }: { timestamp: number | string | Date }) {
 }
 
 export function OpportunityFeed({ opportunities, onExecute }: OpportunityFeedProps) {
-  const { execute, loading: executing } = useExecute();
+  const { execute } = useExecute();
   const { isConnected } = useAccount();
   const { checkBalance } = useBalanceGuard();
   const [executingId, setExecutingId] = useState<string | null>(null);

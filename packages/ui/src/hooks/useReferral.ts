@@ -11,7 +11,7 @@ const BASE_URL = typeof window !== 'undefined'
 const REF_STORAGE_KEY = 'arbimind_ref';
 
 export function useReferral() {
-  const { address, isConnected } = useAccount();
+  const { address } = useAccount();
   const [earnings, setEarnings] = useState(0);
 
   const refLink = address ? `${BASE_URL}/?ref=${address}` : '';

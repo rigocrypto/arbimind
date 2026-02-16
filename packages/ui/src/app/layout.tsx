@@ -6,7 +6,9 @@ import './globals.css'
 import { Providers } from '@/components/Providers'
 import { Footer } from '@/components/Footer'
 import { Header } from '@/components/Header'
+import { PromotionBanner } from '@/components/PromotionBanner'
 import { MobileBottomBar } from '@/components/Layout/MobileBottomBar'
+import ClientOnly from '@/components/ClientOnly';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-space-grotesk' })
@@ -43,16 +45,37 @@ export default function RootLayout({
   return (
     <html lang="en" className={`dark ${inter.variable} ${spaceGrotesk.variable}`}>
       <body className={`${inter.className} bg-dark-900 text-white min-h-screen w-full overflow-x-hidden flex flex-col`}>
-        <Providers>
-          <Header />
-          <main className="flex-1 flex flex-col min-h-0 pt-16 pb-16">
-            <Suspense fallback={<LoadingFallback />}>
-              {children}
-            </Suspense>
-          </main>
-          <MobileBottomBar />
-          <Footer />
-        </Providers>
+        {/* Global Video Background + Overlay */}
+        <div className="fixed inset-0 w-full h-full z-[-2] pointer-events-none">
+          <video
+            autoPlay
+            loop
+            muted
+            playsInline
+            className="w-full h-full object-cover brightness-[0.35]"
+            poster="/background-image.jpg"
+            id="global-bg-video"
+          >
+            <source src="/background-image.mp4" type="video/mp4" />
+            Your browser does not support the video tag.
+          </video>
+          <div className="absolute inset-0 bg-black/60" />
+        </div>
+            <ClientOnly>
+              <Providers>
+                <PromotionBanner />
+                <div className="relative z-20">
+                  <Header />
+                </div>
+                <main className="flex-1 flex flex-col min-h-0 pt-16 pb-16 relative z-10">
+                  <Suspense fallback={<LoadingFallback />}>
+                    {children}
+                  </Suspense>
+                </main>
+                <MobileBottomBar />
+                <Footer />
+              </Providers>
+            </ClientOnly>
       </body>
     </html>
   )
