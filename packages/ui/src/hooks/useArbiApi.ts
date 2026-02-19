@@ -65,6 +65,49 @@ const mockHealth: HealthStatus = {
   uptime: 86400,
 };
 
+function normalizeHealth(raw: unknown): HealthStatus {
+  if (!raw || typeof raw !== 'object') return mockHealth;
+
+  const value = raw as Record<string, unknown>;
+  const rawStatus = typeof value.status === 'string' ? value.status.toLowerCase() : '';
+  const message = typeof value.message === 'string' ? value.message : '';
+  const uptime = typeof value.uptime === 'number' ? value.uptime : undefined;
+
+  if (rawStatus === 'ok' || rawStatus === 'degraded' || rawStatus === 'down') {
+    return {
+      status: rawStatus,
+      message: message || (rawStatus === 'ok' ? 'All systems operational' : 'System status reported'),
+      ...(uptime !== undefined ? { uptime } : {}),
+    };
+  }
+
+  if (rawStatus === 'healthy') {
+    return {
+      status: 'ok',
+      message: message || 'All systems operational',
+      ...(uptime !== undefined ? { uptime } : {}),
+    };
+  }
+
+  if (rawStatus === 'unhealthy' || rawStatus === 'not_ready' || value.success === false) {
+    return {
+      status: 'down',
+      message: message || 'Service unavailable',
+      ...(uptime !== undefined ? { uptime } : {}),
+    };
+  }
+
+  if (value.success === true) {
+    return {
+      status: 'ok',
+      message: message || 'All systems operational',
+      ...(uptime !== undefined ? { uptime } : {}),
+    };
+  }
+
+  return mockHealth;
+}
+
 const mockMetrics: Metrics = {
   profitEth: 2.456,
   profitUsd: 5432.12,
@@ -197,7 +240,7 @@ export function useHealth() {
       
       if (!isMounted) return;
       
-      setHealth(data);
+      setHealth(normalizeHealth(data));
       setLoading(false);
 
       // Clear any existing intervals/timeouts
