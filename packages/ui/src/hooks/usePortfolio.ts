@@ -3,6 +3,14 @@ interface PortfolioError extends Error {
   status?: number;
   response?: unknown;
 }
+
+function getPortfolioRefetchInterval(error: unknown): number | false {
+  if (typeof error === 'object' && error && 'status' in error) {
+    const status = (error as PortfolioError).status;
+    if (status === 503) return false;
+  }
+  return REFETCH_INTERVAL_MS;
+}
 // 'use client';
 // Next.js client directive (should be at top, but TypeScript expects no stray expressions)
 
@@ -66,7 +74,7 @@ export function usePortfolioSummary(chain: PortfolioChain | null, address: strin
       return res.json();
     },
     enabled: !!(chain && address),
-    refetchInterval: REFETCH_INTERVAL_MS,
+    refetchInterval: (query) => getPortfolioRefetchInterval(query.state.error),
     staleTime: 15_000,
     retry: 0,
   });
@@ -95,7 +103,7 @@ export function usePortfolioTimeseries(
       return res.json();
     },
     enabled: !!(chain && address),
-    refetchInterval: REFETCH_INTERVAL_MS,
+    refetchInterval: (query) => getPortfolioRefetchInterval(query.state.error),
     staleTime: 30_000,
     retry: 0,
   });
