@@ -17,7 +17,6 @@ jobs:
       - name: Validate lockfile (frozen)
         run: pnpm -w install --frozen-lockfile
       - name: Deploy UI to Vercel (CLI)
-        working-directory: packages/ui
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN || secrets.VERCEL_AUTH_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID || secrets.ORG_ID }}
