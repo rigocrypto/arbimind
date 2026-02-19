@@ -8,6 +8,7 @@ console.log('DEBUG: .env loaded');
 import { ethers } from 'ethers';
 import { ArbitrageBot } from './services/ArbitrageBot';
 import { validateConfig, refreshConfig, config } from './config';
+import { getIdentitySource, shortAddress } from './config/identity';
 import { Logger } from './utils/Logger';
 import { SolanaScanner } from './solana/Scanner';
 
@@ -15,12 +16,6 @@ const logger = new Logger('Main');
 
 function isValidPrivateKey(value: string): boolean {
   return value.length === 66 && value.startsWith('0x');
-}
-
-function shortenAddress(address: string): string {
-  if (!address) return '';
-  if (address.length <= 10) return address;
-  return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
 
 async function main(): Promise<void> {
@@ -44,17 +39,16 @@ async function main(): Promise<void> {
     const privateKey = config.privateKey?.trim() || '';
     const walletAddressEnv = config.walletAddress?.trim() || '';
     const hasPrivateKey = isValidPrivateKey(privateKey);
-    const identitySource = hasPrivateKey
-      ? 'private_key'
-      : walletAddressEnv
-        ? 'wallet_address_env'
-        : 'none';
+    const identitySource = getIdentitySource({
+      hasWallet: hasPrivateKey,
+      walletAddress: walletAddressEnv,
+    });
     const effectiveAddress = hasPrivateKey
       ? new ethers.Wallet(privateKey).address
       : walletAddressEnv;
 
     logger.info(
-      `🔐 Identity: ${identitySource}${effectiveAddress ? ` (${shortenAddress(effectiveAddress)})` : ''} | mode=${config.logOnly ? 'LOG_ONLY' : 'LIVE'}`
+      `🔐 Identity: ${identitySource}${effectiveAddress ? ` (${shortAddress(effectiveAddress)})` : ''} | mode=${config.logOnly ? 'LOG_ONLY' : 'LIVE'}`
     );
 
     if (config.canaryEnabled) {
