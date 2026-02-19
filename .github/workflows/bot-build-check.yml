@@ -1,0 +1,36 @@
+name: Bot Typecheck / Build
+
+on:
+  pull_request:
+    paths:
+      - 'packages/bot/**'
+      - '.github/workflows/bot-build-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/bot/**'
+      - '.github/workflows/bot-build-check.yml'
+
+jobs:
+  bot-build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build bot
+        run: pnpm --dir packages/bot build
+
+      - name: Unit tests (identity)
+        run: pnpm --dir packages/bot exec vitest run tests/unit/identity.test.ts
