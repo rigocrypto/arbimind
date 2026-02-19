@@ -10,6 +10,50 @@ import type { TimeseriesPoint } from '../services/portfolioService';
 
 const router = express.Router();
 
+type PortfolioEnvDiag = {
+  error: string;
+  reason: string;
+  fix: string;
+};
+
+function getEvmEnvDiagnostic(): PortfolioEnvDiag | null {
+  const arbAccount = process.env.EVM_ARB_ACCOUNT?.trim();
+  if (!arbAccount) {
+    return {
+      error: 'Portfolio unavailable',
+      reason: 'EVM_ARB_ACCOUNT env missing',
+      fix: 'Set EVM_ARB_ACCOUNT=0xYourWallet in Railway Variables',
+    };
+  }
+  if (!/^0x[a-fA-F0-9]{40}$/.test(arbAccount)) {
+    return {
+      error: 'Portfolio unavailable',
+      reason: 'EVM_ARB_ACCOUNT format invalid',
+      fix: 'Set EVM_ARB_ACCOUNT to a valid 0x-prefixed 40-hex EVM address in Railway Variables',
+    };
+  }
+  return null;
+}
+
+function getSolanaEnvDiagnostic(): PortfolioEnvDiag | null {
+  const arbAccount = process.env.SOLANA_ARB_ACCOUNT?.trim();
+  if (!arbAccount) {
+    return {
+      error: 'Portfolio unavailable',
+      reason: 'SOLANA_ARB_ACCOUNT env missing',
+      fix: 'Set SOLANA_ARB_ACCOUNT=YourBase58Wallet in Railway Variables',
+    };
+  }
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(arbAccount)) {
+    return {
+      error: 'Portfolio unavailable',
+      reason: 'SOLANA_ARB_ACCOUNT format invalid',
+      fix: 'Set SOLANA_ARB_ACCOUNT to a valid Base58 Solana public key in Railway Variables',
+    };
+  }
+  return null;
+}
+
 function computeDrawdown(points: TimeseriesPoint[]): TimeseriesPoint[] {
   let peak = 0;
   return points.map((p) => {
@@ -22,6 +66,12 @@ function computeDrawdown(points: TimeseriesPoint[]): TimeseriesPoint[] {
 
 /** GET /api/portfolio/evm?address=0x... */
 router.get('/evm', async (req: Request, res: Response) => {
+  const envDiag = getEvmEnvDiagnostic();
+  if (envDiag) {
+    console.info(`Portfolio query skipped: ${envDiag.reason}`);
+    return res.status(503).json(envDiag);
+  }
+
   const address = (req.query.address as string)?.trim();
   if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
     return res.status(400).json({ error: 'Valid EVM address required' });
@@ -39,6 +89,12 @@ router.get('/evm', async (req: Request, res: Response) => {
 
 /** GET /api/portfolio/evm/timeseries?address=0x...&range=30d */
 router.get('/evm/timeseries', async (req: Request, res: Response) => {
+  const envDiag = getEvmEnvDiagnostic();
+  if (envDiag) {
+    console.info(`Portfolio query skipped: ${envDiag.reason}`);
+    return res.status(503).json(envDiag);
+  }
+
   const address = (req.query.address as string)?.trim();
   const range = ((req.query.range as string) || '30d').trim();
   if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
@@ -68,6 +124,12 @@ router.get('/evm/timeseries', async (req: Request, res: Response) => {
 
 /** GET /api/portfolio/solana?address=BASE58 */
 router.get('/solana', async (req: Request, res: Response) => {
+  const envDiag = getSolanaEnvDiagnostic();
+  if (envDiag) {
+    console.info(`Portfolio query skipped: ${envDiag.reason}`);
+    return res.status(503).json(envDiag);
+  }
+
   const address = (req.query.address as string)?.trim();
   if (!address || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) {
     return res.status(400).json({ error: 'Valid Solana address required' });
@@ -85,6 +147,12 @@ router.get('/solana', async (req: Request, res: Response) => {
 
 /** GET /api/portfolio/solana/timeseries?address=BASE58&range=30d */
 router.get('/solana/timeseries', async (req: Request, res: Response) => {
+  const envDiag = getSolanaEnvDiagnostic();
+  if (envDiag) {
+    console.info(`Portfolio query skipped: ${envDiag.reason}`);
+    return res.status(503).json(envDiag);
+  }
+
   const address = (req.query.address as string)?.trim();
   const range = ((req.query.range as string) || '30d').trim();
   if (!address || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) {
