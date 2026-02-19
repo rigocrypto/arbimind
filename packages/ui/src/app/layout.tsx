@@ -26,6 +26,7 @@ export const metadata: Metadata = {
   authors: [{ name: 'ArbiMind Team' }],
   icons: {
     icon: '/favicon.svg',
+    apple: '/apple-touch-icon.png',
   },
 }
 
