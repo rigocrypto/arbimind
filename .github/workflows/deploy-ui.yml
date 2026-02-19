@@ -19,10 +19,18 @@ jobs:
       - name: Deploy UI to Vercel (CLI)
         working-directory: packages/ui
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN || secrets.VERCEL_AUTH_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID || secrets.ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID || secrets.PROJECT_ID }}
         run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "Missing Vercel token secret. Set VERCEL_TOKEN (or VERCEL_AUTH_TOKEN)."
+            exit 1
+          fi
+          if [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "Missing Vercel project linkage secrets. Set VERCEL_ORG_ID/VERCEL_PROJECT_ID (or ORG_ID/PROJECT_ID)."
+            exit 1
+          fi
           pnpm dlx vercel@latest pull --yes --environment=production --token "$VERCEL_TOKEN"
           pnpm dlx vercel@latest build --prod --token "$VERCEL_TOKEN"
           pnpm dlx vercel@latest deploy --prebuilt --prod --token "$VERCEL_TOKEN"
