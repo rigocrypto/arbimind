@@ -45,6 +45,11 @@ Suggested conservative thresholds for initial rollout:
 - `CANARY_MAX_NOTIONAL_ETH=0.01`
 - `CANARY_MAX_DAILY_LOSS_ETH=0.005`
 
+Keyless LOG_ONLY option:
+
+- `BOT_LOG_ONLY=true` (or `LOG_ONLY=true`)
+- optional `WALLET_ADDRESS=0x...` for identity-only logs when `PRIVATE_KEY` is not provided
+
 ## 4) Rollback (Emergency)
 
 ### Backend

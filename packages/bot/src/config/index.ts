@@ -8,6 +8,7 @@ export interface BotConfig {
   // Ethereum Configuration
   ethereumRpcUrl: string;
   privateKey: string;
+  walletAddress?: string | undefined;
   treasuryAddress: string;
   network: 'mainnet' | 'testnet';
   evmChain: 'arbitrum' | 'polygon' | 'ethereum';
@@ -91,6 +92,7 @@ function createConfig(): BotConfig {
     // Ethereum Configuration
     ethereumRpcUrl: chainConfig.rpcUrl || 'http://localhost:8545',
     privateKey: process.env['PRIVATE_KEY'] || '',
+    walletAddress: process.env['WALLET_ADDRESS']?.trim() || undefined,
     treasuryAddress: process.env['TREASURY_ADDRESS'] || '',
     network: isTestnet ? 'testnet' : 'mainnet',
     evmChain: evmChain === 'polygon' || evmChain === 'ethereum' ? (evmChain as 'polygon' | 'ethereum') : 'arbitrum',
@@ -144,9 +146,13 @@ export function refreshConfig(): void {
 export function validateConfig(): void {
   // Re-read environment variables at validation time (they're set by dotenv.config() at startup)
   const privateKey = process.env['PRIVATE_KEY']?.trim() || '';
+  const walletAddress = process.env['WALLET_ADDRESS']?.trim() || '';
   const treasuryAddress = process.env['TREASURY_ADDRESS'] || '';
   const ethereumRpcUrl = process.env['ETHEREUM_RPC_URL'] || process.env['ARBITRUM_RPC_URL'] || process.env['POLYGON_RPC_URL'] || '';
-  const logOnly = process.env['LOG_ONLY'] === 'true' || (process.env['NETWORK'] || 'mainnet') === 'testnet';
+  const logOnly =
+    process.env['LOG_ONLY'] === 'true' ||
+    process.env['BOT_LOG_ONLY'] === 'true' ||
+    (process.env['NETWORK'] || 'mainnet') === 'testnet';
 
   // Always require RPC URL
   if (!ethereumRpcUrl) {
@@ -164,6 +170,10 @@ export function validateConfig(): void {
     if (!Number.isFinite(canaryMaxDailyLossEth) || canaryMaxDailyLossEth <= 0) {
       throw new Error('Invalid canary configuration: CANARY_MAX_DAILY_LOSS_ETH must be a positive number');
     }
+  }
+
+  if (walletAddress && (!walletAddress.startsWith('0x') || walletAddress.length !== 42)) {
+    throw new Error('Invalid WALLET_ADDRESS format (must be 42 chars starting with 0x)');
   }
 
   // If trading, require private key and treasury
@@ -185,8 +195,13 @@ export function validateConfig(): void {
   } else {
     // LOG_ONLY: warn if key is missing/invalid, but do not throw
     if (!privateKey || privateKey.length !== 66 || !privateKey.startsWith('0x')) {
-      // eslint-disable-next-line no-console
-      console.warn('⚠️ LOG_ONLY: PRIVATE_KEY missing or invalid, running without wallet.');
+      if (walletAddress) {
+        // eslint-disable-next-line no-console
+        console.warn('⚠️ LOG_ONLY: PRIVATE_KEY missing/invalid; using WALLET_ADDRESS identity fallback.');
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn('⚠️ LOG_ONLY: PRIVATE_KEY and WALLET_ADDRESS both missing; running without wallet identity.');
+      }
     }
   }
 }

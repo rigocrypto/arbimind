@@ -27,7 +27,8 @@ export interface BotRunResult {
 
 export class ArbitrageBot {
   private provider: ethers.Provider;
-  private wallet: ethers.Wallet;
+  private wallet: ethers.Wallet | undefined;
+  private walletAddress: string;
   private priceService: PriceService;
   private executionService: ExecutionService;
   private aiScoringService: AiScoringService | undefined;
@@ -46,20 +47,34 @@ export class ArbitrageBot {
     this.logger = deps.logger ?? new Logger('ArbitrageBot');
     this.botConfig = { ...config, ...deps.config };
     this.provider = deps.provider ?? new ethers.JsonRpcProvider(this.botConfig.ethereumRpcUrl);
+    this.walletAddress = this.botConfig.walletAddress ?? '';
+
+    if (deps.wallet) {
+      this.wallet = deps.wallet;
+      this.walletAddress = deps.wallet.address;
+      this.logger.info(`✅ Wallet loaded: ${this.walletAddress}`);
+    }
+
     // Only create wallet if privateKey is valid
-    if (
+    if (!this.wallet &&
       this.botConfig.privateKey &&
       this.botConfig.privateKey.length === 66 &&
       this.botConfig.privateKey.startsWith('0x')
     ) {
-      this.wallet = deps.wallet ?? new ethers.Wallet(this.botConfig.privateKey, this.provider);
-      this.logger.info(`✅ Wallet loaded: ${this.wallet.address}`);
-    } else {
-      this.wallet = undefined as any;
-      this.logger.warn('⚠️ LOG_ONLY: No valid PRIVATE_KEY, running without wallet.');
+      this.wallet = new ethers.Wallet(this.botConfig.privateKey, this.provider);
+      this.walletAddress = this.wallet.address;
+      this.logger.info(`✅ Wallet loaded: ${this.walletAddress}`);
+    }
+
+    if (!this.wallet) {
+      if (this.walletAddress) {
+        this.logger.warn(`⚠️ LOG_ONLY: No valid PRIVATE_KEY, using WALLET_ADDRESS fallback: ${this.walletAddress}`);
+      } else {
+        this.logger.warn('⚠️ LOG_ONLY: No valid PRIVATE_KEY and no WALLET_ADDRESS fallback, running without wallet identity.');
+      }
     }
     this.priceService = deps.priceService ?? new PriceService(this.provider);
-    this.executionService = deps.executionService ?? new ExecutionService(this.wallet, this.botConfig.arbExecutorAddress);
+    this.executionService = deps.executionService ?? new ExecutionService(this.wallet as ethers.Wallet, this.botConfig.arbExecutorAddress);
     const aiConfig = this.botConfig.aiPredictUrl
       ? {
           predictUrl: this.botConfig.aiPredictUrl,
@@ -499,12 +514,12 @@ export class ArbitrageBot {
    * Validate bot setup
    */
   private validateSetup(): void {
-    const walletAddress = this.wallet?.address;
+    const walletAddress = this.wallet?.address ?? this.walletAddress;
     if (!walletAddress) {
       if (!this.botConfig.logOnly) {
         throw new Error('Wallet not configured for execution mode (set a valid PRIVATE_KEY or enable LOG_ONLY/BOT_LOG_ONLY=true)');
       }
-      this.logger.warn('⚠️ LOG_ONLY: Wallet not configured; bot will scan only and skip trade execution.');
+      this.logger.warn('⚠️ LOG_ONLY: Wallet identity not configured (set WALLET_ADDRESS for identity-only mode); bot will scan only and skip trade execution.');
     }
 
     if (!this.botConfig.arbExecutorAddress) {
