@@ -9,6 +9,23 @@
 
 A professional MEV/searcher system for detecting and executing arbitrage opportunities across multiple DEXes with intelligent risk management and profit optimization.
 
+## 🔄 Nightly Smoke (Auto-Alerts)
+
+Badge: [![Nightly Smoke](https://github.com/rigocrypto/arbimind/actions/workflows/nightly-smoke.yml/badge.svg)](https://github.com/rigocrypto/arbimind/actions/workflows/nightly-smoke.yml)
+
+**Secrets** (Repo Settings → Actions → New repository secret):
+
+| Secret | Value | Required |
+| --- | --- | --- |
+| BACKEND_BASE | https://backend-production-0932.up.railway.app | Yes |
+| UI_BASE | https://arbimind.vercel.app | Yes |
+| ADMIN_API_KEY | your-admin-key | No |
+| ALERT_WEBHOOK_URL | https://hooks.slack.com/... | No (@ops issue always opens) |
+
+Runs `smoke:all` daily at 3:00 AM UTC → opens issue + webhook on failure → posts ✅ on success.
+
+Manual run: Actions → Nightly Smoke → Run workflow.
+
 ## ⚡ Features
 
 - **Multi-DEX Support**: Uniswap V2/V3, SushiSwap, Balancer, Curve
