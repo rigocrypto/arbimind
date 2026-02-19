@@ -27,6 +27,31 @@ export function middleware(req: NextRequest) {
         /* ignore invalid URL */
       }
     }
+
+    const toOrigin = (value: string | undefined) => {
+      const v = (value || '').trim();
+      if (!v) return '';
+      try {
+        return new URL(v).origin;
+      } catch {
+        return '';
+      }
+    };
+
+    const rpcOrigins = [
+      toOrigin(process.env.NEXT_PUBLIC_POLYGON_RPC_URL),
+      toOrigin(process.env.NEXT_PUBLIC_POLYGON_RPC),
+      toOrigin(process.env.NEXT_PUBLIC_AMOY_RPC_URL),
+      toOrigin(process.env.NEXT_PUBLIC_POLYGON_AMOY_RPC_URL),
+      toOrigin(process.env.NEXT_PUBLIC_POLYGON_AMOY_RPC),
+      'https://polygon-rpc.com',
+      'https://rpc-amoy.polygon.technology',
+      'https://polygon-amoy.publicnode.com',
+      'https://polygon-bor-rpc.publicnode.com',
+      'https://*.alchemy.com',
+    ].filter(Boolean);
+
+    const rpcConnectSrc = Array.from(new Set(rpcOrigins)).join(' ');
     const localBackend = isLocalhost
       ? `http://localhost:8000 ws://localhost:8000 http://localhost:8001 ws://localhost:8001 http://127.0.0.1:8000 ws://127.0.0.1:8000 http://127.0.0.1:8001 ws://127.0.0.1:8001${apiOrigins}`
       : apiOrigins;
@@ -37,7 +62,7 @@ export function middleware(req: NextRequest) {
       `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
       `font-src 'self' data: https://fonts.gstatic.com`,
       `img-src 'self' blob: data: https:`,
-      `connect-src 'self' ${localBackend} https://api.dexscreener.com https://api.web3modal.org https://pulse.walletconnect.org https://rpc.walletconnect.com https://relay.walletconnect.com https://rpc.walletconnect.org https://relay.walletconnect.org https://cloud.walletconnect.com ws: wss:`.trim(),
+      `connect-src 'self' ${localBackend} ${rpcConnectSrc} https://api.dexscreener.com https://api.web3modal.org https://pulse.walletconnect.org https://rpc.walletconnect.com https://relay.walletconnect.com https://rpc.walletconnect.org https://relay.walletconnect.org https://cloud.walletconnect.com ws: wss:`.trim(),
       `frame-src 'self' https://*.walletconnect.org https://*.reown.com`,
       `worker-src 'self' blob:`,
       `base-uri 'self'`,
@@ -50,7 +75,7 @@ export function middleware(req: NextRequest) {
       `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
       `font-src 'self' data: https://fonts.gstatic.com`,
       `img-src 'self' blob: data: https:`,
-      `connect-src 'self' ${localBackend} https://api.dexscreener.com https://api.web3modal.org https://pulse.walletconnect.org https://rpc.walletconnect.com https://relay.walletconnect.com https://rpc.walletconnect.org https://relay.walletconnect.org https://cloud.walletconnect.com ws: wss:`.trim(),
+      `connect-src 'self' ${localBackend} ${rpcConnectSrc} https://api.dexscreener.com https://api.web3modal.org https://pulse.walletconnect.org https://rpc.walletconnect.com https://relay.walletconnect.com https://rpc.walletconnect.org https://relay.walletconnect.org https://cloud.walletconnect.com ws: wss:`.trim(),
       `frame-src 'self' https://*.walletconnect.org https://*.reown.com https://vercel.live`,
       `worker-src 'self' blob:`,
       `base-uri 'self'`,
