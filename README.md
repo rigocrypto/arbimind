@@ -4,6 +4,7 @@
 ![Nightly Smoke](https://github.com/rigocrypto/arbimind/actions/workflows/nightly-smoke.yml/badge.svg)
 ![Deploy UI to Vercel](https://github.com/rigocrypto/arbimind/actions/workflows/deploy-ui.yml/badge.svg)
 ![Bot Canary Sanity](https://github.com/rigocrypto/arbimind/actions/workflows/bot-canary-sanity.yml/badge.svg)
+![Bot Typecheck / Build](https://github.com/rigocrypto/arbimind/actions/workflows/bot-build-check.yml/badge.svg)
 
 > **The brain of on-chain arbitrage**
 
