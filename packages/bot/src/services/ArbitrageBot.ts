@@ -38,6 +38,8 @@ export class ArbitrageBot {
   private logger: Logger;
   private isRunning: boolean = false;
   private stats: BotStats;
+  private canaryDailyPnlEth: number = 0;
+  private canaryDay: string = new Date().toISOString().slice(0, 10);
   // last scan timestamp removed (not currently read anywhere)
 
   constructor(deps: ArbitrageBotDependencies = {}) {
@@ -84,6 +86,13 @@ export class ArbitrageBot {
       startTime: Date.now(),
       lastTradeTime: 0
     };
+
+    if (this.botConfig.canaryEnabled) {
+      this.logger.warn('🧪 CANARY mode enabled', {
+        notionalEth: this.botConfig.canaryNotionalEth,
+        maxDailyLossEth: this.botConfig.canaryMaxDailyLossEth
+      });
+    }
   }
 
   /**
@@ -330,6 +339,29 @@ export class ArbitrageBot {
    * Execute an arbitrage opportunity
    */
   private async executeArbitrage(opportunity: ArbitrageOpportunity): Promise<boolean> {
+    if (this.botConfig.canaryEnabled) {
+      this.resetCanaryDayIfNeeded();
+
+      if (this.canaryDailyPnlEth <= -this.botConfig.canaryMaxDailyLossEth) {
+        this.logger.error('🛑 Canary daily loss cap reached. Halting bot.', {
+          dailyPnlEth: this.canaryDailyPnlEth,
+          maxDailyLossEth: this.botConfig.canaryMaxDailyLossEth
+        });
+        this.stop();
+        return false;
+      }
+
+      const amountInEth = parseFloat(ethers.formatEther(opportunity.amountIn));
+      if (amountInEth > this.botConfig.canaryNotionalEth) {
+        this.logger.info('🧪 Canary skip: opportunity exceeds max notional', {
+          amountInEth,
+          canaryNotionalEth: this.botConfig.canaryNotionalEth,
+          route: opportunity.route
+        });
+        return false;
+      }
+    }
+
     if (this.botConfig.logOnly) {
       this.logger.info('Testnet mode: skipping real execution', {
         tokenA: opportunity.tokenA,
@@ -365,6 +397,7 @@ export class ArbitrageBot {
           profit: ethers.formatEther(result.profit),
           gasUsed: result.gasUsed
         });
+        this.updateCanaryPnl(result);
         this.updateStats();
         return true;
       } else {
@@ -373,6 +406,7 @@ export class ArbitrageBot {
           error: result.error,
           gasUsed: result.gasUsed
         });
+        this.updateCanaryPnl(result);
         this.updateStats();
         return false;
       }
@@ -383,6 +417,47 @@ export class ArbitrageBot {
       });
       this.updateStats();
       return false;
+    }
+  }
+
+  private resetCanaryDayIfNeeded(): void {
+    const currentDay = new Date().toISOString().slice(0, 10);
+    if (currentDay !== this.canaryDay) {
+      this.canaryDay = currentDay;
+      this.canaryDailyPnlEth = 0;
+      this.logger.info('🧪 Canary day rollover: reset daily PnL tracker');
+    }
+  }
+
+  private updateCanaryPnl(result: { success: boolean; profit: string; gasUsed: string; gasPrice: string }): void {
+    if (!this.botConfig.canaryEnabled) {
+      return;
+    }
+
+    this.resetCanaryDayIfNeeded();
+
+    const profitWei = BigInt(result.profit || '0');
+    const gasUsed = BigInt(result.gasUsed || '0');
+    const gasPrice = BigInt(result.gasPrice || '0');
+    const gasCostWei = gasUsed * gasPrice;
+
+    const netWei = result.success ? profitWei - gasCostWei : -gasCostWei;
+    const netEth = parseFloat(ethers.formatEther(netWei));
+
+    this.canaryDailyPnlEth += netEth;
+
+    this.logger.info('🧪 Canary PnL update', {
+      netEth,
+      dailyPnlEth: this.canaryDailyPnlEth,
+      maxDailyLossEth: this.botConfig.canaryMaxDailyLossEth
+    });
+
+    if (this.canaryDailyPnlEth <= -this.botConfig.canaryMaxDailyLossEth) {
+      this.logger.error('🛑 Canary daily loss cap breached after execution. Halting bot.', {
+        dailyPnlEth: this.canaryDailyPnlEth,
+        maxDailyLossEth: this.botConfig.canaryMaxDailyLossEth
+      });
+      this.stop();
     }
   }
 
@@ -424,8 +499,12 @@ export class ArbitrageBot {
    * Validate bot setup
    */
   private validateSetup(): void {
-    if (!this.wallet.address) {
-      throw new Error('Invalid wallet configuration');
+    const walletAddress = this.wallet?.address;
+    if (!walletAddress) {
+      if (!this.botConfig.logOnly) {
+        throw new Error('Invalid wallet configuration');
+      }
+      this.logger.warn('⚠️ LOG_ONLY: Wallet not configured; bot will scan only and skip trade execution.');
     }
 
     if (!this.botConfig.arbExecutorAddress) {
@@ -437,7 +516,7 @@ export class ArbitrageBot {
     }
 
     this.logger.info('Bot setup validated', {
-      walletAddress: this.wallet.address,
+      walletAddress: walletAddress || 'N/A (LOG_ONLY no wallet)',
       executorAddress: this.botConfig.arbExecutorAddress,
       treasuryAddress: this.botConfig.treasuryAddress
     });
