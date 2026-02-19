@@ -1,6 +1,7 @@
 # 🧠 ArbiMind
 
 ![Post-Deploy Smoke](https://github.com/rigocrypto/arbimind/actions/workflows/post-deploy-smoke.yml/badge.svg)
+![Nightly Smoke](https://github.com/rigocrypto/arbimind/actions/workflows/nightly-smoke.yml/badge.svg)
 ![Deploy UI to Vercel](https://github.com/rigocrypto/arbimind/actions/workflows/deploy-ui.yml/badge.svg)
 ![Bot Canary Sanity](https://github.com/rigocrypto/arbimind/actions/workflows/bot-canary-sanity.yml/badge.svg)
 

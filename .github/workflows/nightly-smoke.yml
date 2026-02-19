@@ -1,0 +1,165 @@
+name: Nightly Smoke
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  nightly-smoke:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        shell: pwsh
+        env:
+          BACKEND_BASE: ${{ secrets.BACKEND_BASE }}
+          UI_BASE: ${{ secrets.UI_BASE }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:BACKEND_BASE)) {
+            throw 'Missing required secret: BACKEND_BASE'
+          }
+          if ([string]::IsNullOrWhiteSpace($env:UI_BASE)) {
+            throw 'Missing required secret: UI_BASE'
+          }
+
+      - name: Run nightly smoke
+        id: smoke
+        continue-on-error: true
+        shell: pwsh
+        env:
+          BACKEND_BASE: ${{ secrets.BACKEND_BASE }}
+          UI_BASE: ${{ secrets.UI_BASE }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+        run: |
+          $args = @(
+            '-NoProfile',
+            '-ExecutionPolicy', 'Bypass',
+            '-File', './scripts/smoke-post-deploy.ps1',
+            '-BackendBase', $env:BACKEND_BASE,
+            '-UiBase', $env:UI_BASE
+          )
+
+          if (-not [string]::IsNullOrWhiteSpace($env:ADMIN_API_KEY)) {
+            $args += @('-AdminKey', $env:ADMIN_API_KEY)
+          }
+
+          & powershell @args *>&1 | Tee-Object -FilePath smoke.log
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Build smoke log excerpt
+        id: excerpt
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path smoke.log) {
+            $tail = (Get-Content smoke.log -Tail 80) -join "`n"
+          } else {
+            $tail = 'No smoke.log captured.'
+          }
+
+          "tail<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $tail | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Open failure issue
+        if: steps.smoke.outcome == 'failure'
+        uses: actions/github-script@v7
+        env:
+          BACKEND_BASE: ${{ secrets.BACKEND_BASE }}
+          UI_BASE: ${{ secrets.UI_BASE }}
+          LOG_TAIL: ${{ steps.excerpt.outputs.tail }}
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const stamp = new Date().toISOString();
+            const title = `Nightly Smoke Failure - ${stamp}`;
+            const body = [
+              `Nightly smoke failed. @ops`,
+              '',
+              `- Backend: ${process.env.BACKEND_BASE}`,
+              `- UI: ${process.env.UI_BASE}`,
+              `- Workflow run: ${runUrl}`,
+              '',
+              '### Log excerpt',
+              '```',
+              process.env.LOG_TAIL || 'No logs captured.',
+              '```'
+            ].join('\n');
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body
+            });
+
+      - name: Notify failure webhook
+        if: steps.smoke.outcome == 'failure'
+        shell: pwsh
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+          BACKEND_BASE: ${{ secrets.BACKEND_BASE }}
+          UI_BASE: ${{ secrets.UI_BASE }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:ALERT_WEBHOOK_URL)) {
+            Write-Host 'ALERT_WEBHOOK_URL not set, skipping notification.'
+            exit 0
+          }
+
+          $runUrl = "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          $msg = "🚨 Nightly smoke FAILED. @ops Backend: $($env:BACKEND_BASE) | UI: $($env:UI_BASE) | Run: $runUrl"
+
+          if ($env:ALERT_WEBHOOK_URL -match 'discord(?:app)?\.com/api/webhooks') {
+            $payload = @{ content = $msg } | ConvertTo-Json -Compress
+          }
+          else {
+            $payload = @{ text = $msg } | ConvertTo-Json -Compress
+          }
+
+          Invoke-RestMethod -Uri $env:ALERT_WEBHOOK_URL -Method Post -ContentType 'application/json' -Body $payload
+
+      - name: Comment green and close old failure issues
+        if: steps.smoke.outcome == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+
+            const nightlyFailures = issues
+              .filter(i => i.title && i.title.startsWith('Nightly Smoke Failure -'))
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            if (!nightlyFailures.length) {
+              return;
+            }
+
+            const latest = nightlyFailures[0];
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: latest.number,
+              body: `✅ Green: nightly smoke passed. Run: ${runUrl}`
+            });
+
+            for (const issue of nightlyFailures) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed'
+              });
+            }
