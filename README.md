@@ -6,6 +6,8 @@
 ![Bot Canary Sanity](https://github.com/rigocrypto/arbimind/actions/workflows/bot-canary-sanity.yml/badge.svg)
 ![Bot Typecheck / Build](https://github.com/rigocrypto/arbimind/actions/workflows/bot-build-check.yml/badge.svg)
 
+_Workflow roles: **PR gating** → Bot Typecheck / Build. **Release/Ops gating** → Post-Deploy Smoke, Nightly Smoke, Bot Canary Sanity._
+
 > **The brain of on-chain arbitrage**
 
 A professional MEV/searcher system for detecting and executing arbitrage opportunities across multiple DEXes with intelligent risk management and profit optimization.
