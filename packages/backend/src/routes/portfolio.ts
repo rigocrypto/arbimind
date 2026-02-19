@@ -105,14 +105,6 @@ router.get('/evm', async (req: Request, res: Response) => {
       console.info(`Portfolio fallback: ${diag.reason} (chain=evm)`);
       return res.status(503).json(diag);
     }
-    if ((summary.totals.equityUsd ?? 0) <= 0) {
-      const diag = getPortfolioFallbackDiagnostic(
-        'Zero balances/TVL',
-        'Fund arb account or verify tracked deposits and RPC/indexer freshness'
-      );
-      console.info(`Portfolio fallback: ${diag.reason} (chain=evm)`);
-      return res.status(503).json(diag);
-    }
     touchUser('evm', address);
     return res.json(summary);
   } catch (err) {
@@ -188,14 +180,6 @@ router.get('/solana', async (req: Request, res: Response) => {
       const diag = getPortfolioFallbackDiagnostic(
         'Query failed',
         'Check RPC/indexer connectivity and backend logs/Sentry'
-      );
-      console.info(`Portfolio fallback: ${diag.reason} (chain=solana)`);
-      return res.status(503).json(diag);
-    }
-    if ((summary.totals.equityUsd ?? 0) <= 0) {
-      const diag = getPortfolioFallbackDiagnostic(
-        'Zero balances/TVL',
-        'Fund arb account or verify tracked deposits and RPC/indexer freshness'
       );
       console.info(`Portfolio fallback: ${diag.reason} (chain=solana)`);
       return res.status(503).json(diag);
