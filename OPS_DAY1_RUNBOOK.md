@@ -64,6 +64,25 @@ vercel rollback <deployment-id>
 
 ## 5) Monitor
 
+### Nightly Smoke Secrets (one-time)
+
+Set these in GitHub: **Repo Settings → Secrets and variables → Actions**.
+
+| Secret | Value | Required |
+| --- | --- | --- |
+| `BACKEND_BASE` | `https://backend-production-0932.up.railway.app` | Yes |
+| `UI_BASE` | `https://arbimind.vercel.app` | Yes |
+| `ADMIN_API_KEY` | `your-admin-key` | No |
+| `ALERT_WEBHOOK_URL` | `https://hooks.slack.com/...` | No (`@ops` issue still opens) |
+
+### Nightly Smoke
+
+Monitor **Actions → Nightly Smoke** (runs daily at 3:00 AM UTC).
+
+- Failure → GitHub issue + alert webhook (if configured)
+- Success → ✅ green comment and closure of open nightly failure issues
+- Manual trigger → Actions → Nightly Smoke → Run workflow
+
 ```powershell
 Push-Location packages/backend
 railway logs --latest --lines 200
