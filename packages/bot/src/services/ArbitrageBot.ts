@@ -502,14 +502,14 @@ export class ArbitrageBot {
     const walletAddress = this.wallet?.address;
     if (!walletAddress) {
       if (!this.botConfig.logOnly) {
-        throw new Error('Invalid wallet configuration');
+        throw new Error('Wallet not configured for execution mode (set a valid PRIVATE_KEY or enable LOG_ONLY/BOT_LOG_ONLY=true)');
       }
       this.logger.warn('⚠️ LOG_ONLY: Wallet not configured; bot will scan only and skip trade execution.');
     }
 
     if (!this.botConfig.arbExecutorAddress) {
       if (!this.botConfig.logOnly) {
-        throw new Error('ArbExecutor address not configured');
+        throw new Error('ArbExecutor address not configured for execution mode (set ARB_EXECUTOR_ADDRESS or enable LOG_ONLY/BOT_LOG_ONLY=true)');
       } else {
         this.logger.warn('⚠️ LOG_ONLY: ArbExecutor address not configured; bot will scan only and not execute trades.');
       }
