@@ -79,6 +79,8 @@ Set these in GitHub: **Repo Settings → Secrets and variables → Actions**.
 
 Monitor **Actions → Nightly Smoke** (runs daily at 3:00 AM UTC).
 
+Growth Experiments: [CTA A/B Template](CTA_AB_DECISION_TEMPLATE.md)
+
 - Failure → GitHub issue + alert webhook (if configured)
 - Success → ✅ green comment and closure of open nightly failure issues
 - Manual trigger → Actions → Nightly Smoke → Run workflow

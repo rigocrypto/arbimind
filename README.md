@@ -26,6 +26,8 @@ Runs `smoke:all` daily at 3:00 AM UTC → opens issue + webhook on failure → p
 
 Manual run: Actions → Nightly Smoke → Run workflow.
 
+Growth Experiments: [CTA A/B Template](CTA_AB_DECISION_TEMPLATE.md)
+
 ## ⚡ Features
 
 - **Multi-DEX Support**: Uniswap V2/V3, SushiSwap, Balancer, Curve
