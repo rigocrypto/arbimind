@@ -8,6 +8,7 @@ import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { VersionedTransaction } from '@solana/web3.js';
 import Link from 'next/link';
 import { Wallet, ArrowRightLeft, ChevronLeft, Send, AlertTriangle } from 'lucide-react';
+import { BaseWalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import toast from 'react-hot-toast';
 
 import { API_BASE } from '@/lib/apiConfig';
@@ -17,6 +18,11 @@ import { usePortfolioSummary, usePortfolioTimeseries } from '@/hooks/usePortfoli
 const IS_MAINNET = process.env.NEXT_PUBLIC_SOLANA_CLUSTER === 'mainnet-beta';
 const SOLSCAN_BASE = 'https://solscan.io';
 const SOLSCAN_TX_SUFFIX = IS_MAINNET ? '' : '?cluster=devnet';
+// Override only the states that display the CTA text so it never regresses to "Select Wallet".
+const SOLANA_WALLET_BUTTON_LABELS = {
+  'has-wallet': 'Connect Wallet',
+  'no-wallet': 'Connect Wallet',
+} as const;
 
 export default function SolanaWalletPageClient() {
   const { connection } = useConnection();
@@ -216,15 +222,22 @@ export default function SolanaWalletPageClient() {
                   <Send className="w-4 h-4" /> Fast Transfers
                 </span>
               </div>
+              <BaseWalletMultiButton
+                className="mt-4 !bg-gradient-to-r !from-cyan-500 !via-purple-500 !to-pink-500 !text-white !font-semibold !px-6 !py-2.5 !rounded-xl !shadow-lg !border-none !hover:from-cyan-400 !hover:to-purple-500"
+                labels={SOLANA_WALLET_BUTTON_LABELS}
+              />
             </div>
             <div className="flex flex-1 items-center justify-center min-h-[160px]">
-              <picture>
-                <source srcSet="/solana/solana-logo.webp" type="image/webp" />
-                <source srcSet="/solana/solana-logo.png" type="image/png" />
-                <source srcSet="/solana/solana-logo.jpg" type="image/jpeg" />
-                <Image src="/solana/solana-logo.png" alt="Solana Logo" width={200} height={200} className="rounded-full shadow-2xl border-2 border-purple-500/40 object-contain" priority />
-              </picture>
-              {/* Only show connected state here, remove extra connect button */}
+              <Image
+                src="/solana/solana-logo.svg"
+                alt="Solana Logo"
+                width={200}
+                height={200}
+                className="rounded-full shadow-2xl border-2 border-purple-500/40 object-contain"
+                priority
+                unoptimized
+              />
+              {/* Show connected state next to the hero art once a wallet is linked */}
               {connected && address && (
                 <div className="rounded-xl bg-dark-900/80 border border-cyan-500/30 px-6 py-4 flex flex-col items-center gap-2 shadow-md mt-4">
                   <span className="text-xs text-dark-400">Connected as</span>
@@ -259,7 +272,7 @@ export default function SolanaWalletPageClient() {
                 </div>
               </div>
             )}
-            {/* Connect button removed, use only the one in the header */}
+            {/* Connect using the hero button above */}
           </motion.div>
         ) : (
           <>

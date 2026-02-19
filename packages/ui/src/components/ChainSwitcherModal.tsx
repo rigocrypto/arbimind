@@ -90,7 +90,14 @@ export function ChainSwitcherModal({ isOpen, onClose, onEVMChainSelect }: ChainS
             className="w-full flex items-center gap-3 px-4 py-3 hover:bg-dark-700/50 transition text-left border-t border-dark-600"
           >
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-              <Image src="/solana/solana-logo.png" alt="Solana Logo" width={28} height={28} className="rounded-full" />
+              <Image
+                src="/solana/solana-logo.svg"
+                alt="Solana Logo"
+                width={28}
+                height={28}
+                className="rounded-full"
+                unoptimized
+              />
             </div>
             <span className="font-medium text-white flex items-center gap-2">
               Solana
