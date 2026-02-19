@@ -1,15 +1,14 @@
 FROM node:20-alpine AS builder
-WORKDIR /app
-COPY pnpm-lock.yaml ./
-RUN corepack enable && pnpm install --frozen-lockfile
-
-COPY packages/backend ./packages/backend
 WORKDIR /app/packages/backend
-RUN pnpm build
+COPY packages/backend/package.json ./package.json
+RUN npm install
+COPY packages/backend .
+RUN npm run build
 
 FROM node:20-alpine AS runner
 WORKDIR /app/packages/backend
-COPY --from=builder /app/node_modules ./node_modules
-COPY . .
-EXPOSE 3001
-CMD ["pnpm", "start"]
+COPY --from=builder /app/packages/backend/package.json ./package.json
+COPY --from=builder /app/packages/backend/node_modules ./node_modules
+COPY --from=builder /app/packages/backend/dist ./dist
+EXPOSE 8000
+CMD ["npm", "start"]
