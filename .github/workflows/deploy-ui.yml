@@ -15,7 +15,7 @@ jobs:
           node-version: 20
           cache: pnpm
       - name: Validate lockfile (frozen)
-        run: pnpm install --frozen-lockfile
+        run: pnpm -w install --frozen-lockfile
       - uses: vercel/action@v1.2.1
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
