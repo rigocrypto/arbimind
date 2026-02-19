@@ -85,7 +85,8 @@ async function main(): Promise<void> {
 
   } catch (error) {
     logger.error('❌ Failed to start bot', {
-      error: error instanceof Error ? error.message : error
+      error: error instanceof Error ? error.message : error,
+      stack: error instanceof Error ? error.stack : undefined
     });
     process.exit(1);
   }
@@ -111,7 +112,8 @@ process.on('unhandledRejection', (reason, promise) => {
 // Start the application
 main().catch((error) => {
   logger.error('💥 Main function failed', {
-    error: error instanceof Error ? error.message : error
+    error: error instanceof Error ? error.message : error,
+    stack: error instanceof Error ? error.stack : undefined
   });
   process.exit(1);
 });

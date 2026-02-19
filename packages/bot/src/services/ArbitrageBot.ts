@@ -30,7 +30,7 @@ export class ArbitrageBot {
   private wallet: ethers.Wallet | undefined;
   private walletAddress: string;
   private priceService: PriceService;
-  private executionService: ExecutionService;
+  private executionService: ExecutionService | undefined;
   private aiScoringService: AiScoringService | undefined;
   private readonly botConfig: BotConfig;
   private readonly tokenPairs: Array<{ tokenA: string; tokenB: string }>;
@@ -74,7 +74,13 @@ export class ArbitrageBot {
       }
     }
     this.priceService = deps.priceService ?? new PriceService(this.provider);
-    this.executionService = deps.executionService ?? new ExecutionService(this.wallet as ethers.Wallet, this.botConfig.arbExecutorAddress);
+    if (deps.executionService) {
+      this.executionService = deps.executionService;
+    } else if (this.wallet) {
+      this.executionService = new ExecutionService(this.wallet, this.botConfig.arbExecutorAddress);
+    } else {
+      this.executionService = undefined;
+    }
     const aiConfig = this.botConfig.aiPredictUrl
       ? {
           predictUrl: this.botConfig.aiPredictUrl,
@@ -397,6 +403,11 @@ export class ArbitrageBot {
       profit: ethers.formatEther(opportunity.profit),
       netProfit: ethers.formatEther(opportunity.netProfit)
     });
+
+    if (!this.executionService) {
+      this.logger.error('Execution service unavailable: wallet not initialized for live execution mode');
+      return false;
+    }
 
     try {
       const result = await this.executionService.executeArbitrage(opportunity);
