@@ -42,6 +42,11 @@ export interface BotConfig {
   aiPredictionHorizonSec: number;
   aiMinSuccessProb: number;
   aiMinExpectedProfitPct: number;
+
+  // Canary mode (optional)
+  canaryEnabled: boolean;
+  canaryNotionalEth: number;
+  canaryMaxDailyLossEth: number;
 }
 
 function getEvmChainConfig() {
@@ -119,7 +124,12 @@ function createConfig(): BotConfig {
     aiModelTag: process.env['AI_MODEL_TAG'],
     aiPredictionHorizonSec: parseInt(process.env['AI_PREDICTION_HORIZON_SEC'] || '900', 10),
     aiMinSuccessProb: parseFloat(process.env['AI_MIN_SUCCESS_PROB'] || '0.7'),
-    aiMinExpectedProfitPct: parseFloat(process.env['AI_MIN_EXPECTED_PROFIT_PCT'] || '0.5')
+    aiMinExpectedProfitPct: parseFloat(process.env['AI_MIN_EXPECTED_PROFIT_PCT'] || '0.5'),
+
+    // Canary mode (optional)
+    canaryEnabled: process.env['CANARY_ENABLED'] === 'true',
+    canaryNotionalEth: parseFloat(process.env['CANARY_NOTIONAL_ETH'] || '0.01'),
+    canaryMaxDailyLossEth: parseFloat(process.env['CANARY_MAX_DAILY_LOSS_ETH'] || '0.005')
   };
 }
 
@@ -141,6 +151,19 @@ export function validateConfig(): void {
   // Always require RPC URL
   if (!ethereumRpcUrl) {
     throw new Error('Missing required configuration: ethereumRpcUrl (set ETHEREUM_RPC_URL or chain-specific RPC_URL)');
+  }
+
+  const canaryEnabled = process.env['CANARY_ENABLED'] === 'true';
+  const canaryNotionalEth = parseFloat(process.env['CANARY_NOTIONAL_ETH'] || '0.01');
+  const canaryMaxDailyLossEth = parseFloat(process.env['CANARY_MAX_DAILY_LOSS_ETH'] || '0.005');
+
+  if (canaryEnabled) {
+    if (!Number.isFinite(canaryNotionalEth) || canaryNotionalEth <= 0) {
+      throw new Error('Invalid canary configuration: CANARY_NOTIONAL_ETH must be a positive number');
+    }
+    if (!Number.isFinite(canaryMaxDailyLossEth) || canaryMaxDailyLossEth <= 0) {
+      throw new Error('Invalid canary configuration: CANARY_MAX_DAILY_LOSS_ETH must be a positive number');
+    }
   }
 
   // If trading, require private key and treasury
