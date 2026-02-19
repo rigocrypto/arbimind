@@ -22,7 +22,7 @@ import { formatETH, formatUSD, formatAddress, formatTxHash } from '@/utils/forma
 import { HelpTooltip } from '@/components/HelpTooltip';
 import { ChainSwitcherModal } from '@/components/ChainSwitcherModal';
 import { ArbAccountCard, PerformanceCharts, ActivityTable } from '@/components/portfolio';
-import { usePortfolioSummary, usePortfolioTimeseries } from '@/hooks/usePortfolio';
+import { getPortfolioErrorDetails, usePortfolioSummary, usePortfolioTimeseries } from '@/hooks/usePortfolio';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import Image from 'next/image';
@@ -98,8 +98,15 @@ export default function WalletPage() {
   const usdcVal = usdcBalance ? Number(usdcBalance.formatted) / 1e6 : 0;
   const isLowBalance = ethVal < MIN_ETH && usdcVal < MIN_USDC;
   const explorerUrl = chain?.blockExplorers?.default?.url ?? '';
-  const { data: portfolio, isLoading: portfolioLoading, isError: portfolioError, refetch: refetchPortfolio } = usePortfolioSummary('evm', address ?? undefined);
+  const {
+    data: portfolio,
+    isLoading: portfolioLoading,
+    isError: portfolioError,
+    error: portfolioQueryError,
+    refetch: refetchPortfolio,
+  } = usePortfolioSummary('evm', address ?? undefined);
   const { data: timeseries, isLoading: timeseriesLoading } = usePortfolioTimeseries('evm', address ?? undefined, '30d');
+  const portfolioErrorDetails = getPortfolioErrorDetails(portfolioQueryError);
 
   const copyAddress = () => {
     if (address) {
@@ -323,6 +330,7 @@ export default function WalletPage() {
                 summary={portfolio ?? undefined}
                 isLoading={portfolioLoading}
                 isError={portfolioError}
+                errorDetails={portfolioErrorDetails}
                 onRefresh={() => refetchPortfolio()}
               />
             </motion.div>
@@ -333,7 +341,11 @@ export default function WalletPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.08 }}
             >
-              <PerformanceCharts points={timeseries?.points ?? []} method={timeseries?.method} isLoading={timeseriesLoading} />
+              <PerformanceCharts
+                points={timeseries?.points ?? []}
+                method={timeseries?.method === 'estimated_linear_ramp_to_current_equity' ? 'estimated_linear_ramp_to_current_equity' : undefined}
+                isLoading={timeseriesLoading}
+              />
             </motion.div>
 
             {/* Recent Arb Activity */}
@@ -362,6 +374,7 @@ export default function WalletPage() {
                   Recent Activity
                   <HelpTooltip content="Last 10 txs. Profits auto-sweep to treasury." />
                 </h3>
+                <label htmlFor="wallet-tx-filter" className="sr-only">Filter transactions</label>
                 <select
                   id="wallet-tx-filter"
                   name="txFilter"

@@ -1,7 +1,35 @@
 // Custom error type for portfolio errors
-interface PortfolioError extends Error {
+export interface PortfolioApiErrorPayload {
+  error?: string;
+  reason?: string;
+  fix?: string;
+}
+
+export interface PortfolioError extends Error {
   status?: number;
-  response?: unknown;
+  response?: PortfolioApiErrorPayload;
+}
+
+export interface PortfolioErrorDetails {
+  message: string;
+  status?: number;
+  reason?: string;
+  fix?: string;
+  isConfigIssue: boolean;
+}
+
+export function getPortfolioErrorDetails(error: unknown): PortfolioErrorDetails | null {
+  if (!(error instanceof Error)) return null;
+  const portfolioError = error as PortfolioError;
+  const reason = portfolioError.response?.reason;
+  const fix = portfolioError.response?.fix;
+  return {
+    message: portfolioError.message,
+    status: portfolioError.status,
+    reason,
+    fix,
+    isConfigIssue: /env (missing|invalid)/i.test(reason ?? ''),
+  };
 }
 
 function getPortfolioRefetchInterval(error: unknown): number | false {
@@ -65,10 +93,11 @@ export function usePortfolioSummary(chain: PortfolioChain | null, address: strin
           : `${API_BASE}/portfolio/solana?address=${encodeURIComponent(address)}`;
       const res = await fetch(url);
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
+        const err = (await res.json().catch(() => ({}))) as PortfolioApiErrorPayload;
         // Attach status for retry logic
         const error: PortfolioError = new Error(err.error || res.statusText || 'Portfolio fetch failed');
         error.status = res.status;
+        error.response = err;
         throw error;
       }
       return res.json();
@@ -95,9 +124,10 @@ export function usePortfolioTimeseries(
           : `${API_BASE}/portfolio/solana/timeseries?address=${encodeURIComponent(address)}&range=${range}`;
       const res = await fetch(url);
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
+        const err = (await res.json().catch(() => ({}))) as PortfolioApiErrorPayload;
         const error: PortfolioError = new Error(err.error || res.statusText || 'Timeseries fetch failed');
         error.status = res.status;
+        error.response = err;
         throw error;
       }
       return res.json();

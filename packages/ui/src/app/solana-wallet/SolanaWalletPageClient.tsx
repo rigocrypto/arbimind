@@ -13,7 +13,7 @@ import toast from 'react-hot-toast';
 
 import { API_BASE } from '@/lib/apiConfig';
 import { ArbAccountCard, PerformanceCharts, ActivityTable } from '@/components/portfolio';
-import { usePortfolioSummary, usePortfolioTimeseries } from '@/hooks/usePortfolio';
+import { getPortfolioErrorDetails, usePortfolioSummary, usePortfolioTimeseries } from '@/hooks/usePortfolio';
 
 const IS_MAINNET = process.env.NEXT_PUBLIC_SOLANA_CLUSTER === 'mainnet-beta';
 const SOLSCAN_BASE = 'https://solscan.io';
@@ -29,8 +29,15 @@ export default function SolanaWalletPageClient() {
   const { publicKey, connected, sendTransaction, wallets } = useWallet();
   const [loading, setLoading] = useState<string | null>(null);
   const address = publicKey?.toBase58();
-  const { data: portfolio, isLoading: portfolioLoading, isError: portfolioError, refetch: refetchPortfolio } = usePortfolioSummary('solana', address);
+  const {
+    data: portfolio,
+    isLoading: portfolioLoading,
+    isError: portfolioError,
+    error: portfolioQueryError,
+    refetch: refetchPortfolio,
+  } = usePortfolioSummary('solana', address);
   const { data: timeseries, isLoading: timeseriesLoading } = usePortfolioTimeseries('solana', address, '30d');
+  const portfolioErrorDetails = getPortfolioErrorDetails(portfolioQueryError);
 
   // Transfer form state
   const [transferDestination, setTransferDestination] = useState<'arb' | 'external'>('arb');
@@ -286,6 +293,7 @@ export default function SolanaWalletPageClient() {
                 summary={portfolio ?? undefined}
                 isLoading={portfolioLoading}
                 isError={portfolioError}
+                errorDetails={portfolioErrorDetails}
                 onRefresh={() => refetchPortfolio()}
               />
             </motion.div>

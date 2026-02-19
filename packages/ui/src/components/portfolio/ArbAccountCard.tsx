@@ -3,6 +3,7 @@
 import { Copy, RefreshCw, Wallet } from 'lucide-react';
 import { formatAddress, formatUSD } from '@/utils/format';
 import type { PortfolioSummary } from '@/hooks/usePortfolio';
+import type { PortfolioErrorDetails } from '@/hooks/usePortfolio';
 import { HelpTooltip } from '@/components/HelpTooltip';
 import toast from 'react-hot-toast';
 
@@ -12,6 +13,7 @@ interface ArbAccountCardProps {
   summary: PortfolioSummary | undefined;
   isLoading: boolean;
   isError?: boolean;
+  errorDetails?: PortfolioErrorDetails | null;
   onRefresh?: () => void;
   arbAddressDisplay?: string;
 }
@@ -20,6 +22,7 @@ export function ArbAccountCard({
   summary,
   isLoading,
   isError,
+  errorDetails,
   onRefresh,
   arbAddressDisplay,
 }: ArbAccountCardProps) {
@@ -46,16 +49,21 @@ export function ArbAccountCard({
           <Wallet className="w-5 h-5 text-cyan-400" />
           Arbitrage Account
         </h2>
-        <p className="text-dark-400 text-sm">
-          Portfolio data unavailable. The arb account may not be configured on the backend.
-        </p>
+        <p className="text-dark-400 text-sm">{errorDetails?.message || 'Portfolio data unavailable.'}</p>
+        {errorDetails?.reason && (
+          <p className="mt-2 text-xs text-amber-300">Reason: {errorDetails.reason}</p>
+        )}
+        {errorDetails?.fix && (
+          <p className="mt-1 text-xs text-cyan-300">Fix: {errorDetails.fix}</p>
+        )}
         {onRefresh && (
           <button
             type="button"
             onClick={onRefresh}
+            disabled={errorDetails?.isConfigIssue}
             className="mt-3 px-3 py-1.5 rounded-lg bg-dark-700 hover:bg-dark-600 text-sm transition"
           >
-            Retry
+            {errorDetails?.isConfigIssue ? 'Retry disabled until backend config is fixed' : 'Retry'}
           </button>
         )}
       </div>
