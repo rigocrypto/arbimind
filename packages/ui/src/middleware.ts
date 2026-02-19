@@ -34,18 +34,31 @@ export function middleware(req: NextRequest) {
     const prodStrict = [
       `default-src 'self'`,
       `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'unsafe-eval'`,
-      `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
-      `font-src 'self' data: https://fonts.gstatic.com`,
+      `style-src 'self' 'unsafe-inline'`,
+      `font-src 'self' data:`,
       `img-src 'self' blob: data: https:`,
-      `connect-src 'self' https: wss: ${localBackend}`.trim(),
+      `connect-src 'self' ${localBackend} https://api.dexscreener.com https://api.web3modal.org https://pulse.walletconnect.org https://rpc.walletconnect.com https://relay.walletconnect.com https://rpc.walletconnect.org https://relay.walletconnect.org https://cloud.walletconnect.com ws: wss:`.trim(),
       `frame-src 'self' https://*.walletconnect.org https://*.reown.com`,
       `worker-src 'self' blob:`,
       `base-uri 'self'`,
       `form-action 'self'`,
     ].join('; ');
 
+    const reportOnlyPolicy = [
+      `default-src 'self'`,
+      `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'unsafe-eval' https://vercel.live`,
+      `style-src 'self' 'unsafe-inline'`,
+      `font-src 'self' data:`,
+      `img-src 'self' blob: data: https:`,
+      `connect-src 'self' ${localBackend} https://api.dexscreener.com https://api.web3modal.org https://pulse.walletconnect.org https://rpc.walletconnect.com https://relay.walletconnect.com https://rpc.walletconnect.org https://relay.walletconnect.org https://cloud.walletconnect.com ws: wss:`.trim(),
+      `frame-src 'self' https://*.walletconnect.org https://*.reown.com https://vercel.live`,
+      `worker-src 'self' blob:`,
+      `base-uri 'self'`,
+      `form-action 'self'`,
+    ].join('; ');
+
     if (reportOnly) {
-      res.headers.set('Content-Security-Policy-Report-Only', prodStrict);
+      res.headers.set('Content-Security-Policy-Report-Only', reportOnlyPolicy);
     } else {
       res.headers.set('Content-Security-Policy', prodStrict);
     }
