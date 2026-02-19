@@ -24,7 +24,8 @@
     "setup": "npm install",
     "smoke:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/smoke-post-deploy.ps1",
     "smoke:all": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/smoke-post-deploy.ps1",
-    "smoke:analytics": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/smoke-post-deploy.ps1 -OnlyAnalytics"
+    "smoke:analytics": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/smoke-post-deploy.ps1 -OnlyAnalytics",
+    "smoke:ui:runtime": "pnpm --filter @arbimind/ui smoke:runtime:live"
   },
   "devDependencies": {
     "next": "15.5.10",

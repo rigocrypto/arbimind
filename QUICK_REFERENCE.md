@@ -114,6 +114,22 @@ npm run smoke:analytics -- -BackendBase $BACKEND_URL
 npm run smoke:analytics -- -BackendBase "https://backend-production-0932.up.railway.app"
 ```
 
+### Runtime UI Smoke (Playwright)
+
+```powershell
+# Standalone runtime UI smoke
+pnpm smoke:ui:runtime
+
+# Full deploy smoke including runtime UI checks
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-post-deploy.ps1 `
+	-BackendBase "https://backend-production-0932.up.railway.app" `
+	-UiBase "https://arbimind.vercel.app" `
+	-EvmAddress "0x..." `
+	-SolanaAddress "YourBase58Address"
+```
+
+Note: Passing `-UiBase` automatically runs runtime browser checks for `/settings`, `/wallet`, and `/solana-wallet`.
+
 ---
 
 ## 🚀 Development Mode

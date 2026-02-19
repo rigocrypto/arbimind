@@ -3,6 +3,7 @@
   Post-deploy smoke test for ArbiMind backend/UI.
 .DESCRIPTION
   Runs fast checks for health, RPC connectivity, snapshots, and optional admin/UI/portfolio checks.
+  When -UiBase is provided, also runs Playwright runtime UI smoke via pnpm.
   Exits non-zero if required checks fail.
 
 .EXAMPLE
@@ -292,6 +293,28 @@ if ($UiBase) {
     $ok = $statusOk -and $cspOk
     $detail = if ($ok) { 'UI 2xx + CSP ok' } elseif (-not $statusOk) { 'UI non-2xx' } else { 'CSP missing' }
     Add-Result -Name 'UI reachable + CSP present' -Ok $ok -Detail $detail
+  }
+
+  Invoke-Check -Name 'UI runtime smoke (Playwright)' -Block {
+    $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+    $previousSmokeBase = $env:SMOKE_BASE_URL
+
+    try {
+      $env:SMOKE_BASE_URL = $UiBase
+      Push-Location $repoRoot
+      & pnpm --filter @arbimind/ui smoke:runtime:live
+      if ($LASTEXITCODE -ne 0) {
+        throw "UI runtime smoke failed with exit code $LASTEXITCODE"
+      }
+      Add-Result -Name 'UI runtime smoke (Playwright)' -Ok $true -Detail ("base=" + $UiBase)
+    } finally {
+      Pop-Location
+      if ($null -eq $previousSmokeBase) {
+        Remove-Item Env:SMOKE_BASE_URL -ErrorAction SilentlyContinue
+      } else {
+        $env:SMOKE_BASE_URL = $previousSmokeBase
+      }
+    }
   }
 }
 

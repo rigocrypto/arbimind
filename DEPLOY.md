@@ -83,6 +83,14 @@ After deploy: `https://arbimind-production.up.railway.app` (or your Railway URL)
 
 Test: `curl https://arbimind-production.up.railway.app/api/health`
 
+RPC checks:
+
+```bash
+curl https://arbimind-production.up.railway.app/api/rpc/health
+curl "https://arbimind-production.up.railway.app/api/rpc/health?chain=worldchain_sepolia"
+curl "https://arbimind-production.up.railway.app/api/rpc/health?chain=evm,worldchain_sepolia,solana"
+```
+
 ---
 
 ## 2. UI (Vercel)
@@ -145,6 +153,25 @@ Write-Host "UI API base: $api"
 | `/docs` | All links work |
 | `/admin` | Admin key auth works |
 | Console/Network | No errors |
+
+### One-command smoke (includes runtime UI check)
+
+When `-UiBase` is provided, the smoke script now runs the Playwright runtime UI check automatically.
+
+```powershell
+cd c:\Users\servi\RigoCrypto\ArbiMind
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-post-deploy.ps1 \
+	-BackendBase "https://backend-production-0932.up.railway.app" \
+	-UiBase "https://arbimind.vercel.app" \
+	-EvmAddress "0x..." \
+	-SolanaAddress "YourBase58Address"
+```
+
+Standalone runtime UI smoke:
+
+```bash
+pnpm smoke:ui:runtime
+```
 
 ---
 

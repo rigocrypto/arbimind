@@ -11,9 +11,11 @@
     "type-check": "next build",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "smoke:runtime:live": "node ./scripts/live-runtime-smoke.mjs",
     "docs:check": "pnpm exec tsx -e \"import('./src/app/docs/lib/docsContent.ts').then(()=>console.log('docs ok')).catch(e=>{console.error(e);process.exit(1)})\""
   },
   "dependencies": {
+    "@solana/wallet-adapter-backpack": "^0.1.8",
     "@rainbow-me/rainbowkit": "^2.2.9",
     "@solana/wallet-adapter-base": "^0.9.27",
     "@solana/wallet-adapter-react": "^0.15.39",

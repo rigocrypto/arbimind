@@ -28,6 +28,7 @@ railway variables set `
   PORT=8001 `
   NETWORK=testnet `
   ARBITRUM_RPC_URL=https://sepolia.arbitrum.io/rpc `
+  WORLDCHAIN_SEPOLIA_RPC_URL=https://worldchain-sepolia.g.alchemy.com/v2/TZyQGiZt_25CImsRIGAcN `
   SOLANA_RPC_URL=https://api.devnet.solana.com `
   POLYGON_RPC_URL=https://rpc-amoy.polygon.technology `
   DEXSCREENER_CHAIN_ID=polygon `
@@ -67,6 +68,7 @@ railway variables set `
   LOG_ONLY=true `
   EVM_CHAIN=polygon `
   POLYGON_RPC_URL=https://rpc-amoy.polygon.technology `
+  WORLDCHAIN_SEPOLIA_RPC_URL=https://worldchain-sepolia.g.alchemy.com/v2/TZyQGiZt_25CImsRIGAcN `
   AI_SERVICE_KEY=<same-as-backend> `
   AI_LOG_URL=https://backend-production-xxxx.up.railway.app/api/admin/ai-dashboard/predictions `
   SOLANA_RPC_URL=https://api.devnet.solana.com `
@@ -131,6 +133,16 @@ vercel --prod
 # Backend health (replace <backend-url> with your Railway URL)
 $backend = "https://backend-production-xxxx.up.railway.app"
 Invoke-RestMethod "$backend/api/health"
+Invoke-RestMethod "$backend/api/rpc/health?chain=evm,worldchain_sepolia,solana"
+
+# One-command smoke test (from repo root)
+.\scripts\smoke-post-deploy.ps1 -BackendBase $backend
+
+# One-command smoke test with runtime UI check (uses Playwright when -UiBase is set)
+.\scripts\smoke-post-deploy.ps1 -BackendBase $backend -UiBase https://arbimind.vercel.app -EvmAddress 0x... -SolanaAddress <base58>
+
+# Standalone runtime UI smoke
+pnpm smoke:ui:runtime
 
 # Backend snapshots health
 Invoke-RestMethod "$backend/api/snapshots/health?chain=evm"
@@ -196,6 +208,7 @@ git push --tags
 - `ADMIN_KEY` or `ADMIN_API_KEY` - Admin dashboard auth (from testnet-credentials-NEW.env)
 - `AI_SERVICE_KEY` - Bot-to-backend auth (must match bot, from credentials file)
 - `POLYGON_RPC_URL` - Polygon Amoy RPC
+- `WORLDCHAIN_SEPOLIA_RPC_URL` - World Chain Sepolia RPC (Alchemy)
 - `FRONTEND_URL` - Vercel UI URL (for CORS)
 
 ### Bot Required:
@@ -204,6 +217,7 @@ git push --tags
 - `EVM_CHAIN=polygon` - Use Polygon Amoy
 - `NETWORK=testnet` - Enables LOG_ONLY mode
 - `POLYGON_RPC_URL` - Polygon Amoy RPC
+- `WORLDCHAIN_SEPOLIA_RPC_URL` - World Chain Sepolia RPC (Alchemy)
 
 ### UI Required:
 - `NEXT_PUBLIC_API_URL` - Railway backend URL + `/api`

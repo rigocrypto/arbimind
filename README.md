@@ -257,6 +257,33 @@ Day-1 operations checklist: [OPS_DAY1_RUNBOOK.md](./OPS_DAY1_RUNBOOK.md)
 
 ArbiMind runs automated post-deploy smoke checks using the workflow at [View Workflow](.github/workflows/post-deploy-smoke.yml).
 
+When `-UiBase` is passed to `scripts/smoke-post-deploy.ps1`, the smoke run automatically includes the Playwright runtime UI check for `/settings`, `/wallet`, and `/solana-wallet`.
+
+```powershell
+pnpm smoke:deploy -- -BackendBase "https://backend-production-0932.up.railway.app" -UiBase "https://arbimind.vercel.app" -EvmAddress "0x..." -SolanaAddress "YourBase58Address"
+```
+
+Standalone runtime UI smoke:
+
+```bash
+pnpm smoke:ui:runtime
+```
+
+Runtime smoke env knobs (for CI/on-call):
+
+- `SMOKE_BASE_URL` (default: `https://arbimind.vercel.app`)
+- `SMOKE_PATHS` (default: `/settings,/wallet,/solana-wallet`)
+- `SMOKE_TIMEOUT_MS` (default: `60000`)
+- `SMOKE_SETTLE_MS` (default: `2500`)
+- `SMOKE_RETRIES` (default: `1` in CI, otherwise `0`)
+- `CI=true` enables sandbox-safe Chromium launch args in containerized runners
+
+Notes:
+
+- This browser check is intentionally stricter and slower than API smoke.
+- Pass/fail is kept minimal: page loads, no actionable request/chunk errors, and wallet connect button visible on `/solana-wallet`.
+- No `NEXT_PUBLIC_*` env is required for this runtime smoke because it targets deployed URLs.
+
 ### What it does
 
 - Automatically runs after [Deploy UI to Vercel](.github/workflows/deploy-ui.yml) completes successfully.
