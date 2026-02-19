@@ -9,6 +9,8 @@
 
 A professional MEV/searcher system for detecting and executing arbitrage opportunities across multiple DEXes with intelligent risk management and profit optimization.
 
+Ops: [Ops Snapshot](OPS_SNAPSHOT.md)
+
 ## 🔄 Nightly Smoke (Auto-Alerts)
 
 Badge: [![Nightly Smoke](https://github.com/rigocrypto/arbimind/actions/workflows/nightly-smoke.yml/badge.svg)](https://github.com/rigocrypto/arbimind/actions/workflows/nightly-smoke.yml)
