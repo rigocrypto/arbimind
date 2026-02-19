@@ -32,5 +32,4 @@ jobs:
             exit 1
           fi
           pnpm dlx vercel@latest pull --yes --environment=production --token "$VERCEL_TOKEN"
-          pnpm dlx vercel@latest build --prod --token "$VERCEL_TOKEN"
-          pnpm dlx vercel@latest deploy --prebuilt --prod --token "$VERCEL_TOKEN"
+          pnpm dlx vercel@latest deploy --prod --token "$VERCEL_TOKEN"
