@@ -16,6 +16,12 @@ type PortfolioEnvDiag = {
   fix: string;
 };
 
+type PortfolioFallbackDiag = {
+  error: string;
+  reason: string;
+  fix: string;
+};
+
 function getEvmEnvDiagnostic(): PortfolioEnvDiag | null {
   const arbAccount = process.env.EVM_ARB_ACCOUNT?.trim();
   if (!arbAccount) {
@@ -54,6 +60,19 @@ function getSolanaEnvDiagnostic(): PortfolioEnvDiag | null {
   return null;
 }
 
+function getPortfolioFallbackDiagnostic(reason: string, fix: string): PortfolioFallbackDiag {
+  return {
+    error: 'Portfolio unavailable',
+    reason,
+    fix,
+  };
+}
+
+function getErrorReason(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return 'Unknown error';
+}
+
 function computeDrawdown(points: TimeseriesPoint[]): TimeseriesPoint[] {
   let peak = 0;
   return points.map((p) => {
@@ -78,12 +97,30 @@ router.get('/evm', async (req: Request, res: Response) => {
   }
   try {
     const summary = await getEvmPortfolio(address);
-    if (!summary) return res.status(503).json({ error: 'Portfolio unavailable' });
+    if (!summary) {
+      const diag = getPortfolioFallbackDiagnostic(
+        'Query failed',
+        'Check RPC/indexer connectivity and backend logs/Sentry'
+      );
+      console.info(`Portfolio fallback: ${diag.reason} (chain=evm)`);
+      return res.status(503).json(diag);
+    }
+    if ((summary.totals.equityUsd ?? 0) <= 0) {
+      const diag = getPortfolioFallbackDiagnostic(
+        'Zero balances/TVL',
+        'Fund arb account or verify tracked deposits and RPC/indexer freshness'
+      );
+      console.info(`Portfolio fallback: ${diag.reason} (chain=evm)`);
+      return res.status(503).json(diag);
+    }
     touchUser('evm', address);
     return res.json(summary);
   } catch (err) {
+    const reason = getErrorReason(err);
     console.error('Portfolio EVM error:', err);
-    return res.status(500).json({ error: 'Internal error' });
+    return res.status(503).json(
+      getPortfolioFallbackDiagnostic(reason, 'Check backend logs/Sentry and RPC/indexer status')
+    );
   }
 });
 
@@ -115,10 +152,21 @@ router.get('/evm/timeseries', async (req: Request, res: Response) => {
     }
 
     const result = await getEvmTimeseries(address, range);
+    if (!result.points.length) {
+      const diag = getPortfolioFallbackDiagnostic(
+        'No timeseries data',
+        'Fund arb account, run snapshots, or verify RPC/indexer connectivity'
+      );
+      console.info(`Portfolio fallback: ${diag.reason} (chain=evm, range=${range})`);
+      return res.status(503).json(diag);
+    }
     return res.json(result);
   } catch (err) {
+    const reason = getErrorReason(err);
     console.error('Portfolio EVM timeseries error:', err);
-    return res.status(500).json({ error: 'Internal error' });
+    return res.status(503).json(
+      getPortfolioFallbackDiagnostic(reason, 'Check backend logs/Sentry and RPC/indexer status')
+    );
   }
 });
 
@@ -136,12 +184,30 @@ router.get('/solana', async (req: Request, res: Response) => {
   }
   try {
     const summary = await getSolanaPortfolio(address);
-    if (!summary) return res.status(503).json({ error: 'Portfolio unavailable' });
+    if (!summary) {
+      const diag = getPortfolioFallbackDiagnostic(
+        'Query failed',
+        'Check RPC/indexer connectivity and backend logs/Sentry'
+      );
+      console.info(`Portfolio fallback: ${diag.reason} (chain=solana)`);
+      return res.status(503).json(diag);
+    }
+    if ((summary.totals.equityUsd ?? 0) <= 0) {
+      const diag = getPortfolioFallbackDiagnostic(
+        'Zero balances/TVL',
+        'Fund arb account or verify tracked deposits and RPC/indexer freshness'
+      );
+      console.info(`Portfolio fallback: ${diag.reason} (chain=solana)`);
+      return res.status(503).json(diag);
+    }
     touchUser('solana', address);
     return res.json(summary);
   } catch (err) {
+    const reason = getErrorReason(err);
     console.error('Portfolio Solana error:', err);
-    return res.status(500).json({ error: 'Internal error' });
+    return res.status(503).json(
+      getPortfolioFallbackDiagnostic(reason, 'Check backend logs/Sentry and RPC/indexer status')
+    );
   }
 });
 
@@ -173,10 +239,21 @@ router.get('/solana/timeseries', async (req: Request, res: Response) => {
     }
 
     const result = await getSolanaTimeseries(address, range);
+    if (!result.points.length) {
+      const diag = getPortfolioFallbackDiagnostic(
+        'No timeseries data',
+        'Fund arb account, run snapshots, or verify RPC/indexer connectivity'
+      );
+      console.info(`Portfolio fallback: ${diag.reason} (chain=solana, range=${range})`);
+      return res.status(503).json(diag);
+    }
     return res.json(result);
   } catch (err) {
+    const reason = getErrorReason(err);
     console.error('Portfolio Solana timeseries error:', err);
-    return res.status(500).json({ error: 'Internal error' });
+    return res.status(503).json(
+      getPortfolioFallbackDiagnostic(reason, 'Check backend logs/Sentry and RPC/indexer status')
+    );
   }
 });
 
