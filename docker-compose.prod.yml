@@ -15,7 +15,7 @@ services:
   bot:
     build:
       context: .
-      dockerfile: Dockerfile.bot
+      dockerfile: packages/bot/Dockerfile
     environment:
       - AI_SERVICE_KEY=${AI_SERVICE_KEY}
       - RPC_URLS=${RPC_URLS}
