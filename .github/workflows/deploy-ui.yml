@@ -7,7 +7,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: pnpm --filter @arbimind/ui install
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.27.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Validate lockfile (frozen)
+        run: pnpm install --frozen-lockfile
       - uses: vercel/action@v1.2.1
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
