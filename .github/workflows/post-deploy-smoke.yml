@@ -1,0 +1,96 @@
+name: Post-Deploy Smoke
+
+on:
+  workflow_run:
+    workflows: ["Deploy UI to Vercel"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      backend_base:
+        description: Backend base URL
+        required: false
+        default: https://backend-production-0932.up.railway.app
+      ui_base:
+        description: UI base URL
+        required: false
+        default: https://arbimind.vercel.app
+      analytics_only:
+        description: Run only analytics smoke check
+        required: false
+        default: "false"
+
+jobs:
+  smoke:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve endpoints
+        id: resolve
+        shell: pwsh
+        run: |
+          $backend = "${{ github.event.inputs.backend_base }}"
+          if ([string]::IsNullOrWhiteSpace($backend)) { $backend = "https://backend-production-0932.up.railway.app" }
+
+          $ui = "${{ github.event.inputs.ui_base }}"
+          if ([string]::IsNullOrWhiteSpace($ui)) { $ui = "https://arbimind.vercel.app" }
+
+          "backend=$backend" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "ui=$ui" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Run smoke script
+        shell: pwsh
+        env:
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+          EVM_ARB_ACCOUNT: ${{ secrets.EVM_ARB_ACCOUNT }}
+          SOLANA_ARB_ACCOUNT: ${{ secrets.SOLANA_ARB_ACCOUNT }}
+        run: |
+          $args = @(
+            '-NoProfile',
+            '-ExecutionPolicy', 'Bypass',
+            '-File', './scripts/smoke-post-deploy.ps1',
+            '-BackendBase', '${{ steps.resolve.outputs.backend }}',
+            '-UiBase', '${{ steps.resolve.outputs.ui }}'
+          )
+
+          if (-not [string]::IsNullOrWhiteSpace($env:ADMIN_API_KEY)) {
+            $args += @('-AdminKey', $env:ADMIN_API_KEY)
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace($env:EVM_ARB_ACCOUNT)) {
+            $args += @('-EvmAddress', $env:EVM_ARB_ACCOUNT)
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace($env:SOLANA_ARB_ACCOUNT)) {
+            $args += @('-SolanaAddress', $env:SOLANA_ARB_ACCOUNT)
+          }
+
+          if ("${{ github.event.inputs.analytics_only }}" -eq "true") {
+            $args += @('-OnlyAnalytics')
+          }
+
+          & powershell @args
+
+      - name: Notify failure webhook
+        if: failure()
+        shell: pwsh
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:ALERT_WEBHOOK_URL)) {
+            Write-Host 'ALERT_WEBHOOK_URL not set, skipping notification.'
+            exit 0
+          }
+
+          $runUrl = "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          $msg = "🚨 ArbiMind post-deploy smoke FAILED on ${{ github.ref_name }}. Backend: ${{ steps.resolve.outputs.backend }} | UI: ${{ steps.resolve.outputs.ui }} | Run: $runUrl"
+
+          if ($env:ALERT_WEBHOOK_URL -match 'discord(?:app)?\.com/api/webhooks') {
+            $payload = @{ content = $msg } | ConvertTo-Json -Compress
+          }
+          else {
+            $payload = @{ text = $msg } | ConvertTo-Json -Compress
+          }
+
+          Invoke-RestMethod -Uri $env:ALERT_WEBHOOK_URL -Method Post -ContentType 'application/json' -Body $payload

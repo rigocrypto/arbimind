@@ -149,6 +149,27 @@ export interface AIWatchlistItem {
   lastPolledAt?: number | null;
 }
 
+export interface CtaAbVariant {
+  variant: 'A' | 'B';
+  landings: number;
+  connectClicks: number;
+  walletConnected: number;
+  connectRatePct: number;
+  clickRatePct: number;
+  bounceRatePct: number;
+  usesSessionIds: boolean;
+  bounceGuardrailBreached: boolean;
+}
+
+export interface CtaAbReport {
+  ok: boolean;
+  window: '24h' | '7d' | '30d';
+  variants: CtaAbVariant[];
+  winner: 'A' | 'B' | null;
+  deltaConnectRatePct: number;
+  bounceGuardrailPct: number;
+}
+
 export interface AlertConfig {
   telegram?: { token: string; chatId: string };
   discord?: string;
@@ -308,6 +329,19 @@ export async function getSnapshotsHealth(chain: 'evm' | 'solana'): Promise<{
     const data = await res.json();
     if (!res.ok) return null;
     return data;
+  } catch {
+    return null;
+  }
+}
+
+export async function getCtaAbReport(window: '24h' | '7d' | '30d' = '7d'): Promise<CtaAbReport | null> {
+  try {
+    const base = API_BASE.endsWith('/api') ? API_BASE : API_BASE.replace(/\/$/, '');
+    const url = `${base}/analytics/ab-cta?window=${window}`;
+    const res = await fetch(url);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.ok) return null;
+    return data as CtaAbReport;
   } catch {
     return null;
   }

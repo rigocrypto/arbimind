@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
 import { MetricCard } from '@/components/MetricCard';
@@ -9,6 +10,7 @@ import { useMetrics, useStrategies, useOpportunities } from '@/hooks/useArbiApi'
 import { useAccount } from 'wagmi';
 import { useEngineContext } from '@/contexts/EngineContext';
 import { formatETH, formatUSD, formatPercent } from '@/utils/format';
+import { getPersistentCtaVariant, trackEvent } from '@/lib/analytics';
 import { DollarSign, TrendingUp, Activity, Zap, Gauge } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -29,10 +31,24 @@ const OpportunityFeed = dynamic(
 
 export default function HomePage() {
   const { isConnected } = useAccount();
+  const ctaVariant = useMemo(() => getPersistentCtaVariant(), []);
+  const landingTrackedRef = useRef(false);
   const { metrics, loading: metricsLoading } = useMetrics();
   const { strategies, loading: strategiesLoading } = useStrategies();
   const { opportunities, loading: opportunitiesLoading } = useOpportunities();
   const { start, stop, singleScan, reloadPrices, activeStrategy, isRunning, checkBalance } = useEngineContext();
+
+  useEffect(() => {
+    if (landingTrackedRef.current) {
+      return;
+    }
+
+    landingTrackedRef.current = true;
+    trackEvent('landing_view', {
+      connected: isConnected,
+      ctaVariant,
+    });
+  }, [isConnected, ctaVariant]);
 
   const handleGuardedAction = (action: () => void | Promise<void>) => {
     if (!isConnected) {
@@ -45,6 +61,10 @@ export default function HomePage() {
 
   const handleRunStrategy = (id: string) => {
     if (!checkBalance()) return;
+    trackEvent('canary_start_clicked', {
+      source: 'strategy_card_run_now',
+      strategyId: id,
+    });
     start(id);
   };
   const handleToggleAuto = (id: string, enabled: boolean) => {
@@ -191,6 +211,9 @@ export default function HomePage() {
                   type="button"
                   onClick={() =>
                     handleGuardedAction(async () => {
+                      trackEvent('canary_start_clicked', {
+                        source: 'quick_action_single_trade',
+                      });
                       const ok = await singleScan();
                       if (ok) {
                         toast.success('Single scan started');

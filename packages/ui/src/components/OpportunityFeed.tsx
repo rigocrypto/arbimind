@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Zap, Loader2 } from 'lucide-react';
 import { formatETH, formatPercent } from '@/utils/format';
 import { useRelativeTime } from '@/hooks/useRelativeTime';
 import type { Opportunity } from '@/hooks/useArbiApi';
 import { useExecute } from '@/hooks/useArbiApi';
 import { useBalanceGuard } from '@/hooks/useBalanceGuard';
+import { trackEvent } from '@/lib/analytics';
 import { useAccount } from 'wagmi';
 import toast from 'react-hot-toast';
 
@@ -25,8 +26,20 @@ export function OpportunityFeed({ opportunities, onExecute }: OpportunityFeedPro
   const { execute } = useExecute();
   const { isConnected } = useAccount();
   const { checkBalance } = useBalanceGuard();
+  const firstOpportunityTrackedRef = useRef(false);
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (firstOpportunityTrackedRef.current || opportunities.length === 0) {
+      return;
+    }
+
+    firstOpportunityTrackedRef.current = true;
+    trackEvent('first_opportunity_view', {
+      count: opportunities.length,
+    });
+  }, [opportunities.length]);
 
   const handleExecute = async (id: string) => {
     if (!isConnected) {

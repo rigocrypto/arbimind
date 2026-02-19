@@ -11,6 +11,7 @@
     "dev": "npm run dev --workspace=@arbimind/ui",
     "dev:ui": "npm run dev --workspace=@arbimind/ui",
     "dev:bot": "npm run dev --workspace=@arbimind/bot",
+    "bot:canary": "pnpm --filter @arbimind/bot canary",
     "build": "pnpm -r --filter @arbimind/ui build",
     "build:all": "npm run build --workspaces",
     "test": "npm run test --workspaces",
@@ -20,7 +21,10 @@
     "lint:ts": "pnpm --filter @arbimind/backend lint && pnpm --filter @arbimind/bot lint",
     "typecheck": "pnpm run typecheck --workspace=@arbimind/backend && pnpm run typecheck --workspace=@arbimind/bot && pnpm run type-check --workspace=@arbimind/ui",
     "clean": "npm run clean --workspaces",
-    "setup": "npm install"
+    "setup": "npm install",
+    "smoke:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/smoke-post-deploy.ps1",
+    "smoke:all": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/smoke-post-deploy.ps1",
+    "smoke:analytics": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/smoke-post-deploy.ps1 -OnlyAnalytics"
   },
   "devDependencies": {
     "next": "15.5.10",

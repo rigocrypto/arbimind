@@ -104,6 +104,16 @@ npm run lint
 npm run typecheck
 ```
 
+### Analytics Smoke
+
+```powershell
+# Preferred (passes args to the script)
+npm run smoke:analytics -- -BackendBase $BACKEND_URL
+
+# Example
+npm run smoke:analytics -- -BackendBase "https://backend-production-0932.up.railway.app"
+```
+
 ---
 
 ## 🚀 Development Mode

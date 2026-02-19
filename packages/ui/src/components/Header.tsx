@@ -1,13 +1,31 @@
 
 'use client';
 
+import { useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { usePathname } from 'next/navigation';
+import { useAccount } from 'wagmi';
 import { NAV_ITEMS } from '@/config/nav';
+import { getPersistentCtaVariant, trackEvent } from '@/lib/analytics';
 
 export function Header() {
   const pathname = usePathname();
+  const { isConnected } = useAccount();
+  const ctaVariant = useMemo(() => getPersistentCtaVariant(), []);
+  const wasConnectedRef = useRef(isConnected);
+
+  useEffect(() => {
+    if (!wasConnectedRef.current && isConnected) {
+      trackEvent('wallet_connected', {
+        source: 'header_connect_button',
+        ctaVariant,
+      });
+    }
+    wasConnectedRef.current = isConnected;
+  }, [isConnected, ctaVariant]);
+
+  const ctaLabel = ctaVariant === 'A' ? 'Start in 60s' : 'Unlock live opportunities';
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-white/10 bg-[#0a0f1e]/95 backdrop-blur-md">
@@ -32,7 +50,22 @@ export function Header() {
           </nav>
         </div>
         <div className="flex items-center gap-3">
-          <ConnectButton accountStatus="address" chainStatus="icon" showBalance={false} />
+          {!isConnected && (
+            <span className="hidden md:block text-xs text-cyan-300/90">{ctaLabel}</span>
+          )}
+          <div
+            onClickCapture={() => {
+              if (!isConnected) {
+                trackEvent('wallet_connect_click', {
+                  source: 'header_connect_button',
+                  ctaVariant,
+                  pathname,
+                });
+              }
+            }}
+          >
+            <ConnectButton accountStatus="address" chainStatus="icon" showBalance={false} />
+          </div>
         </div>
       </div>
     </header>

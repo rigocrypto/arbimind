@@ -86,6 +86,24 @@ alter table ai_prediction_logs add column if not exists external_id text;
 create unique index if not exists idx_ai_prediction_logs_external_id
 on ai_prediction_logs (external_id)
 where external_id is not null;
+
+create table if not exists funnel_events (
+  id uuid primary key default gen_random_uuid(),
+  event_name text not null,
+  event_ts timestamptz not null default now(),
+  path text,
+  session_id text,
+  user_address text,
+  cta_variant text,
+  properties jsonb not null default '{}'::jsonb,
+  source text not null default 'ui'
+);
+
+create index if not exists idx_funnel_events_name_ts
+on funnel_events (event_name, event_ts desc);
+
+create index if not exists idx_funnel_events_ts
+on funnel_events (event_ts desc);
 `;
 
 export async function initSchema(): Promise<void> {
@@ -299,6 +317,49 @@ export interface PredictionRow {
   correct?: boolean | null;
 }
 
+export interface FunnelEventInput {
+  eventName: string;
+  eventTs?: Date;
+  path?: string;
+  sessionId?: string;
+  userAddress?: string;
+  ctaVariant?: string;
+  properties?: Record<string, unknown>;
+  source?: string;
+}
+
+export interface FunnelEventRow {
+  id: string;
+  eventName: string;
+  eventTs: Date;
+  path: string | null;
+  sessionId: string | null;
+  userAddress: string | null;
+  ctaVariant: string | null;
+  properties: Record<string, unknown>;
+  source: string;
+}
+
+export type CtaWindow = '24h' | '7d' | '30d';
+
+export interface CtaAbVariantReport {
+  variant: 'A' | 'B';
+  landings: number;
+  connectClicks: number;
+  walletConnected: number;
+  connectRatePct: number;
+  clickRatePct: number;
+  bounceRatePct: number;
+  usesSessionIds: boolean;
+}
+
+export interface CtaAbReport {
+  window: CtaWindow;
+  variants: CtaAbVariantReport[];
+  winner: 'A' | 'B' | null;
+  deltaConnectRatePct: number;
+}
+
 export async function insertPrediction(row: PredictionInput): Promise<string | null> {
   const p = getPool();
   if (!p) return null;
@@ -480,6 +541,169 @@ export async function getPredictionAccuracy(pairAddress: string | null, window: 
   } catch (err) {
     console.warn('[portfolioDb] getPredictionAccuracy failed:', err);
     return [];
+  }
+}
+
+export async function insertFunnelEvent(row: FunnelEventInput): Promise<string | null> {
+  const p = getPool();
+  if (!p) return null;
+  try {
+    await initSchema();
+    const res = await p.query<{ id: string }>(
+      `insert into funnel_events
+       (event_name, event_ts, path, session_id, user_address, cta_variant, properties, source)
+       values ($1,$2,$3,$4,$5,$6,$7,$8)
+       returning id`,
+      [
+        row.eventName,
+        row.eventTs ?? new Date(),
+        row.path ?? null,
+        row.sessionId ?? null,
+        row.userAddress ?? null,
+        row.ctaVariant ?? null,
+        row.properties ?? {},
+        row.source ?? 'ui',
+      ]
+    );
+    return res.rows[0]?.id ?? null;
+  } catch (err) {
+    console.warn('[portfolioDb] insertFunnelEvent failed:', err);
+    return null;
+  }
+}
+
+export async function listFunnelEvents(limit = 100): Promise<FunnelEventRow[]> {
+  const p = getPool();
+  if (!p) return [];
+  try {
+    await initSchema();
+    const limitSafe = Math.min(Math.max(limit, 1), 1000);
+    const res = await p.query<{
+      id: string;
+      event_name: string;
+      event_ts: Date;
+      path: string | null;
+      session_id: string | null;
+      user_address: string | null;
+      cta_variant: string | null;
+      properties: Record<string, unknown> | null;
+      source: string;
+    }>(
+      `select id, event_name, event_ts, path, session_id, user_address, cta_variant, properties, source
+       from funnel_events
+       order by event_ts desc
+       limit ${limitSafe}`
+    );
+    return res.rows.map((r) => ({
+      id: r.id,
+      eventName: r.event_name,
+      eventTs: r.event_ts,
+      path: r.path,
+      sessionId: r.session_id,
+      userAddress: r.user_address,
+      ctaVariant: r.cta_variant,
+      properties: r.properties ?? {},
+      source: r.source,
+    }));
+  } catch (err) {
+    console.warn('[portfolioDb] listFunnelEvents failed:', err);
+    return [];
+  }
+}
+
+export async function getCtaAbReport(window: CtaWindow = '7d'): Promise<CtaAbReport | null> {
+  const p = getPool();
+  if (!p) return null;
+  try {
+    await initSchema();
+    const interval = windowToInterval(window);
+    const res = await p.query<{
+      variant: 'A' | 'B';
+      landings_events: string;
+      clicks_events: string;
+      connected_events: string;
+      landings_sessions: string;
+      clicks_sessions: string;
+      connected_sessions: string;
+    }>(
+      `select
+         cta_variant as variant,
+         count(*) filter (where event_name = 'landing_view')::text as landings_events,
+         count(*) filter (where event_name = 'wallet_connect_click')::text as clicks_events,
+         count(*) filter (where event_name = 'wallet_connected')::text as connected_events,
+         count(distinct case when event_name = 'landing_view' then session_id end)::text as landings_sessions,
+         count(distinct case when event_name = 'wallet_connect_click' then session_id end)::text as clicks_sessions,
+         count(distinct case when event_name = 'wallet_connected' then session_id end)::text as connected_sessions
+       from funnel_events
+       where event_ts >= now() - ${interval}
+         and cta_variant in ('A', 'B')
+         and event_name in ('landing_view', 'wallet_connect_click', 'wallet_connected')
+       group by cta_variant
+       order by cta_variant asc`
+    );
+
+    const byVariant = new Map<'A' | 'B', CtaAbVariantReport>();
+
+    for (const row of res.rows) {
+      const landingsSessions = parseInt(row.landings_sessions, 10) || 0;
+      const clicksSessions = parseInt(row.clicks_sessions, 10) || 0;
+      const connectedSessions = parseInt(row.connected_sessions, 10) || 0;
+
+      const landingsEvents = parseInt(row.landings_events, 10) || 0;
+      const clicksEvents = parseInt(row.clicks_events, 10) || 0;
+      const connectedEvents = parseInt(row.connected_events, 10) || 0;
+
+      const usesSessionIds = landingsSessions > 0;
+      const landings = usesSessionIds ? landingsSessions : landingsEvents;
+      const connectClicks = usesSessionIds ? clicksSessions : clicksEvents;
+      const walletConnected = usesSessionIds ? connectedSessions : connectedEvents;
+
+      const connectRatePct = landings > 0 ? (walletConnected / landings) * 100 : 0;
+      const clickRatePct = landings > 0 ? (connectClicks / landings) * 100 : 0;
+      const bounceRatePct = Math.max(0, 100 - clickRatePct);
+
+      byVariant.set(row.variant, {
+        variant: row.variant,
+        landings,
+        connectClicks,
+        walletConnected,
+        connectRatePct,
+        clickRatePct,
+        bounceRatePct,
+        usesSessionIds,
+      });
+    }
+
+    const variants: CtaAbVariantReport[] = (['A', 'B'] as const).map((variant) => {
+      return byVariant.get(variant) ?? {
+        variant,
+        landings: 0,
+        connectClicks: 0,
+        walletConnected: 0,
+        connectRatePct: 0,
+        clickRatePct: 0,
+        bounceRatePct: 0,
+        usesSessionIds: false,
+      };
+    });
+
+    const a = variants.find((v) => v.variant === 'A')!;
+    const b = variants.find((v) => v.variant === 'B')!;
+    const deltaConnectRatePct = b.connectRatePct - a.connectRatePct;
+    const winner: 'A' | 'B' | null =
+      b.connectRatePct > a.connectRatePct ? 'B' :
+      a.connectRatePct > b.connectRatePct ? 'A' :
+      null;
+
+    return {
+      window,
+      variants,
+      winner,
+      deltaConnectRatePct,
+    };
+  } catch (err) {
+    console.warn('[portfolioDb] getCtaAbReport failed:', err);
+    return null;
   }
 }
 

@@ -1,5 +1,9 @@
 # 🧠 ArbiMind
 
+![Post-Deploy Smoke](https://github.com/rigocrypto/arbimind/actions/workflows/post-deploy-smoke.yml/badge.svg)
+![Deploy UI to Vercel](https://github.com/rigocrypto/arbimind/actions/workflows/deploy-ui.yml/badge.svg)
+![Bot Canary Sanity](https://github.com/rigocrypto/arbimind/actions/workflows/bot-canary-sanity.yml/badge.svg)
+
 > **The brain of on-chain arbitrage**
 
 A professional MEV/searcher system for detecting and executing arbitrage opportunities across multiple DEXes with intelligent risk management and profit optimization.
@@ -157,6 +161,39 @@ pnpm run dev
 
 API: `http://localhost:8080` — `/api/health`, `/api/engine`
 
+### RPC Health Endpoint
+
+Use the backend RPC health endpoint to verify configured chain RPC connectivity at runtime.
+
+```bash
+# Default check (evm, solana, worldchain_sepolia)
+curl http://localhost:8080/api/rpc/health
+
+# World Chain Sepolia only
+curl "http://localhost:8080/api/rpc/health?chain=worldchain_sepolia"
+
+# Multi-chain check
+curl "http://localhost:8080/api/rpc/health?chain=evm,worldchain_sepolia,solana"
+```
+
+Expected response shape:
+
+```json
+{
+  "ok": true,
+  "health": {
+    "evm": "healthy",
+    "worldchain_sepolia": "healthy",
+    "solana": "healthy"
+  },
+  "details": {
+    "evm": { "status": "healthy", "rpcUrl": "https://..." },
+    "worldchain_sepolia": { "status": "healthy", "rpcUrl": "https://..." },
+    "solana": { "status": "healthy", "rpcUrl": "https://..." }
+  }
+}
+```
+
 ### 3. Start the Bot
 
 ```bash
@@ -188,6 +225,54 @@ Open [http://localhost:3000](http://localhost:3000) to access the ArbiMind dashb
 - Must end with `/api`
 
 See [DEPLOY.md](./DEPLOY.md) for full deployment details.
+
+Day-1 operations checklist: [OPS_DAY1_RUNBOOK.md](./OPS_DAY1_RUNBOOK.md)
+
+## 🚨 Post-Deploy Smoke Tests
+
+ArbiMind runs automated post-deploy smoke checks using the workflow at [View Workflow](.github/workflows/post-deploy-smoke.yml).
+
+### What it does
+
+- Automatically runs after [Deploy UI to Vercel](.github/workflows/deploy-ui.yml) completes successfully.
+- Runs the production smoke script [scripts/smoke-post-deploy.ps1](scripts/smoke-post-deploy.ps1) against backend + UI.
+- Validates health, RPC connectivity, analytics ingest/query persistence, snapshots, UI CSP, and optional admin/portfolio checks.
+- Sends a webhook alert on failure when `ALERT_WEBHOOK_URL` is configured.
+
+### Manual trigger (`workflow_dispatch`)
+
+1. Open **Actions** → **Post-Deploy Smoke** in GitHub.
+2. Click **Run workflow**.
+3. Optionally override:
+
+  `backend_base` (default: `https://backend-production-0932.up.railway.app`),
+  `ui_base` (default: `https://arbimind.vercel.app`),
+  `analytics_only` (`true|false`, default: `false`) for quick analytics-only retries.
+
+### Required secrets / variables
+
+| Name | Purpose | Required? |
+| --- | --- | --- |
+| `ADMIN_API_KEY` | Enables `/api/admin/*` smoke checks | Optional |
+| `EVM_ARB_ACCOUNT` | Enables EVM portfolio summary/timeseries checks | Optional |
+| `SOLANA_ARB_ACCOUNT` | Enables Solana portfolio summary/timeseries checks | Optional |
+| `ALERT_WEBHOOK_URL` | Sends failure notifications to Slack/Discord-compatible webhook | Optional |
+
+### Outputs and integrations
+
+- **Workflow logs**: pass/fail summary for every smoke check.
+- **Failure notification**: webhook message includes branch/ref, backend URL, UI URL, and run link.
+
+### Quick local analytics-only smoke
+
+```bash
+npm run smoke:analytics -- -BackendBase "https://backend-production-0932.up.railway.app"
+```
+
+- **Railway/Vercel tie-in**:
+  - UI deploy trigger comes from [Deploy UI to Vercel](.github/workflows/deploy-ui.yml).
+  - Backend/UI runtime configuration guidance is in [DEPLOY.md](DEPLOY.md).
+  - Uptime monitor setup and escalation policy are in [ALERTING_CONFIGURATION.md](ALERTING_CONFIGURATION.md).
 
 ## 🔧 Configuration
 

@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { WalletOverviewCard } from './WalletOverviewCard';
 import { KpiCards } from './KpiCards';
 import { AdminCharts } from './AdminCharts';
+import { CtaAbFunnelCard } from './CtaAbFunnelCard';
 import { AdminTxTable } from './AdminTxTable';
 import { AdminAuditLog } from './AdminAuditLog';
-import { adminApi, getSnapshotsHealth, type AdminMetrics, type AdminTx, type AdminWallets } from '@/lib/adminApi';
+import { adminApi, getCtaAbReport, getSnapshotsHealth, type AdminMetrics, type AdminTx, type AdminWallets, type CtaAbReport } from '@/lib/adminApi';
 import { Pause, Play, Database } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -26,6 +27,7 @@ export function AdminDashboard() {
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
   const [txs, setTxs] = useState<AdminTx[]>([]);
   const [wallets, setWallets] = useState<AdminWallets | null>(null);
+  const [ctaAbReport, setCtaAbReport] = useState<CtaAbReport | null>(null);
   const [enginePaused, setEnginePaused] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,18 +41,20 @@ export function AdminDashboard() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [mRes, tRes, wRes, eRes, evmHealth, solHealth] = await Promise.all([
+    const [mRes, tRes, wRes, eRes, evmHealth, solHealth, abCta] = await Promise.all([
       adminApi.getMetrics(range),
       adminApi.getTxs({ limit: 50 }),
       adminApi.getWallets(),
       adminApi.getEngineStatus(),
       getSnapshotsHealth('evm'),
       getSnapshotsHealth('solana'),
+      getCtaAbReport(range),
     ]);
     if (mRes.ok && mRes.data) setMetrics(mRes.data);
     else if (!mRes.ok) setError(mRes.error ?? 'Failed to fetch metrics');
     if (tRes.ok && tRes.data) setTxs(tRes.data.txs);
     if (wRes.ok && wRes.data) setWallets(wRes.data);
+    setCtaAbReport(abCta);
     if (eRes.ok && eRes.data) setEnginePaused(eRes.data.paused);
     setSnapshotHealth({
       evm: evmHealth ? { lastOkAt: evmHealth.lastOkAt, stale: evmHealth.stale } : null,
@@ -200,6 +204,8 @@ export function AdminDashboard() {
           txCount={m.txCount}
         />
       )}
+
+      <CtaAbFunnelCard report={ctaAbReport} range={range} />
 
       {/* Charts */}
       {m && (

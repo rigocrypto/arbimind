@@ -1,0 +1,85 @@
+# Day-1 Ops Runbook
+
+A concise runbook for first-day production operations: deploy, verify, canary, monitor, and rollback.
+
+## 1) Deploy
+
+### Backend (Railway)
+
+```powershell
+Push-Location packages/backend
+railway up --detach
+railway domain
+Pop-Location
+```
+
+### UI (Vercel)
+
+```bash
+vercel --prod
+```
+
+## 2) Smoke Validation
+
+### Full smoke
+
+```powershell
+npm run smoke:all -- -BackendBase "https://backend-production-0932.up.railway.app" -UiBase "https://arbimind.vercel.app"
+```
+
+### Analytics-only quick check
+
+```powershell
+npm run smoke:analytics -- -BackendBase "https://backend-production-0932.up.railway.app"
+```
+
+## 3) Canary Bot
+
+```bash
+pnpm bot:canary
+```
+
+Suggested conservative thresholds for initial rollout:
+
+- `CANARY_MODE=true`
+- `CANARY_MAX_NOTIONAL_ETH=0.01`
+- `CANARY_MAX_DAILY_LOSS_ETH=0.005`
+
+## 4) Rollback (Emergency)
+
+### Backend
+
+```powershell
+Push-Location packages/backend
+railway deployment list
+railway service redeploy
+Pop-Location
+```
+
+### UI
+
+```bash
+vercel rollback <deployment-id>
+```
+
+## 5) Monitor
+
+```powershell
+Push-Location packages/backend
+railway logs --latest --lines 200
+Pop-Location
+```
+
+Also monitor:
+
+- Sentry project dashboard
+- Uptime provider alerts
+- GitHub Actions status for post-deploy smoke and canary sanity
+
+## 6) Fast Incident Checklist
+
+1. Confirm `API health` and `RPC health`
+2. Confirm `Analytics ingest + query`
+3. Pause/disable canary if guardrails trigger
+4. Roll back backend or UI if regression is confirmed
+5. Post incident note with timestamp, impact, and mitigation
