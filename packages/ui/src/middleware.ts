@@ -52,6 +52,7 @@ export function middleware(req: NextRequest) {
     ].filter(Boolean);
 
     const rpcConnectSrc = Array.from(new Set(rpcOrigins)).join(' ');
+    const metamaskConnectSrc = 'https://*.metamask.io https://metamask-sdk.api.cx.metamask.io https://mm-sdk-analytics.api.cx.metamask.io';
     const localBackend = isLocalhost
       ? `http://localhost:8000 ws://localhost:8000 http://localhost:8001 ws://localhost:8001 http://127.0.0.1:8000 ws://127.0.0.1:8000 http://127.0.0.1:8001 ws://127.0.0.1:8001${apiOrigins}`
       : apiOrigins;
@@ -62,7 +63,7 @@ export function middleware(req: NextRequest) {
       `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
       `font-src 'self' data: https://fonts.gstatic.com`,
       `img-src 'self' blob: data: https:`,
-      `connect-src 'self' ${localBackend} ${rpcConnectSrc} https://api.dexscreener.com https://api.web3modal.org https://pulse.walletconnect.org https://rpc.walletconnect.com https://relay.walletconnect.com https://rpc.walletconnect.org https://relay.walletconnect.org https://cloud.walletconnect.com ws: wss:`.trim(),
+      `connect-src 'self' ${localBackend} ${rpcConnectSrc} ${metamaskConnectSrc} https://api.dexscreener.com https://api.web3modal.org https://pulse.walletconnect.org https://rpc.walletconnect.com https://relay.walletconnect.com https://rpc.walletconnect.org https://relay.walletconnect.org https://cloud.walletconnect.com ws: wss:`.trim(),
       `frame-src 'self' https://*.walletconnect.org https://*.reown.com`,
       `worker-src 'self' blob:`,
       `base-uri 'self'`,
@@ -75,7 +76,7 @@ export function middleware(req: NextRequest) {
       `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
       `font-src 'self' data: https://fonts.gstatic.com`,
       `img-src 'self' blob: data: https:`,
-      `connect-src 'self' ${localBackend} ${rpcConnectSrc} https://api.dexscreener.com https://api.web3modal.org https://pulse.walletconnect.org https://rpc.walletconnect.com https://relay.walletconnect.com https://rpc.walletconnect.org https://relay.walletconnect.org https://cloud.walletconnect.com ws: wss:`.trim(),
+      `connect-src 'self' ${localBackend} ${rpcConnectSrc} ${metamaskConnectSrc} https://api.dexscreener.com https://api.web3modal.org https://pulse.walletconnect.org https://rpc.walletconnect.com https://relay.walletconnect.com https://rpc.walletconnect.org https://relay.walletconnect.org https://cloud.walletconnect.com ws: wss:`.trim(),
       `frame-src 'self' https://*.walletconnect.org https://*.reown.com https://vercel.live`,
       `worker-src 'self' blob:`,
       `base-uri 'self'`,
