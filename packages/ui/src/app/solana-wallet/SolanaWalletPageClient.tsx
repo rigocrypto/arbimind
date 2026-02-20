@@ -49,7 +49,7 @@ export default function SolanaWalletPageClient() {
   const hasInstalledWallet = wallets.some((wallet) => wallet.readyState === WalletReadyState.Installed);
   const [userSolBalance, setUserSolBalance] = useState(0);
   const [treasurySolBalance, setTreasurySolBalance] = useState(0);
-  const [botTrades] = useState<BotTrade[]>(MOCK_BOT_TRADES);
+  const [botTrades, setBotTrades] = useState<BotTrade[]>(MOCK_BOT_TRADES);
   const [loading, setLoading] = useState<string | null>(null);
   const address = publicKey?.toBase58();
   const {
@@ -118,6 +118,69 @@ export default function SolanaWalletPageClient() {
       clearInterval(interval);
     };
   }, [connection, publicKey, treasuryPubkey]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadTrades = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/solana/trades`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+        });
+
+        if (!response.ok) {
+          if (!cancelled) {
+            setBotTrades(MOCK_BOT_TRADES);
+          }
+          return;
+        }
+
+        const payload = (await response.json()) as {
+          trades?: Array<{
+            id?: string;
+            pair?: string;
+            side?: 'buy' | 'sell';
+            volumeSol?: number;
+            pnlSol?: number;
+            status?: 'success' | 'failed';
+            at?: string;
+          }>;
+        };
+
+        const normalized = (payload.trades ?? [])
+          .filter((trade) => !!trade.id)
+          .map((trade) => ({
+            id: trade.id as string,
+            pair: trade.pair ?? 'SOL/USDC',
+            side: trade.side === 'sell' ? 'sell' : 'buy',
+            volumeSol: Number(trade.volumeSol ?? 0),
+            pnlSol: Number(trade.pnlSol ?? 0),
+            status: trade.status === 'failed' ? 'failed' : 'success',
+            at: trade.at ?? 'now',
+          }));
+
+        if (!cancelled) {
+          setBotTrades(normalized.length > 0 ? normalized : MOCK_BOT_TRADES);
+        }
+      } catch {
+        if (!cancelled) {
+          setBotTrades(MOCK_BOT_TRADES);
+        }
+      }
+    };
+
+    void loadTrades();
+    const interval = setInterval(() => {
+      void loadTrades();
+    }, 30000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const tradeStats = useMemo(() => {
     const total = botTrades.length;
