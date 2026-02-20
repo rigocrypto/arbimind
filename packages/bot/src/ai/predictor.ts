@@ -6,6 +6,7 @@
 
 import path from 'path';
 import fs from 'fs';
+import { Logger } from '../utils/Logger';
 
 export interface PredictorResult {
   confidence: number;
@@ -15,6 +16,7 @@ export interface PredictorResult {
 }
 
 const MODEL_PATH = path.join(process.cwd(), 'models', 'predictor', 'model.json');
+const logger = new Logger('Predictor');
 
 /**
  * Predict opportunity confidence from features.
@@ -46,7 +48,9 @@ export async function predictOpportunity(features: number[]): Promise<PredictorR
         source: 'tfjs',
       };
     } catch (e) {
-      console.warn('TF.js model load failed, using rule-based:', (e as Error).message);
+      logger.warn('TF.js model load failed, using rule-based fallback.', {
+        error: (e as Error).message
+      });
     }
   }
 

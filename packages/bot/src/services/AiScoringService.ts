@@ -1,5 +1,6 @@
 import type { ArbitrageOpportunity } from '../types';
 import crypto from 'crypto';
+import { Logger } from '../utils/Logger';
 
 export interface AiScoreResult {
   expectedProfitPct: number;
@@ -16,6 +17,8 @@ export interface AiScoringConfig {
 }
 
 export class AiScoringService {
+  private readonly logger = new Logger('AiScoringService');
+
   constructor(private readonly config: AiScoringConfig) {}
 
   public async scoreOpportunity(
@@ -60,7 +63,7 @@ export class AiScoringService {
     const chain = context.chain;
     const pairAddress = context.pairAddress?.trim();
     if (!chain || !pairAddress) {
-      console.warn('[AiScoringService] Missing chain or pairAddress; skipping AI log payload.');
+      this.logger.warn('Missing chain or pairAddress; skipping AI log payload.');
       return;
     }
 

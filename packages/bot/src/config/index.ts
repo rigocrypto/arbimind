@@ -1,8 +1,11 @@
 import { arbitrum, arbitrumSepolia, mainnet, polygon, polygonAmoy, sepolia } from 'viem/chains';
 import { ALLOWLISTED_TOKENS, TOKEN_PAIRS } from './tokens';
 import { DEX_CONFIG, ENABLED_DEXES } from './dexes';
+import { Logger } from '../utils/Logger';
 
 // Note: dotenv.config() is called in src/index.ts BEFORE this module is imported
+
+const logger = new Logger('Config');
 
 export interface BotConfig {
   // Ethereum Configuration
@@ -196,11 +199,9 @@ export function validateConfig(): void {
     // LOG_ONLY: warn if key is missing/invalid, but do not throw
     if (!privateKey || privateKey.length !== 66 || !privateKey.startsWith('0x')) {
       if (walletAddress) {
-        // eslint-disable-next-line no-console
-        console.warn('⚠️ LOG_ONLY: PRIVATE_KEY missing/invalid; using WALLET_ADDRESS identity fallback.');
+        logger.warn('⚠️ LOG_ONLY: PRIVATE_KEY missing/invalid; using WALLET_ADDRESS identity fallback.');
       } else {
-        // eslint-disable-next-line no-console
-        console.warn('⚠️ LOG_ONLY: PRIVATE_KEY and WALLET_ADDRESS both missing; running without wallet identity.');
+        logger.warn('⚠️ LOG_ONLY: PRIVATE_KEY and WALLET_ADDRESS both missing; running without wallet identity.');
       }
     }
   }

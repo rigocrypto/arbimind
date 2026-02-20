@@ -1,9 +1,6 @@
-
-console.log('DEBUG: index.ts entrypoint reached');
 import { loadEnv } from './bootstrapEnv';
 // Load environment variables FIRST, before importing anything else
 loadEnv();
-console.log('DEBUG: .env loaded');
 
 import { ethers } from 'ethers';
 import { ArbitrageBot } from './services/ArbitrageBot';
@@ -16,6 +13,12 @@ const logger = new Logger('Main');
 
 function isValidPrivateKey(value: string): boolean {
   return value.length === 66 && value.startsWith('0x');
+}
+
+function hasWalletIdentity(): boolean {
+  const privateKey = config.privateKey?.trim() || '';
+  const walletAddress = config.walletAddress?.trim() || '';
+  return isValidPrivateKey(privateKey) || walletAddress.length > 0;
 }
 
 async function main(): Promise<void> {
@@ -84,6 +87,15 @@ async function main(): Promise<void> {
     await bot.start();
 
   } catch (error) {
+    const shouldGracefulExit = config.logOnly && !hasWalletIdentity();
+
+    if (shouldGracefulExit) {
+      logger.warn('⚠️ Startup failed in LOG_ONLY mode without wallet identity. Exiting gracefully to avoid restart loop.', {
+        error: error instanceof Error ? error.message : error
+      });
+      process.exit(0);
+    }
+
     logger.error('❌ Failed to start bot', {
       error: error instanceof Error ? error.message : error,
       stack: error instanceof Error ? error.stack : undefined
