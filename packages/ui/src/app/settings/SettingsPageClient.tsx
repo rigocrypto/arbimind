@@ -29,23 +29,13 @@ type NumberSettingKey = {
 export default function SettingsPageClient() {
   useHydrateSettings();
 
-  const {
-    settings,
-    isDirty,
-    isLoading,
-    error,
-    setSetting,
-    save,
-    resetToDefaults,
-  } = useSettingsStore((state) => ({
-    settings: state.settings,
-    isDirty: state.isDirty,
-    isLoading: state.isLoading,
-    error: state.error,
-    setSetting: state.setSetting,
-    save: state.save,
-    resetToDefaults: state.resetToDefaults,
-  }));
+  const settings = useSettingsStore((state) => state.settings);
+  const isDirty = useSettingsStore((state) => state.isDirty);
+  const isLoading = useSettingsStore((state) => state.isLoading);
+  const error = useSettingsStore((state) => state.error);
+  const setSetting = useSettingsStore((state) => state.setSetting);
+  const save = useSettingsStore((state) => state.save);
+  const resetToDefaults = useSettingsStore((state) => state.resetToDefaults);
 
   const [justSaved, setJustSaved] = useState(false);
 
