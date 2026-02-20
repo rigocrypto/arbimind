@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import Image from 'next/image';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { WalletReadyState } from '@solana/wallet-adapter-base';
 import { VersionedTransaction } from '@solana/web3.js';
 import Link from 'next/link';
 import { Wallet, ArrowRightLeft, ChevronLeft, Send, AlertTriangle } from 'lucide-react';
@@ -27,6 +28,7 @@ const SOLANA_WALLET_BUTTON_LABELS = {
 export default function SolanaWalletPageClient() {
   const { connection } = useConnection();
   const { publicKey, connected, sendTransaction, wallets } = useWallet();
+  const hasInstalledWallet = wallets.some((wallet) => wallet.readyState === WalletReadyState.Installed);
   const [loading, setLoading] = useState<string | null>(null);
   const address = publicKey?.toBase58();
   const {
@@ -266,7 +268,7 @@ export default function SolanaWalletPageClient() {
             <p className="text-dark-400 mb-6 text-lg font-medium">
               🚀 Dive into lightning-fast swaps, instant transfers, and real-time portfolio analytics. Connect your wallet and be among the first to try the next-gen Solana trading experience—now live on ArbiMind!
             </p>
-            {wallets.length === 0 && (
+            {!hasInstalledWallet && (
               <div className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-left text-sm text-amber-200">
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
