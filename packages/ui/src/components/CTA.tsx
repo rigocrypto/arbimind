@@ -4,9 +4,23 @@ import { motion } from 'framer-motion';
 import { Wallet } from 'lucide-react';
 import { fadeIn } from '@/lib/animations';
 import toast from 'react-hot-toast';
+import { useRef } from 'react';
+
+const AMOY_CHAIN_ID_HEX = '0x13882';
+const AMOY_RPC_URL =
+  process.env.NEXT_PUBLIC_AMOY_RPC_URL ||
+  process.env.NEXT_PUBLIC_POLYGON_AMOY_RPC_URL ||
+  process.env.NEXT_PUBLIC_POLYGON_AMOY_RPC ||
+  'https://rpc-amoy.polygon.technology';
+const AMOY_EXPLORER_URL = process.env.NEXT_PUBLIC_AMOY_EXPLORER_URL || 'https://amoy.polygonscan.com';
 
 export function CTA() {
+  const connectingRef = useRef(false);
+
   const handleConnectWallet = async () => {
+    if (connectingRef.current) return;
+    connectingRef.current = true;
+
     // Mock wallet connection
     const anyEthereum = typeof window !== 'undefined'
       ? (window as Window & {
@@ -14,9 +28,9 @@ export function CTA() {
             isMetaMask?: boolean;
             providers?: Array<{
               isMetaMask?: boolean;
-              request?: (args: { method: string }) => Promise<unknown>;
+              request?: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
             }>;
-            request?: (args: { method: string }) => Promise<unknown>;
+            request?: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
           };
         }).ethereum
       : undefined;
@@ -25,18 +39,50 @@ export function CTA() {
 
     if (!ethereum?.request) {
       toast.error('MetaMask not installed');
+      connectingRef.current = false;
       return;
     }
 
     try {
       await ethereum.request({ method: 'eth_requestAccounts' });
+
+      try {
+        await ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: AMOY_CHAIN_ID_HEX }],
+        });
+      } catch (switchError) {
+        const switchCode =
+          typeof switchError === 'object' && switchError !== null && 'code' in switchError
+            ? (switchError as { code?: number }).code
+            : undefined;
+
+        if (switchCode === 4902) {
+          await ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [
+              {
+                chainId: AMOY_CHAIN_ID_HEX,
+                chainName: 'Polygon Amoy Testnet',
+                nativeCurrency: { name: 'POL', symbol: 'POL', decimals: 18 },
+                rpcUrls: [AMOY_RPC_URL],
+                blockExplorerUrls: [AMOY_EXPLORER_URL],
+              },
+            ],
+          });
+        } else if (switchCode !== 4001) {
+          throw switchError;
+        }
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Wallet connection failed';
       if (/user rejected|rejected/i.test(message)) {
         toast('Connection cancelled', { icon: '🔒' });
-        return;
+      } else {
+        toast.error(message || 'Wallet connection failed');
       }
-      toast.error(message || 'Wallet connection failed');
+    } finally {
+      connectingRef.current = false;
     }
   };
 
