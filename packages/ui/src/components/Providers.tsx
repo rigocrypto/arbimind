@@ -12,17 +12,13 @@ import '@/app/solana-wallet/solana-wallet-ui.css';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { clusterApiUrl } from '@solana/web3.js';
-import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
 import { BackpackWalletAdapter } from '@solana/wallet-adapter-backpack';
 import toast from 'react-hot-toast';
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
   const solanaEndpoint = useMemo(() => clusterApiUrl('devnet'), []);
-  const solanaWallets = useMemo(
-    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter(), new BackpackWalletAdapter()],
-    []
-  );
+  const solanaWallets = useMemo(() => [new BackpackWalletAdapter()], []);
 
   const handleSolanaError = useCallback((err: Error) => {
     const message = err?.message ?? '';

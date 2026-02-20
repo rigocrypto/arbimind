@@ -1,26 +1,33 @@
 'use client';
 
-import { FC, ReactNode, useMemo } from 'react';
+import { FC, ReactNode, useCallback, useMemo } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
-import { PhantomWalletAdapter, SolflareWalletAdapter, BackpackWalletAdapter } from '@solana/wallet-adapter-wallets';
+import { BackpackWalletAdapter } from '@solana/wallet-adapter-backpack';
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { clusterApiUrl } from '@solana/web3.js';
-import '@solana/wallet-adapter-react-ui/styles.css';
+import toast from 'react-hot-toast';
+import '@/app/solana-wallet/solana-wallet-ui.css';
 
 const network = WalletAdapterNetwork.Devnet;
 
 export const SolanaProvider: FC<{ children: ReactNode }> = ({ children }) => {
   const endpoint = clusterApiUrl(network);
-  const wallets = useMemo(() => [
-    new PhantomWalletAdapter(),
-    new SolflareWalletAdapter(),
-    new BackpackWalletAdapter(),
-  ], []);
+  const wallets = useMemo(() => [new BackpackWalletAdapter()], []);
+
+  const handleError = useCallback((err: Error) => {
+    const message = err?.message ?? '';
+    if (/user rejected|rejected/i.test(message)) {
+      toast('Connection cancelled', { icon: '🔒' });
+      return;
+    }
+    console.error('[Solana wallet]', err);
+    toast.error(message || 'Wallet error');
+  }, []);
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
+      <WalletProvider wallets={wallets} autoConnect={false} onError={handleError}>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>
