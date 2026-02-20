@@ -251,6 +251,17 @@ export default function WalletPage() {
             <Wallet className="w-16 h-16 mx-auto mb-4 text-dark-400" />
             <h2 className="text-xl font-bold text-white mb-2">No Wallet Connected</h2>
             <p className="text-dark-400 mb-6">Connect your wallet to view balances and activity.</p>
+            <div className="mx-auto max-w-2xl rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-left text-sm text-amber-200">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <div>
+                  <p className="font-medium">On mobile Chrome/Safari, wallet extensions are not available.</p>
+                  <p className="text-amber-200/80 mt-1">
+                    For best results, open ArbiMind from the browser inside MetaMask/Phantom, or use WalletConnect from the connect modal.
+                  </p>
+                </div>
+              </div>
+            </div>
           </motion.div>
         ) : (
           <>

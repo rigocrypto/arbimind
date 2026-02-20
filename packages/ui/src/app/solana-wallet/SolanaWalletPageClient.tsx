@@ -275,6 +275,9 @@ export default function SolanaWalletPageClient() {
                     <p className="text-amber-200/80">
                       Enable your wallet extension in this browser profile (including Incognito if used), then reload this page.
                     </p>
+                    <p className="text-amber-200/80 mt-2">
+                      On mobile Chrome/Safari, open this site from Phantom or Solflare in-app browser for the most reliable Solana connection.
+                    </p>
                   </div>
                 </div>
               </div>
