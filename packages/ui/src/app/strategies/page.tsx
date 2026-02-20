@@ -103,7 +103,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }
 
 export default function StrategiesPage() {
   const { strategies, loading } = useStrategies();
-  const { start, stop, activeStrategy, checkBalance } = useEngineContext();
+  const { start, stop, activeStrategy, activeWalletChain, activeWalletAddress, checkBalance } = useEngineContext();
   const [searchPairs, setSearchPairs] = useState('');
   const [helpOpen, setHelpOpen] = useState(false);
   const [accordionOpen, setAccordionOpen] = useState<string | null>('uni-arb');
@@ -216,6 +216,21 @@ export default function StrategiesPage() {
             </div>
           </div>
         </motion.div>
+
+        {(activeWalletChain || activeWalletAddress) && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.12 }}
+            className="glass-card p-4"
+          >
+            <p className="text-xs text-dark-400 mb-1">Engine Execution Wallet</p>
+            <p className="text-sm text-white">
+              {activeWalletChain ? activeWalletChain.toUpperCase() : 'UNKNOWN'}
+              {activeWalletAddress ? ` · ${activeWalletAddress}` : ''}
+            </p>
+          </motion.div>
+        )}
 
         {/* Strategies Grid */}
         {loading ? (

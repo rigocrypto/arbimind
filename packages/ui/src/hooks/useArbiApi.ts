@@ -406,7 +406,44 @@ export function useOpportunities() {
 export function useEngine() {
   const [isRunning, setIsRunning] = useState(false);
   const [activeStrategy, setActiveStrategy] = useState<string>('');
+  const [activeWalletChain, setActiveWalletChain] = useState<'evm' | 'solana' | ''>('');
+  const [activeWalletAddress, setActiveWalletAddress] = useState<string>('');
   const [loading, setLoading] = useState(false);
+
+  const getLocalWalletContext = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+
+    const chain = window.localStorage.getItem('arbimind:wallet:activeChain');
+    if (chain === 'solana') {
+      const address = window.localStorage.getItem('arbimind:wallet:solanaAddress');
+      const connected = window.localStorage.getItem('arbimind:wallet:solanaConnected') === '1';
+
+      if (!connected || !address) {
+        return null;
+      }
+
+      return {
+        walletChain: 'solana' as const,
+        walletAddress: address,
+      };
+    }
+
+    if (chain === 'evm') {
+      const address = window.localStorage.getItem('arbimind:wallet:evmAddress');
+      if (!address) {
+        return null;
+      }
+
+      return {
+        walletChain: 'evm' as const,
+        walletAddress: address,
+      };
+    }
+
+    return null;
+  }, []);
 
   const fetchStatus = useCallback(async () => {
     if (!ENABLE_API_CALLS) return;
@@ -415,8 +452,12 @@ export function useEngine() {
       if (response.ok) {
         const data = await response.json();
         const active = data?.active ?? '';
+        const walletChain = data?.walletChain;
+        const walletAddress = data?.walletAddress;
         setActiveStrategy(typeof active === 'string' ? active : '');
         setIsRunning(!!active);
+        setActiveWalletChain(walletChain === 'evm' || walletChain === 'solana' ? walletChain : '');
+        setActiveWalletAddress(typeof walletAddress === 'string' ? walletAddress : '');
       }
     } catch {
       // Ignore - backend may be offline
@@ -434,23 +475,36 @@ export function useEngine() {
     try {
       const referrer =
         typeof window !== 'undefined' ? localStorage.getItem('arbimind_ref') : null;
-      const body: { strategy: string; referrer?: string } = { strategy };
+      const body: { strategy: string; referrer?: string; walletChain?: 'evm' | 'solana'; walletAddress?: string } = {
+        strategy,
+      };
       if (referrer && /^0x[a-fA-F0-9]{40}$/.test(referrer)) body.referrer = referrer;
+      const walletContext = getLocalWalletContext();
+      if (walletContext) {
+        body.walletChain = walletContext.walletChain;
+        body.walletAddress = walletContext.walletAddress;
+      }
       const response = await fetch(apiUrl('/engine/start'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       if (response.ok) {
-        setActiveStrategy(strategy);
+        const data = await response.json().catch(() => ({}));
+        const startedStrategy = typeof data?.strategy === 'string' ? data.strategy : strategy;
+        const walletChain = data?.walletChain;
+        const walletAddress = data?.walletAddress;
+        setActiveStrategy(startedStrategy);
         setIsRunning(true);
+        setActiveWalletChain(walletChain === 'evm' || walletChain === 'solana' ? walletChain : '');
+        setActiveWalletAddress(typeof walletAddress === 'string' ? walletAddress : '');
       }
     } catch (error) {
       console.error('Failed to start engine:', error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [getLocalWalletContext]);
 
   const stop = useCallback(async () => {
     setLoading(true);
@@ -461,6 +515,8 @@ export function useEngine() {
       if (response.ok) {
         setActiveStrategy('');
         setIsRunning(false);
+        setActiveWalletChain('');
+        setActiveWalletAddress('');
       }
     } catch (error) {
       console.error('Failed to stop engine:', error);
@@ -496,7 +552,17 @@ export function useEngine() {
     }
   }, []);
 
-  return { isRunning, activeStrategy, loading, start, stop, singleScan, reloadPrices };
+  return {
+    isRunning,
+    activeStrategy,
+    activeWalletChain,
+    activeWalletAddress,
+    loading,
+    start,
+    stop,
+    singleScan,
+    reloadPrices,
+  };
 }
 
 export function useExecute() {

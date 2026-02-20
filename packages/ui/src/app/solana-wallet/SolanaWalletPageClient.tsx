@@ -131,6 +131,22 @@ export default function SolanaWalletPageClient() {
   }, [isSolanaConnected, connecting, wallets, wallet, select, connect]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (isSolanaConnected && address) {
+      window.localStorage.setItem('arbimind:wallet:activeChain', 'solana');
+      window.localStorage.setItem('arbimind:wallet:solanaConnected', '1');
+      window.localStorage.setItem('arbimind:wallet:solanaAddress', address);
+      return;
+    }
+
+    window.localStorage.setItem('arbimind:wallet:solanaConnected', '0');
+    window.localStorage.removeItem('arbimind:wallet:solanaAddress');
+  }, [isSolanaConnected, address]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const refreshBalances = async () => {

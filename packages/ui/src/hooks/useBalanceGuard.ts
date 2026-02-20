@@ -58,8 +58,21 @@ export function useBalanceGuard() {
   useEffect(() => {
     if (!isConnected) {
       prevConnected.current = false;
+      if (typeof window !== 'undefined') {
+        const activeChain = window.localStorage.getItem('arbimind:wallet:activeChain');
+        if (activeChain === 'evm') {
+          window.localStorage.removeItem('arbimind:wallet:activeChain');
+          window.localStorage.removeItem('arbimind:wallet:evmAddress');
+        }
+      }
       return;
     }
+
+    if (typeof window !== 'undefined' && address) {
+      window.localStorage.setItem('arbimind:wallet:activeChain', 'evm');
+      window.localStorage.setItem('arbimind:wallet:evmAddress', address);
+    }
+
     if (prevConnected.current) return;
     prevConnected.current = true;
     // Defer past hydration + modal close so we don't trigger "setState during render" in RainbowKit
