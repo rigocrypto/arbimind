@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
@@ -45,8 +45,9 @@ const MOCK_BOT_TRADES: BotTrade[] = [
 
 export default function SolanaWalletPageClient() {
   const { connection } = useConnection();
-  const { publicKey, connected, sendTransaction, wallets } = useWallet();
+  const { publicKey, connected, sendTransaction, wallets, wallet, select, connect, connecting } = useWallet();
   const isSolanaConnected = Boolean(publicKey);
+  const attemptedPhantomReconnect = useRef(false);
   const hasInstalledWallet = wallets.some((wallet) => wallet.readyState === WalletReadyState.Installed);
   const [userSolBalance, setUserSolBalance] = useState(0);
   const [treasurySolBalance, setTreasurySolBalance] = useState(0);
@@ -80,6 +81,50 @@ export default function SolanaWalletPageClient() {
       return null;
     }
   }, []);
+
+  useEffect(() => {
+    if (attemptedPhantomReconnect.current || isSolanaConnected || connecting) {
+      return;
+    }
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const injected =
+      ((window as Window & { phantom?: { solana?: { isConnected?: boolean; isPhantom?: boolean } } }).phantom?.solana as
+        | { isConnected?: boolean; isPhantom?: boolean }
+        | undefined) ??
+      ((window as Window & { solana?: { isConnected?: boolean; isPhantom?: boolean } }).solana as
+        | { isConnected?: boolean; isPhantom?: boolean }
+        | undefined);
+
+    if (!injected?.isPhantom || !injected.isConnected) {
+      return;
+    }
+
+    const phantomWallet = wallets.find(
+      (item) => item.readyState === WalletReadyState.Installed && /phantom/i.test(item.adapter.name)
+    );
+    if (!phantomWallet) {
+      return;
+    }
+
+    attemptedPhantomReconnect.current = true;
+    if (wallet?.adapter.name !== phantomWallet.adapter.name) {
+      select(phantomWallet.adapter.name);
+    }
+
+    const timer = setTimeout(() => {
+      void connect().catch(() => {
+        attemptedPhantomReconnect.current = false;
+      });
+    }, 0);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [isSolanaConnected, connecting, wallets, wallet, select, connect]);
 
   useEffect(() => {
     let cancelled = false;
