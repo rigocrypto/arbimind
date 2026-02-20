@@ -49,6 +49,10 @@ export default function SolanaWalletPageClient() {
   const isSolanaConnected = Boolean(publicKey);
   const attemptedPhantomReconnect = useRef(false);
   const hasInstalledWallet = wallets.some((wallet) => wallet.readyState === WalletReadyState.Installed);
+  const installedWalletNames = useMemo(
+    () => wallets.filter((item) => item.readyState === WalletReadyState.Installed).map((item) => item.adapter.name),
+    [wallets]
+  );
   const [userSolBalance, setUserSolBalance] = useState(0);
   const [treasurySolBalance, setTreasurySolBalance] = useState(0);
   const [botTrades, setBotTrades] = useState<BotTrade[]>(MOCK_BOT_TRADES);
@@ -474,6 +478,10 @@ export default function SolanaWalletPageClient() {
                   The top-right <span className="font-mono">0x...</span> wallet is EVM. For this page, connect Phantom/Solflare using the button above.
                 </p>
               )}
+              <p className="text-xs text-dark-400/90 mt-2 max-w-md text-center lg:text-left">
+                Solana status: {isSolanaConnected ? 'connected' : connecting ? 'connecting' : connected ? 'adapter-ready' : 'disconnected'}
+                {' · '}Adapter: {wallet?.adapter.name ?? 'none'}{' · '}Detected: {installedWalletNames.join(', ') || 'none'}
+              </p>
             </div>
             <div className="flex flex-1 items-center justify-center min-h-[160px]">
               <Image
