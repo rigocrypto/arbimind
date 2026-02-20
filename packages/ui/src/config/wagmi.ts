@@ -3,7 +3,7 @@
 import type { Config } from 'wagmi';
 import { http, createConfig } from 'wagmi';
 import { polygon, polygonAmoy } from 'wagmi/chains';
-import { injected, walletConnect } from 'wagmi/connectors';
+import { metaMask, walletConnect } from 'wagmi/connectors';
 
 const projectId =
   process.env.NEXT_PUBLIC_WC_PROJECT_ID ||
@@ -21,7 +21,7 @@ const polygonAmoyRpcUrl =
 function makeConfig(): Config {
   return createConfig({
     chains: [polygonAmoy, polygon],
-    connectors: [injected(), walletConnect({ projectId })],
+    connectors: [metaMask(), walletConnect({ projectId })],
     transports: {
       [polygon.id]: http(polygonRpcUrl),
       [polygonAmoy.id]: http(polygonAmoyRpcUrl),
