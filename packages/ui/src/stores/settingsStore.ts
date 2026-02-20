@@ -44,7 +44,8 @@ export const useSettingsStore = create<{
     set({ isLoading: true, error: null });
     try {
       if (typeof window === 'undefined') {
-        throw new Error('Settings can only be saved in the browser');
+        set({ error: 'Settings can only be saved in the browser' });
+        return false;
       }
       const { settings } = get();
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));

@@ -5,12 +5,11 @@ import { useSettingsStore } from './settingsStore';
 
 export function useHydrateSettings() {
   const hydrated = useRef(false);
-  const hydrate = useSettingsStore((state) => state.hydrate);
 
   useEffect(() => {
     if (!hydrated.current) {
-      hydrate();
+      useSettingsStore.getState().hydrate();
       hydrated.current = true;
     }
-  }, [hydrate]);
+  }, []);
 }
