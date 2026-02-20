@@ -241,6 +241,32 @@ export default function SolanaWalletPageClient() {
     };
   }, [botTrades]);
 
+  const connectSpecificWallet = async (matcher: RegExp, label: string) => {
+    try {
+      const targetWallet = wallets.find(
+        (item) => item.readyState === WalletReadyState.Installed && matcher.test(item.adapter.name)
+      );
+
+      if (!targetWallet) {
+        toast.error(`${label} extension not detected in this browser profile`);
+        return;
+      }
+
+      if (wallet?.adapter.name !== targetWallet.adapter.name) {
+        select(targetWallet.adapter.name);
+      }
+
+      await connect();
+    } catch (err: unknown) {
+      const msg = String(err instanceof Error ? err.message : err ?? 'Wallet connection failed');
+      if (/user rejected|cancelled|rejected/i.test(msg)) {
+        toast('Connection cancelled', { icon: '🔒' });
+        return;
+      }
+      toast.error(msg || 'Wallet connection failed');
+    }
+  };
+
   const handleTransfer = async () => {
     if (!isSolanaConnected || !publicKey) {
       toast.error('Connect wallet first');
@@ -425,6 +451,24 @@ export default function SolanaWalletPageClient() {
                 className="mt-4 !bg-gradient-to-r !from-cyan-500 !via-purple-500 !to-pink-500 !text-white !font-semibold !px-6 !py-2.5 !rounded-xl !shadow-lg !border-none !hover:from-cyan-400 !hover:to-purple-500"
                 labels={SOLANA_WALLET_BUTTON_LABELS}
               />
+              {!isSolanaConnected && (
+                <div className="mt-3 flex flex-wrap gap-2 justify-center lg:justify-start">
+                  <button
+                    type="button"
+                    onClick={() => void connectSpecificWallet(/phantom/i, 'Phantom')}
+                    className="px-4 py-2 rounded-lg bg-violet-600/80 hover:bg-violet-500 text-white text-sm font-semibold transition"
+                  >
+                    Connect Phantom
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void connectSpecificWallet(/solflare/i, 'Solflare')}
+                    className="px-4 py-2 rounded-lg bg-amber-500/80 hover:bg-amber-400 text-black text-sm font-semibold transition"
+                  >
+                    Connect Solflare
+                  </button>
+                </div>
+              )}
               {!isSolanaConnected && (
                 <p className="text-xs text-dark-400 mt-2 max-w-md text-center lg:text-left">
                   The top-right <span className="font-mono">0x...</span> wallet is EVM. For this page, connect Phantom/Solflare using the button above.
