@@ -380,6 +380,11 @@ export default function SolanaWalletPageClient() {
                 className="mt-4 !bg-gradient-to-r !from-cyan-500 !via-purple-500 !to-pink-500 !text-white !font-semibold !px-6 !py-2.5 !rounded-xl !shadow-lg !border-none !hover:from-cyan-400 !hover:to-purple-500"
                 labels={SOLANA_WALLET_BUTTON_LABELS}
               />
+              {!isSolanaConnected && (
+                <p className="text-xs text-dark-400 mt-2 max-w-md text-center lg:text-left">
+                  The top-right <span className="font-mono">0x...</span> wallet is EVM. For this page, connect Phantom/Solflare using the button above.
+                </p>
+              )}
             </div>
             <div className="flex flex-1 items-center justify-center min-h-[160px]">
               <Image
