@@ -46,6 +46,7 @@ const MOCK_BOT_TRADES: BotTrade[] = [
 export default function SolanaWalletPageClient() {
   const { connection } = useConnection();
   const { publicKey, connected, sendTransaction, wallets } = useWallet();
+  const isSolanaConnected = Boolean(publicKey);
   const hasInstalledWallet = wallets.some((wallet) => wallet.readyState === WalletReadyState.Installed);
   const [userSolBalance, setUserSolBalance] = useState(0);
   const [treasurySolBalance, setTreasurySolBalance] = useState(0);
@@ -196,7 +197,7 @@ export default function SolanaWalletPageClient() {
   }, [botTrades]);
 
   const handleTransfer = async () => {
-    if (!connected || !publicKey) {
+    if (!isSolanaConnected || !publicKey) {
       toast.error('Connect wallet first');
       return;
     }
@@ -268,7 +269,7 @@ export default function SolanaWalletPageClient() {
   };
 
   const handleSwap = async () => {
-    if (!connected || !publicKey) {
+    if (!isSolanaConnected || !publicKey) {
       toast.error('Connect wallet first');
       return;
     }
@@ -391,7 +392,7 @@ export default function SolanaWalletPageClient() {
                 unoptimized
               />
               {/* Show connected state next to the hero art once a wallet is linked */}
-              {connected && address && (
+              {isSolanaConnected && address && (
                 <div className="rounded-xl bg-dark-900/80 border border-cyan-500/30 px-6 py-4 flex flex-col items-center gap-2 shadow-md mt-4">
                   <span className="text-xs text-dark-400">Connected as</span>
                   <span className="font-mono text-cyan-300 text-sm break-all">{address}</span>
@@ -401,7 +402,7 @@ export default function SolanaWalletPageClient() {
           </div>
         </motion.div>
 
-        {!connected ? (
+        {!isSolanaConnected ? (
           <>
             <motion.div
               initial={{ opacity: 0 }}
