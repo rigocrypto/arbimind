@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { WalletReadyState } from '@solana/wallet-adapter-base';
-import { VersionedTransaction } from '@solana/web3.js';
+import { LAMPORTS_PER_SOL, PublicKey, VersionedTransaction } from '@solana/web3.js';
 import Link from 'next/link';
 import { Wallet, ArrowRightLeft, ChevronLeft, Send, AlertTriangle } from 'lucide-react';
 import { BaseWalletMultiButton } from '@solana/wallet-adapter-react-ui';
@@ -19,16 +19,37 @@ import { getPortfolioErrorDetails, usePortfolioSummary, usePortfolioTimeseries }
 const IS_MAINNET = process.env.NEXT_PUBLIC_SOLANA_CLUSTER === 'mainnet-beta';
 const SOLSCAN_BASE = 'https://solscan.io';
 const SOLSCAN_TX_SUFFIX = IS_MAINNET ? '' : '?cluster=devnet';
+const SOLANA_TREASURY_ADDRESS =
+  process.env.NEXT_PUBLIC_SOLANA_ARB_ACCOUNT || '6wmAm8uoPQTx9jEnGx4aDKwVFRSfdhKJfL2LJzwCmE6s';
 // Override only the states that display the CTA text so it never regresses to "Select Wallet".
 const SOLANA_WALLET_BUTTON_LABELS = {
   'has-wallet': 'Connect Wallet',
   'no-wallet': 'Connect Wallet',
 } as const;
 
+type BotTrade = {
+  id: string;
+  pair: string;
+  side: 'buy' | 'sell';
+  volumeSol: number;
+  pnlSol: number;
+  status: 'success' | 'failed';
+  at: string;
+};
+
+const MOCK_BOT_TRADES: BotTrade[] = [
+  { id: 't-1001', pair: 'SOL/USDC', side: 'buy', volumeSol: 0.65, pnlSol: 0.041, status: 'success', at: '2m ago' },
+  { id: 't-1000', pair: 'JUP/SOL', side: 'sell', volumeSol: 0.38, pnlSol: -0.007, status: 'failed', at: '7m ago' },
+  { id: 't-0999', pair: 'RAY/SOL', side: 'buy', volumeSol: 0.51, pnlSol: 0.019, status: 'success', at: '13m ago' },
+];
+
 export default function SolanaWalletPageClient() {
   const { connection } = useConnection();
   const { publicKey, connected, sendTransaction, wallets } = useWallet();
   const hasInstalledWallet = wallets.some((wallet) => wallet.readyState === WalletReadyState.Installed);
+  const [userSolBalance, setUserSolBalance] = useState(0);
+  const [treasurySolBalance, setTreasurySolBalance] = useState(0);
+  const [botTrades] = useState<BotTrade[]>(MOCK_BOT_TRADES);
   const [loading, setLoading] = useState<string | null>(null);
   const address = publicKey?.toBase58();
   const {
@@ -50,6 +71,66 @@ export default function SolanaWalletPageClient() {
   const [swapSide, setSwapSide] = useState<'SOL_TO_USDC' | 'USDC_TO_SOL'>('SOL_TO_USDC');
   const [swapAmount, setSwapAmount] = useState('0.1');
   const [swapSlippageBps, setSwapSlippageBps] = useState(50);
+
+  const treasuryPubkey = useMemo(() => {
+    try {
+      return new PublicKey(SOLANA_TREASURY_ADDRESS);
+    } catch {
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const refreshBalances = async () => {
+      try {
+        if (publicKey) {
+          const lamports = await connection.getBalance(publicKey);
+          if (!cancelled) {
+            setUserSolBalance(lamports / LAMPORTS_PER_SOL);
+          }
+        } else if (!cancelled) {
+          setUserSolBalance(0);
+        }
+
+        if (treasuryPubkey) {
+          const treasuryLamports = await connection.getBalance(treasuryPubkey);
+          if (!cancelled) {
+            setTreasurySolBalance(treasuryLamports / LAMPORTS_PER_SOL);
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setUserSolBalance(0);
+          setTreasurySolBalance(0);
+        }
+      }
+    };
+
+    void refreshBalances();
+    const interval = setInterval(() => {
+      void refreshBalances();
+    }, 15000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [connection, publicKey, treasuryPubkey]);
+
+  const tradeStats = useMemo(() => {
+    const total = botTrades.length;
+    const successCount = botTrades.filter((trade) => trade.status === 'success').length;
+    const totalPnl = botTrades.reduce((sum, trade) => sum + trade.pnlSol, 0);
+    const totalVolume = botTrades.reduce((sum, trade) => sum + trade.volumeSol, 0);
+
+    return {
+      totalPnl,
+      totalVolume,
+      successRate: total > 0 ? (successCount / total) * 100 : 0,
+    };
+  }, [botTrades]);
 
   const handleTransfer = async () => {
     if (!connected || !publicKey) {
@@ -288,6 +369,45 @@ export default function SolanaWalletPageClient() {
           </motion.div>
         ) : (
           <>
+            {/* User + Treasury Balances */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="grid grid-cols-1 sm:grid-cols-2 gap-4"
+            >
+              <div className="glass-card p-4 sm:p-5">
+                <h2 className="text-sm font-medium text-dark-300 mb-2">Your SOL Balance</h2>
+                <p className="text-2xl font-bold text-white">{userSolBalance.toFixed(4)} SOL</p>
+              </div>
+              <div className="glass-card p-4 sm:p-5">
+                <h2 className="text-sm font-medium text-dark-300 mb-2">Bot Treasury Balance</h2>
+                <p className="text-2xl font-bold text-cyan-300">{treasurySolBalance.toFixed(4)} SOL</p>
+                <p className="text-xs text-dark-500 mt-1 break-all">{SOLANA_TREASURY_ADDRESS}</p>
+              </div>
+            </motion.div>
+
+            {/* Trading Stats */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="grid grid-cols-1 sm:grid-cols-3 gap-4"
+            >
+              <div className="glass-card p-4 sm:p-5">
+                <h2 className="text-sm font-medium text-dark-300 mb-2">PnL</h2>
+                <p className={`text-2xl font-bold ${tradeStats.totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {tradeStats.totalPnl >= 0 ? '+' : ''}{tradeStats.totalPnl.toFixed(4)} SOL
+                </p>
+              </div>
+              <div className="glass-card p-4 sm:p-5">
+                <h2 className="text-sm font-medium text-dark-300 mb-2">Volume</h2>
+                <p className="text-2xl font-bold text-white">{tradeStats.totalVolume.toFixed(4)} SOL</p>
+              </div>
+              <div className="glass-card p-4 sm:p-5">
+                <h2 className="text-sm font-medium text-dark-300 mb-2">Success Rate</h2>
+                <p className="text-2xl font-bold text-cyan-300">{tradeStats.successRate.toFixed(1)}%</p>
+              </div>
+            </motion.div>
+
             {/* Arbitrage Account Portfolio */}
             <motion.div
               initial={{ opacity: 0, y: 8 }}
@@ -323,6 +443,49 @@ export default function SolanaWalletPageClient() {
                 explorerTxSuffix={SOLSCAN_TX_SUFFIX}
                 isLoading={portfolioLoading}
               />
+            </motion.div>
+
+            {/* Recent Bot Trades */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="glass-card p-4 sm:p-6"
+            >
+              <h2 className="text-lg font-bold text-white mb-4">Recent Bot Trades</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-dark-400 border-b border-dark-700">
+                      <th className="py-2 pr-3">ID</th>
+                      <th className="py-2 pr-3">Pair</th>
+                      <th className="py-2 pr-3">Side</th>
+                      <th className="py-2 pr-3">Volume (SOL)</th>
+                      <th className="py-2 pr-3">PnL</th>
+                      <th className="py-2 pr-3">Status</th>
+                      <th className="py-2">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {botTrades.map((trade) => (
+                      <tr key={trade.id} className="border-b border-dark-800 text-dark-200">
+                        <td className="py-2 pr-3 font-mono text-xs text-dark-300">{trade.id}</td>
+                        <td className="py-2 pr-3">{trade.pair}</td>
+                        <td className="py-2 pr-3 uppercase text-xs">{trade.side}</td>
+                        <td className="py-2 pr-3">{trade.volumeSol.toFixed(3)}</td>
+                        <td className={`py-2 pr-3 ${trade.pnlSol >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {trade.pnlSol >= 0 ? '+' : ''}{trade.pnlSol.toFixed(4)} SOL
+                        </td>
+                        <td className="py-2 pr-3">
+                          <span className={`text-xs px-2 py-1 rounded-full ${trade.status === 'success' ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
+                            {trade.status}
+                          </span>
+                        </td>
+                        <td className="py-2 text-dark-400">{trade.at}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </motion.div>
 
             {/* Transfer SOL (real tx) */}
