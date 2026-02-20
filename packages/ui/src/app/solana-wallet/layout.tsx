@@ -1,7 +1,6 @@
 'use client';
 
-import '@solana/wallet-adapter-react-ui/styles.css';
-import './solana-wallet-overrides.css';
+import './solana-wallet-ui.css';
 import { SolanaProvider } from '@/providers/SolanaProvider';
 
 export default function SolanaWalletLayout({

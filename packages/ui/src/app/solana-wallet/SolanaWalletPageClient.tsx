@@ -273,7 +273,7 @@ export default function SolanaWalletPageClient() {
                   <div>
                     <p className="font-medium">No Solana wallet detected.</p>
                     <p className="text-amber-200/80">
-                      Enable your wallet extension for localhost, then reload this page.
+                      Enable your wallet extension in this browser profile (including Incognito if used), then reload this page.
                     </p>
                   </div>
                 </div>

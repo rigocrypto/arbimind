@@ -5,7 +5,9 @@ import { http, createConfig } from 'wagmi';
 import { polygon, polygonAmoy } from 'wagmi/chains';
 import { injected, walletConnect } from 'wagmi/connectors';
 
-const projectId = process.env.NEXT_PUBLIC_WC_PROJECT_ID || 'demo-project-id';
+const projectId =
+  process.env.NEXT_PUBLIC_WC_PROJECT_ID ||
+  '4e6c19a060a6c5bfc0f5d7eadf905bb9';
 const polygonRpcUrl =
   process.env.NEXT_PUBLIC_POLYGON_RPC_URL ||
   process.env.NEXT_PUBLIC_POLYGON_RPC ||

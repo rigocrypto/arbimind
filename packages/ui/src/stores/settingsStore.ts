@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react';
 import { create } from 'zustand';
 import { settingsSchema, DEFAULT_SETTINGS, Settings } from '@/lib/settings';
 
@@ -17,7 +16,7 @@ export const useSettingsStore = create<{
   error: string | null;
   hydrate: () => void;
   setSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
-  save: () => Promise<void>;
+  save: () => Promise<boolean>;
   resetToDefaults: () => void;
 }>((set, get) => ({
   settings: DEFAULT_SETTINGS,
@@ -44,12 +43,16 @@ export const useSettingsStore = create<{
   save: async () => {
     set({ isLoading: true, error: null });
     try {
+      if (typeof window === 'undefined') {
+        throw new Error('Settings can only be saved in the browser');
+      }
       const { settings } = get();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
       set({ isDirty: false });
-      // Optionally: sync to backend here, but must fail gracefully
+      return true;
     } catch {
       set({ error: 'Failed to save settings' });
+      return false;
     } finally {
       set({ isLoading: false });
     }
@@ -58,14 +61,3 @@ export const useSettingsStore = create<{
     set({ settings: DEFAULT_SETTINGS, isDirty: true });
   },
 }));
-
-export function useHydrateSettings() {
-  const hydrated = useRef(false);
-  const hydrate = useSettingsStore((s) => s.hydrate);
-  useEffect(() => {
-    if (!hydrated.current) {
-      hydrate();
-      hydrated.current = true;
-    }
-  }, [hydrate]);
-}
