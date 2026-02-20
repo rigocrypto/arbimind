@@ -5,6 +5,6 @@
     "buildCommand": "pnpm --dir packages/bot build"
   },
   "deploy": {
-    "startCommand": "pnpm --dir packages/bot start"
+    "startCommand": "pnpm --dir packages/bot build && pnpm --dir packages/bot start"
   }
 }

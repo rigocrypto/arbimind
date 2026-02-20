@@ -87,10 +87,10 @@ async function main(): Promise<void> {
     await bot.start();
 
   } catch (error) {
-    const shouldGracefulExit = config.logOnly && !hasWalletIdentity();
+    const shouldGracefulExit = config.logOnly;
 
     if (shouldGracefulExit) {
-      logger.warn('⚠️ Startup failed in LOG_ONLY mode without wallet identity. Exiting gracefully to avoid restart loop.', {
+      logger.warn('⚠️ Startup failed in LOG_ONLY mode. Exiting gracefully to avoid restart loop.', {
         error: error instanceof Error ? error.message : error
       });
       process.exit(0);
