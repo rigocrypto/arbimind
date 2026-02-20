@@ -339,34 +339,115 @@ export default function SolanaWalletPageClient() {
         </motion.div>
 
         {!connected ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="glass-card p-8 sm:p-12 text-center overflow-visible mt-6"
-          >
-            <Wallet className="w-16 h-16 mx-auto mb-4 text-dark-400" />
-            <h2 className="text-xl font-bold text-white mb-2">Ready to Experience Solana Like Never Before?</h2>
-            <p className="text-dark-400 mb-6 text-lg font-medium">
-              🚀 Dive into lightning-fast swaps, instant transfers, and real-time portfolio analytics. Connect your wallet and be among the first to try the next-gen Solana trading experience—now live on ArbiMind!
-            </p>
-            {!hasInstalledWallet && (
-              <div className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-left text-sm text-amber-200">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                  <div>
-                    <p className="font-medium">No Solana wallet detected.</p>
-                    <p className="text-amber-200/80">
-                      Enable your wallet extension in this browser profile (including Incognito if used), then reload this page.
-                    </p>
-                    <p className="text-amber-200/80 mt-2">
-                      On mobile Chrome/Safari, open this site from Phantom or Solflare in-app browser for the most reliable Solana connection.
-                    </p>
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="glass-card p-8 sm:p-12 text-center overflow-visible mt-6"
+            >
+              <Wallet className="w-16 h-16 mx-auto mb-4 text-dark-400" />
+              <h2 className="text-xl font-bold text-white mb-2">Ready to Experience Solana Like Never Before?</h2>
+              <p className="text-dark-400 mb-6 text-lg font-medium">
+                🚀 Dive into lightning-fast swaps, instant transfers, and real-time portfolio analytics. Connect your wallet and be among the first to try the next-gen Solana trading experience—now live on ArbiMind!
+              </p>
+              {!hasInstalledWallet && (
+                <div className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-left text-sm text-amber-200">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                    <div>
+                      <p className="font-medium">No Solana wallet detected.</p>
+                      <p className="text-amber-200/80">
+                        Enable your wallet extension in this browser profile (including Incognito if used), then reload this page.
+                      </p>
+                      <p className="text-amber-200/80 mt-2">
+                        On mobile Chrome/Safari, open this site from Phantom or Solflare in-app browser for the most reliable Solana connection.
+                      </p>
+                    </div>
                   </div>
                 </div>
+              )}
+              {/* Connect using the hero button above */}
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="grid grid-cols-1 sm:grid-cols-2 gap-4"
+            >
+              <div className="glass-card p-4 sm:p-5 opacity-90">
+                <h2 className="text-sm font-medium text-dark-300 mb-2">Your SOL Balance</h2>
+                <p className="text-2xl font-bold text-white">Connect wallet</p>
               </div>
-            )}
-            {/* Connect using the hero button above */}
-          </motion.div>
+              <div className="glass-card p-4 sm:p-5 opacity-90">
+                <h2 className="text-sm font-medium text-dark-300 mb-2">Bot Treasury Balance</h2>
+                <p className="text-2xl font-bold text-cyan-300">{treasurySolBalance.toFixed(4)} SOL</p>
+                <p className="text-xs text-dark-500 mt-1 break-all">{SOLANA_TREASURY_ADDRESS}</p>
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="grid grid-cols-1 sm:grid-cols-3 gap-4"
+            >
+              <div className="glass-card p-4 sm:p-5 opacity-90">
+                <h2 className="text-sm font-medium text-dark-300 mb-2">PnL</h2>
+                <p className={`text-2xl font-bold ${tradeStats.totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {tradeStats.totalPnl >= 0 ? '+' : ''}{tradeStats.totalPnl.toFixed(4)} SOL
+                </p>
+              </div>
+              <div className="glass-card p-4 sm:p-5 opacity-90">
+                <h2 className="text-sm font-medium text-dark-300 mb-2">Volume</h2>
+                <p className="text-2xl font-bold text-white">{tradeStats.totalVolume.toFixed(4)} SOL</p>
+              </div>
+              <div className="glass-card p-4 sm:p-5 opacity-90">
+                <h2 className="text-sm font-medium text-dark-300 mb-2">Success Rate</h2>
+                <p className="text-2xl font-bold text-cyan-300">{tradeStats.successRate.toFixed(1)}%</p>
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="glass-card p-4 sm:p-6"
+            >
+              <h2 className="text-lg font-bold text-white mb-4">Recent Bot Trades</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-dark-400 border-b border-dark-700">
+                      <th className="py-2 pr-3">ID</th>
+                      <th className="py-2 pr-3">Pair</th>
+                      <th className="py-2 pr-3">Side</th>
+                      <th className="py-2 pr-3">Volume (SOL)</th>
+                      <th className="py-2 pr-3">PnL</th>
+                      <th className="py-2 pr-3">Status</th>
+                      <th className="py-2">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {botTrades.map((trade) => (
+                      <tr key={trade.id} className="border-b border-dark-800 text-dark-200">
+                        <td className="py-2 pr-3 font-mono text-xs text-dark-300">{trade.id}</td>
+                        <td className="py-2 pr-3">{trade.pair}</td>
+                        <td className="py-2 pr-3 uppercase text-xs">{trade.side}</td>
+                        <td className="py-2 pr-3">{trade.volumeSol.toFixed(3)}</td>
+                        <td className={`py-2 pr-3 ${trade.pnlSol >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {trade.pnlSol >= 0 ? '+' : ''}{trade.pnlSol.toFixed(4)} SOL
+                        </td>
+                        <td className="py-2 pr-3">
+                          <span className={`text-xs px-2 py-1 rounded-full ${trade.status === 'success' ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
+                            {trade.status}
+                          </span>
+                        </td>
+                        <td className="py-2 text-dark-400">{trade.at}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
+          </>
         ) : (
           <>
             {/* User + Treasury Balances */}
