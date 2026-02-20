@@ -8,9 +8,20 @@ import toast from 'react-hot-toast';
 export function CTA() {
   const handleConnectWallet = async () => {
     // Mock wallet connection
-    const ethereum = typeof window !== 'undefined'
-      ? (window as Window & { ethereum?: { request?: (args: { method: string }) => Promise<unknown> } }).ethereum
+    const anyEthereum = typeof window !== 'undefined'
+      ? (window as Window & {
+          ethereum?: {
+            isMetaMask?: boolean;
+            providers?: Array<{
+              isMetaMask?: boolean;
+              request?: (args: { method: string }) => Promise<unknown>;
+            }>;
+            request?: (args: { method: string }) => Promise<unknown>;
+          };
+        }).ethereum
       : undefined;
+
+    const ethereum = anyEthereum?.providers?.find((provider) => provider?.isMetaMask) ?? anyEthereum;
 
     if (!ethereum?.request) {
       toast.error('MetaMask not installed');
