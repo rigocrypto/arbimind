@@ -3,17 +3,29 @@
 import { motion } from 'framer-motion';
 import { Wallet } from 'lucide-react';
 import { fadeIn } from '@/lib/animations';
+import toast from 'react-hot-toast';
 
 export function CTA() {
-  const handleConnectWallet = () => {
+  const handleConnectWallet = async () => {
     // Mock wallet connection
     const ethereum = typeof window !== 'undefined'
       ? (window as Window & { ethereum?: { request?: (args: { method: string }) => Promise<unknown> } }).ethereum
       : undefined;
-    if (ethereum?.request) {
-      ethereum.request({ method: 'eth_requestAccounts' });
-    } else {
-      alert('Please install MetaMask to connect your wallet');
+
+    if (!ethereum?.request) {
+      toast.error('MetaMask not installed');
+      return;
+    }
+
+    try {
+      await ethereum.request({ method: 'eth_requestAccounts' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Wallet connection failed';
+      if (/user rejected|rejected/i.test(message)) {
+        toast('Connection cancelled', { icon: '🔒' });
+        return;
+      }
+      toast.error(message || 'Wallet connection failed');
     }
   };
 
