@@ -42,6 +42,9 @@ router.get('/status/:sig', async (req: Request, res: Response) => {
     if (!sig) {
       return res.status(400).json({ error: 'sig required' });
     }
+    if (!/^[1-9A-HJ-NP-Za-km-z]{80,100}$/.test(sig)) {
+      return res.status(400).json({ error: 'sig must be a valid base58 Solana signature' });
+    }
 
     const statusResp = await connection.getSignatureStatuses([sig], {
       searchTransactionHistory: true,
@@ -60,6 +63,10 @@ router.get('/status/:sig', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Solana tx/status error:', error);
+    const msg = error instanceof Error ? error.message : '';
+    if (/Invalid param|WrongSize/i.test(msg)) {
+      return res.status(400).json({ error: 'Invalid Solana signature format' });
+    }
     return res.status(500).json({
       error: error instanceof Error ? error.message : 'Status lookup failed',
     });
