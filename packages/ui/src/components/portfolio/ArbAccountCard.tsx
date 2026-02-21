@@ -34,6 +34,14 @@ export function ArbAccountCard({
   const roiPct = summary?.totals.roiPct;
   const balances = summary?.balances ?? [];
   const updatedAt = summary?.updatedAt;
+  const solBalance = balances.find((balance) => balance.symbol.toUpperCase() === 'SOL');
+  const solAmount = solBalance ? Number(solBalance.amount.replace(/,/g, '')) : NaN;
+  const solUsd = solBalance?.usd;
+  const solUsdPrice = Number.isFinite(solAmount) && solAmount > 0 && typeof solUsd === 'number' && solUsd > 0
+    ? solUsd / solAmount
+    : null;
+  const depositedSolEquivalent =
+    solUsdPrice && solUsdPrice > 0 ? totalDeposited / solUsdPrice : null;
 
   const copyAddress = () => {
     if (arbAddr) {
@@ -121,7 +129,12 @@ export function ArbAccountCard({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
         <div className="p-3 rounded-lg bg-dark-800/50 border border-dark-700">
           <div className="text-xs text-dark-400">Deposited</div>
-          <div className="text-sm font-bold text-white">{formatUSD(totalDeposited)}</div>
+          <div className="text-sm font-bold text-white">
+            {formatUSD(totalDeposited)}
+            {depositedSolEquivalent !== null && (
+              <span className="text-dark-300"> · {depositedSolEquivalent.toFixed(6)} SOL</span>
+            )}
+          </div>
           <div className="text-[10px] text-dark-500 mt-0.5">Est. (static price)</div>
         </div>
         <div className="p-3 rounded-lg bg-dark-800/50 border border-dark-700">
