@@ -57,35 +57,40 @@ const rpc =
 const connection = new Connection(rpc, 'confirmed');
 
 async function fetchJsonFromJupiter<T>(options: {
-  endpoint: '/v6/quote' | '/v6/swap';
+  endpoints: Array<'/v6/quote' | '/v6/swap' | '/swap/v1/quote' | '/swap/v1/swap'>;
   query?: URLSearchParams;
   init?: RequestInit;
 }): Promise<{ ok: true; data: T } | { ok: false; status: number; error: string; details?: string }> {
-  const { endpoint, query, init } = options;
+  const { endpoints, query, init } = options;
   const failures: string[] = [];
 
-  for (const base of JUPITER_API_BASES) {
-    const qs = query ? `?${query.toString()}` : '';
-    const url = `${base}${endpoint}${qs}`;
-    try {
-      const response = await fetch(url, init);
-      if (!response.ok) {
-        const text = await response.text().catch(() => '');
-        failures.push(`${base}: HTTP ${response.status}${text ? ` (${text.slice(0, 120)})` : ''}`);
-        continue;
-      }
+  for (const endpoint of endpoints) {
+    for (const base of JUPITER_API_BASES) {
+      const qs = query ? `?${query.toString()}` : '';
+      const url = `${base}${endpoint}${qs}`;
+      try {
+        const response = await fetch(url, init);
+        if (!response.ok) {
+          const text = await response.text().catch(() => '');
+          failures.push(`${base}${endpoint}: HTTP ${response.status}${text ? ` (${text.slice(0, 120)})` : ''}`);
+          continue;
+        }
 
-      const payload = (await response.json()) as T;
-      return { ok: true, data: payload };
-    } catch (error) {
-      failures.push(`${base}: ${error instanceof Error ? error.message : 'fetch failed'}`);
+        const payload = (await response.json()) as T;
+        return { ok: true, data: payload };
+      } catch (error) {
+        failures.push(`${base}${endpoint}: ${error instanceof Error ? error.message : 'fetch failed'}`);
+      }
     }
   }
 
   return {
     ok: false,
     status: 502,
-    error: endpoint === '/v6/quote' ? 'Jupiter quote failed' : 'Jupiter swap build failed',
+    error:
+      endpoints.some((e) => e.includes('quote'))
+        ? 'Jupiter quote failed'
+        : 'Jupiter swap build failed',
     details: failures.join(' | ') || 'All Jupiter API hosts failed',
   };
 }
@@ -137,7 +142,7 @@ router.post('/swap-tx', async (req: Request, res: Response) => {
     quoteUrl.searchParams.set('slippageBps', String(slippageBps));
 
     const quoteResult = await fetchJsonFromJupiter<JupiterQuoteResponse>({
-      endpoint: '/v6/quote',
+      endpoints: ['/v6/quote', '/swap/v1/quote'],
       query: quoteUrl.searchParams,
       init: { method: 'GET' },
     });
@@ -151,7 +156,7 @@ router.post('/swap-tx', async (req: Request, res: Response) => {
     }
 
     const swapResult = await fetchJsonFromJupiter<JupiterSwapResponse>({
-      endpoint: '/v6/swap',
+      endpoints: ['/v6/swap', '/swap/v1/swap'],
       init: {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
