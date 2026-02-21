@@ -2,6 +2,8 @@
  * Formatting utilities for ArbiMind dashboard
  */
 
+export const SOL_EQUIV_DECIMALS = 4;
+
 /**
  * Format ETH value with appropriate decimals
  */

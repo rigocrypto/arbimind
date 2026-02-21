@@ -1,14 +1,13 @@
 'use client';
 
 import { Copy, RefreshCw, Wallet } from 'lucide-react';
-import { formatAddress, formatUSD } from '@/utils/format';
+import { formatAddress, formatUSD, SOL_EQUIV_DECIMALS } from '@/utils/format';
 import type { PortfolioSummary } from '@/hooks/usePortfolio';
 import type { PortfolioErrorDetails } from '@/hooks/usePortfolio';
 import { HelpTooltip } from '@/components/HelpTooltip';
 import toast from 'react-hot-toast';
 
 const PNL_TOOLTIP = 'MVP estimate: based on current arb account balance vs total deposits. Does not include external positions, fees, or realized vs unrealized breakdown.';
-const SOL_EQUIV_DECIMALS = 4;
 
 interface ArbAccountCardProps {
   summary: PortfolioSummary | undefined;
