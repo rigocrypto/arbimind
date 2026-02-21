@@ -4,6 +4,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useAccount, useBalance } from 'wagmi';
 import { parseEther } from 'viem';
 import toast from 'react-hot-toast';
+import { notifyWalletStateUpdated } from '@/lib/walletState';
 
 const USDC_BY_CHAIN: Record<number, `0x${string}`> = {
   1: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' as const,     // Mainnet
@@ -63,6 +64,7 @@ export function useBalanceGuard() {
         if (activeChain === 'evm') {
           window.localStorage.removeItem('arbimind:wallet:activeChain');
           window.localStorage.removeItem('arbimind:wallet:evmAddress');
+          notifyWalletStateUpdated();
         }
       }
       return;
@@ -71,6 +73,7 @@ export function useBalanceGuard() {
     if (typeof window !== 'undefined' && address) {
       window.localStorage.setItem('arbimind:wallet:activeChain', 'evm');
       window.localStorage.setItem('arbimind:wallet:evmAddress', address);
+      notifyWalletStateUpdated();
     }
 
     if (prevConnected.current) return;

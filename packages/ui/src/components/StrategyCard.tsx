@@ -8,6 +8,7 @@ import { formatETH } from '@/utils/format';
 import type { Strategy } from '@/hooks/useArbiApi';
 import { StrategySettingsModal } from '@/components/StrategySettingsModal';
 import { CompactSparkline } from '@/components/Charts/CompactSparkline';
+import { WALLET_STATE_UPDATED_EVENT } from '@/lib/walletState';
 
 const STRATEGY_COLORS: Record<string, { bg: string; border: string; text: string; dot: string; ring: string; gradient: 'cyan' | 'purple' | 'green' | 'orange' }> = {
   arbitrage: { bg: 'bg-cyan-500/20', border: 'border-cyan-500/30', text: 'text-cyan-400', dot: 'bg-cyan-500', ring: 'focus:ring-cyan-500/50', gradient: 'cyan' as const },
@@ -55,9 +56,13 @@ export function StrategyCard({ strategy, onRun, onToggleAuto, engineActiveStrate
 
     syncConnectionState();
     window.addEventListener('storage', syncConnectionState);
+    window.addEventListener(WALLET_STATE_UPDATED_EVENT, syncConnectionState);
+    window.addEventListener('focus', syncConnectionState);
 
     return () => {
       window.removeEventListener('storage', syncConnectionState);
+      window.removeEventListener(WALLET_STATE_UPDATED_EVENT, syncConnectionState);
+      window.removeEventListener('focus', syncConnectionState);
     };
   }, []);
   const allocationPercent = strategy.allocationBps / 100;

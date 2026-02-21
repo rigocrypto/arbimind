@@ -16,6 +16,7 @@ import { API_BASE } from '@/lib/apiConfig';
 import { ArbAccountCard, PerformanceCharts, ActivityTable } from '@/components/portfolio';
 import { getPortfolioErrorDetails, usePortfolioSummary, usePortfolioTimeseries } from '@/hooks/usePortfolio';
 import { SOL_EQUIV_DECIMALS } from '@/utils/format';
+import { notifyWalletStateUpdated } from '@/lib/walletState';
 
 const IS_MAINNET = process.env.NEXT_PUBLIC_SOLANA_CLUSTER === 'mainnet-beta';
 const SOLSCAN_BASE = 'https://solscan.io';
@@ -168,11 +169,13 @@ export default function SolanaWalletPageClient() {
       window.localStorage.setItem('arbimind:wallet:activeChain', 'solana');
       window.localStorage.setItem('arbimind:wallet:solanaConnected', '1');
       window.localStorage.setItem('arbimind:wallet:solanaAddress', address);
+      notifyWalletStateUpdated();
       return;
     }
 
     window.localStorage.setItem('arbimind:wallet:solanaConnected', '0');
     window.localStorage.removeItem('arbimind:wallet:solanaAddress');
+    notifyWalletStateUpdated();
   }, [isSolanaConnected, address]);
 
   useEffect(() => {
