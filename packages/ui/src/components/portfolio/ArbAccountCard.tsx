@@ -8,6 +8,7 @@ import { HelpTooltip } from '@/components/HelpTooltip';
 import toast from 'react-hot-toast';
 
 const PNL_TOOLTIP = 'MVP estimate: based on current arb account balance vs total deposits. Does not include external positions, fees, or realized vs unrealized breakdown.';
+const SOL_EQUIV_DECIMALS = 4;
 
 interface ArbAccountCardProps {
   summary: PortfolioSummary | undefined;
@@ -134,7 +135,7 @@ export function ArbAccountCard({
           <div className="text-sm font-bold text-white">
             {formatUSD(totalDeposited)}
             {depositedSolEquivalent !== null && (
-              <span className="text-dark-300"> · {depositedSolEquivalent.toFixed(4)} SOL</span>
+              <span className="text-dark-300"> · {depositedSolEquivalent.toFixed(SOL_EQUIV_DECIMALS)} SOL</span>
             )}
           </div>
           <div className="text-[10px] text-dark-500 mt-0.5">Est. (static price)</div>
@@ -144,7 +145,7 @@ export function ArbAccountCard({
           <div className="text-sm font-bold text-white">
             {formatUSD(totalWithdrawn)}
             {withdrawnSolEquivalent !== null && (
-              <span className="text-dark-300"> · {withdrawnSolEquivalent.toFixed(4)} SOL</span>
+              <span className="text-dark-300"> · {withdrawnSolEquivalent.toFixed(SOL_EQUIV_DECIMALS)} SOL</span>
             )}
           </div>
           <div className="text-[10px] text-dark-500 mt-0.5">Est. (static price)</div>
