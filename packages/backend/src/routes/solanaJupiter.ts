@@ -62,7 +62,7 @@ async function fetchJsonFromJupiter<T>(options: {
   init?: RequestInit;
 }): Promise<{ ok: true; data: T } | { ok: false; status: number; error: string; details?: string }> {
   const { endpoint, query, init } = options;
-  let lastNetworkError: string | null = null;
+  const failures: string[] = [];
 
   for (const base of JUPITER_API_BASES) {
     const qs = query ? `?${query.toString()}` : '';
@@ -71,26 +71,22 @@ async function fetchJsonFromJupiter<T>(options: {
       const response = await fetch(url, init);
       if (!response.ok) {
         const text = await response.text().catch(() => '');
-        return {
-          ok: false,
-          status: 502,
-          error: endpoint === '/v6/quote' ? 'Jupiter quote failed' : 'Jupiter swap build failed',
-          details: text || `HTTP ${response.status} from ${base}`,
-        };
+        failures.push(`${base}: HTTP ${response.status}${text ? ` (${text.slice(0, 120)})` : ''}`);
+        continue;
       }
 
       const payload = (await response.json()) as T;
       return { ok: true, data: payload };
     } catch (error) {
-      lastNetworkError = `${base}: ${error instanceof Error ? error.message : 'fetch failed'}`;
+      failures.push(`${base}: ${error instanceof Error ? error.message : 'fetch failed'}`);
     }
   }
 
   return {
     ok: false,
     status: 502,
-    error: 'Jupiter API unreachable from backend',
-    details: lastNetworkError ?? 'All Jupiter API hosts failed',
+    error: endpoint === '/v6/quote' ? 'Jupiter quote failed' : 'Jupiter swap build failed',
+    details: failures.join(' | ') || 'All Jupiter API hosts failed',
   };
 }
 
