@@ -2,10 +2,18 @@
   "name": "@arbimind/bot",
   "version": "1.0.0",
   "description": "ArbiMind arbitrage bot - Off-chain opportunity detection and execution",
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "npm run build --workspace=@arbimind/bot || npm run build"
+  },
+  "deploy": {
+    "startCommand": "npm run start --workspace=@arbimind/bot || npm run start"
+  },
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
+    "canary": "tsx src/canary.ts",
     "start": "node dist/index.js",
     "test": "vitest",
     "test:ui": "vitest --ui",

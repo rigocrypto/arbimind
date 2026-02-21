@@ -2,9 +2,9 @@
 cmds = ["corepack disable"]
 
 [phases.install]
-cmds = ["npx pnpm@latest install --frozen-lockfile"]
+cmds = ["npm install"]
 [phases.build]
-cmds = ["npx pnpm@latest --filter @arbimind/bot build"]
+cmds = ["npm run build --workspace=@arbimind/bot || npm run build"]
 
 [start]
-cmd = "npx pnpm@latest --filter @arbimind/bot start"
+cmd = "npm run start --workspace=@arbimind/bot || npm run start"

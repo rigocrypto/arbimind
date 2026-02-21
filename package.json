@@ -11,6 +11,7 @@
     "dev": "npm run dev --workspace=@arbimind/ui",
     "dev:ui": "npm run dev --workspace=@arbimind/ui",
     "dev:bot": "npm run dev --workspace=@arbimind/bot",
+    "start": "npm run build --workspace=@arbimind/bot && npm run start --workspace=@arbimind/bot",
     "bot:canary": "pnpm --filter @arbimind/bot canary",
     "build": "pnpm -r --filter @arbimind/ui build",
     "build:all": "npm run build --workspaces",
