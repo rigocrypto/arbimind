@@ -61,7 +61,10 @@ function getEvmChainConfig() {
     return {
       viemChain: isTestnet ? polygonAmoy : polygon,
       chainId: isTestnet ? 80002 : 137,
-      rpcUrl: process.env['POLYGON_RPC_URL'],
+      rpcUrl:
+        process.env['POLYGON_RPC_URL'] ||
+        process.env['EVM_RPC_URL'] ||
+        (isTestnet ? 'https://rpc-amoy.polygon.technology' : 'https://polygon-rpc.com'),
       name: evmChain
     };
   }
@@ -69,14 +72,21 @@ function getEvmChainConfig() {
     return {
       viemChain: isTestnet ? sepolia : mainnet,
       chainId: isTestnet ? 11155111 : 1,
-      rpcUrl: process.env['ETHEREUM_RPC_URL'],
+      rpcUrl:
+        process.env['ETHEREUM_RPC_URL'] ||
+        process.env['EVM_RPC_URL'] ||
+        (isTestnet ? 'https://rpc.sepolia.org' : 'https://eth.llamarpc.com'),
       name: evmChain
     };
   }
   return {
     viemChain: isTestnet ? arbitrumSepolia : arbitrum,
     chainId: isTestnet ? 421614 : 42161,
-    rpcUrl: process.env['ARBITRUM_RPC_URL'] || process.env['ETHEREUM_RPC_URL'],
+    rpcUrl:
+      process.env['ARBITRUM_RPC_URL'] ||
+      process.env['ETHEREUM_RPC_URL'] ||
+      process.env['EVM_RPC_URL'] ||
+      (isTestnet ? 'https://sepolia-rollup.arbitrum.io/rpc' : 'https://arb1.arbitrum.io/rpc'),
     name: 'arbitrum'
   };
 }
@@ -93,7 +103,7 @@ function createConfig(): BotConfig {
   
   return {
     // Ethereum Configuration
-    ethereumRpcUrl: chainConfig.rpcUrl || 'http://localhost:8545',
+    ethereumRpcUrl: chainConfig.rpcUrl,
     privateKey: process.env['PRIVATE_KEY'] || '',
     walletAddress: process.env['WALLET_ADDRESS']?.trim() || undefined,
     treasuryAddress: process.env['TREASURY_ADDRESS'] || '',
@@ -151,7 +161,12 @@ export function validateConfig(): void {
   const privateKey = process.env['PRIVATE_KEY']?.trim() || '';
   const walletAddress = process.env['WALLET_ADDRESS']?.trim() || '';
   const treasuryAddress = process.env['TREASURY_ADDRESS'] || '';
-  const ethereumRpcUrl = process.env['ETHEREUM_RPC_URL'] || process.env['ARBITRUM_RPC_URL'] || process.env['POLYGON_RPC_URL'] || '';
+  const ethereumRpcUrl =
+    process.env['ETHEREUM_RPC_URL'] ||
+    process.env['ARBITRUM_RPC_URL'] ||
+    process.env['POLYGON_RPC_URL'] ||
+    process.env['EVM_RPC_URL'] ||
+    '';
   const logOnly =
     process.env['LOG_ONLY'] === 'true' ||
     process.env['BOT_LOG_ONLY'] === 'true' ||
