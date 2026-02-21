@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@tensorflow/tfjs-node": "^4.22.0",
-    "axios": "^1.6.2",
+    "axios": "^1.13.5",
     "big.js": "^6.2.1",
     "decimal.js": "^10.4.3",
     "dotenv": "^16.3.1",
@@ -52,7 +52,7 @@
     "@typescript-eslint/parser": "^6.13.1",
     "@vitest/coverage-v8": "^1.6.0",
     "eslint": "^8.54.0",
-    "happy-dom": "^15.7.4",
+    "happy-dom": "^20.0.2",
     "jsdom": "^24.1.1",
     "msw": "^2.0.20",
     "tsx": "^4.6.2",
