@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Play, Pause, Settings, Brain } from 'lucide-react';
 import { useAccount } from 'wagmi';
@@ -37,7 +37,29 @@ const DEFAULT_RISK: Record<string, string> = {
 export function StrategyCard({ strategy, onRun, onToggleAuto, engineActiveStrategy, sparklineData, riskLevel }: StrategyCardProps) {
   const displayRisk = riskLevel ?? DEFAULT_RISK[strategy.id] ?? 'Low';
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { isConnected } = useAccount();
+  const [isSolanaConnected, setIsSolanaConnected] = useState(false);
+  const { isConnected: isEvmConnected } = useAccount();
+  const isConnected = isEvmConnected || isSolanaConnected;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const syncConnectionState = () => {
+      const activeChain = window.localStorage.getItem('arbimind:wallet:activeChain');
+      const connected = window.localStorage.getItem('arbimind:wallet:solanaConnected') === '1';
+      const address = window.localStorage.getItem('arbimind:wallet:solanaAddress');
+      setIsSolanaConnected(activeChain === 'solana' && connected && !!address);
+    };
+
+    syncConnectionState();
+    window.addEventListener('storage', syncConnectionState);
+
+    return () => {
+      window.removeEventListener('storage', syncConnectionState);
+    };
+  }, []);
   const allocationPercent = strategy.allocationBps / 100;
   const isActive = engineActiveStrategy !== undefined
     ? strategy.id === engineActiveStrategy
