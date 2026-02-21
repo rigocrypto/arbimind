@@ -85,6 +85,7 @@ export default function SolanaWalletPageClient() {
   const [swapSlippageBps, setSwapSlippageBps] = useState(50);
   const [engineActive, setEngineActive] = useState(false);
   const [engineWalletSynced, setEngineWalletSynced] = useState(false);
+  const [engineLastHeartbeat, setEngineLastHeartbeat] = useState<number | null>(null);
 
   const treasuryPubkey = useMemo(() => {
     try {
@@ -206,6 +207,7 @@ export default function SolanaWalletPageClient() {
           if (!cancelled) {
             setEngineActive(false);
             setEngineWalletSynced(false);
+            setEngineLastHeartbeat(null);
           }
           return;
         }
@@ -214,6 +216,7 @@ export default function SolanaWalletPageClient() {
           active?: string;
           walletChain?: 'solana' | 'evm' | null;
           walletAddress?: string | null;
+          timestamp?: number;
         };
 
         const active = typeof payload.active === 'string' ? payload.active.trim().length > 0 : false;
@@ -227,11 +230,13 @@ export default function SolanaWalletPageClient() {
         if (!cancelled) {
           setEngineActive(active);
           setEngineWalletSynced(Boolean(synced));
+          setEngineLastHeartbeat(typeof payload.timestamp === 'number' ? payload.timestamp : null);
         }
       } catch {
         if (!cancelled) {
           setEngineActive(false);
           setEngineWalletSynced(false);
+          setEngineLastHeartbeat(null);
         }
       }
     };
@@ -709,6 +714,12 @@ export default function SolanaWalletPageClient() {
               {engineWalletSynced ? 'Solana Synced' : 'Solana Connected'}
             </span>
           )}
+          <span className="text-xs text-dark-400">
+            Last HB:{' '}
+            {engineLastHeartbeat
+              ? `${new Date(engineLastHeartbeat).toISOString().slice(0, 16)}Z`
+              : '—'}
+          </span>
         </motion.div>
 
         {!isSolanaConnected ? (
