@@ -17,6 +17,7 @@ export interface BotConfig {
   evmChain: 'arbitrum' | 'polygon' | 'ethereum';
   evmChainId: number;
   logOnly: boolean;
+  allowTestnetTrades: boolean;
   
   // Bot Configuration
   minProfitEth: number;
@@ -100,6 +101,10 @@ function createConfig(): BotConfig {
   const chainConfig = getEvmChainConfig();
   const isTestnet = (process.env['NETWORK'] || 'mainnet') === 'testnet';
   const evmChain = (process.env['EVM_CHAIN'] || 'arbitrum').toLowerCase();
+  const allowTestnetTrades = process.env['ALLOW_TESTNET_TRADES'] === 'true';
+  const explicitLogOnly =
+    process.env['LOG_ONLY'] === 'true' ||
+    process.env['BOT_LOG_ONLY'] === 'true';
   
   return {
     // Ethereum Configuration
@@ -110,7 +115,8 @@ function createConfig(): BotConfig {
     network: isTestnet ? 'testnet' : 'mainnet',
     evmChain: evmChain === 'polygon' || evmChain === 'ethereum' ? (evmChain as 'polygon' | 'ethereum') : 'arbitrum',
     evmChainId: chainConfig.chainId,
-    logOnly: isTestnet || process.env['BOT_LOG_ONLY'] === 'true',
+    logOnly: explicitLogOnly || (isTestnet && !allowTestnetTrades),
+    allowTestnetTrades,
     
     // Bot Configuration
     minProfitEth: parseFloat(process.env['MIN_PROFIT_ETH'] || '0.01'),
@@ -170,7 +176,7 @@ export function validateConfig(): void {
   const logOnly =
     process.env['LOG_ONLY'] === 'true' ||
     process.env['BOT_LOG_ONLY'] === 'true' ||
-    (process.env['NETWORK'] || 'mainnet') === 'testnet';
+    ((process.env['NETWORK'] || 'mainnet') === 'testnet' && process.env['ALLOW_TESTNET_TRADES'] !== 'true');
 
   // Always require RPC URL
   if (!ethereumRpcUrl) {
