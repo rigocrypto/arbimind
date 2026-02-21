@@ -9,8 +9,11 @@ import {
   VersionedTransaction,
 } from '@solana/web3.js';
 
-const JUP_QUOTE = 'https://quote-api.jup.ag/v6/quote';
-const JUP_SWAP = 'https://quote-api.jup.ag/v6/swap';
+const JUPITER_API_BASES = [
+  process.env.SOLANA_JUPITER_API_BASE?.trim() || '',
+  'https://lite-api.jup.ag',
+  'https://quote-api.jup.ag',
+].filter(Boolean);
 
 const WSOL = 'So11111111111111111111111111111111111111112';
 const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
@@ -53,6 +56,44 @@ const rpc =
   process.env.SOLANA_JUPITER_RPC_URL?.trim() || 'https://api.mainnet-beta.solana.com';
 const connection = new Connection(rpc, 'confirmed');
 
+async function fetchJsonFromJupiter<T>(options: {
+  endpoint: '/v6/quote' | '/v6/swap';
+  query?: URLSearchParams;
+  init?: RequestInit;
+}): Promise<{ ok: true; data: T } | { ok: false; status: number; error: string; details?: string }> {
+  const { endpoint, query, init } = options;
+  let lastNetworkError: string | null = null;
+
+  for (const base of JUPITER_API_BASES) {
+    const qs = query ? `?${query.toString()}` : '';
+    const url = `${base}${endpoint}${qs}`;
+    try {
+      const response = await fetch(url, init);
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        return {
+          ok: false,
+          status: 502,
+          error: endpoint === '/v6/quote' ? 'Jupiter quote failed' : 'Jupiter swap build failed',
+          details: text || `HTTP ${response.status} from ${base}`,
+        };
+      }
+
+      const payload = (await response.json()) as T;
+      return { ok: true, data: payload };
+    } catch (error) {
+      lastNetworkError = `${base}: ${error instanceof Error ? error.message : 'fetch failed'}`;
+    }
+  }
+
+  return {
+    ok: false,
+    status: 502,
+    error: 'Jupiter API unreachable from backend',
+    details: lastNetworkError ?? 'All Jupiter API hosts failed',
+  };
+}
+
 /**
  * POST /api/solana/jupiter/swap-tx
  * Build unsigned v0 swap tx (Jupiter) + SOL fee. User signs/sends from UI.
@@ -93,40 +134,45 @@ router.post('/swap-tx', async (req: Request, res: Response) => {
         ? Math.floor(body.amount * LAMPORTS_PER_SOL)
         : Math.floor(body.amount * 1_000_000);
 
-    const quoteUrl = new URL(JUP_QUOTE);
+    const quoteUrl = new URL('https://placeholder.local/v6/quote');
     quoteUrl.searchParams.set('inputMint', inputMint);
     quoteUrl.searchParams.set('outputMint', outputMint);
     quoteUrl.searchParams.set('amount', String(amountInSmallest));
     quoteUrl.searchParams.set('slippageBps', String(slippageBps));
 
-    const quoteRes = await fetch(quoteUrl.toString());
-    if (!quoteRes.ok) {
-      const txt = await quoteRes.text().catch(() => '');
-      return res.status(502).json({ error: 'Jupiter quote failed', details: txt });
+    const quoteResult = await fetchJsonFromJupiter<JupiterQuoteResponse>({
+      endpoint: '/v6/quote',
+      query: quoteUrl.searchParams,
+      init: { method: 'GET' },
+    });
+    if (!quoteResult.ok) {
+      return res.status(quoteResult.status).json({ error: quoteResult.error, details: quoteResult.details });
     }
 
-    const quote = (await quoteRes.json()) as JupiterQuoteResponse;
+    const quote = quoteResult.data;
     if (!quote || !quote.outAmount) {
       return res.status(400).json({ error: 'No Jupiter route found' });
     }
 
-    const swapRes = await fetch(JUP_SWAP, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        quoteResponse: quote,
-        userPublicKey: user.toBase58(),
-        wrapAndUnwrapSol: true,
-        dynamicComputeUnitLimit: true,
-      }),
+    const swapResult = await fetchJsonFromJupiter<JupiterSwapResponse>({
+      endpoint: '/v6/swap',
+      init: {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          quoteResponse: quote,
+          userPublicKey: user.toBase58(),
+          wrapAndUnwrapSol: true,
+          dynamicComputeUnitLimit: true,
+        }),
+      },
     });
 
-    if (!swapRes.ok) {
-      const txt = await swapRes.text().catch(() => '');
-      return res.status(502).json({ error: 'Jupiter swap build failed', details: txt });
+    if (!swapResult.ok) {
+      return res.status(swapResult.status).json({ error: swapResult.error, details: swapResult.details });
     }
 
-    const swapJson = (await swapRes.json()) as JupiterSwapResponse;
+    const swapJson = swapResult.data;
     const swapTxB64 = swapJson.swapTransaction;
     if (!swapTxB64) {
       return res.status(502).json({ error: 'Missing swapTransaction from Jupiter' });
