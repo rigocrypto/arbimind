@@ -57,6 +57,24 @@ const router = express.Router();
 const connection = new Connection(resolveSolanaRpc(), 'confirmed');
 
 /**
+ * GET /api/solana/tx/withdraw-capabilities
+ * Returns whether treasury signer key is configured and parseable.
+ */
+router.get('/withdraw-capabilities', async (_req: Request, res: Response) => {
+  try {
+    const treasury = parseTreasuryKeypair();
+    return res.json({
+      hasTreasuryKey: true,
+      treasuryPubkey: treasury.publicKey.toBase58(),
+    });
+  } catch {
+    return res.json({
+      hasTreasuryKey: false,
+    });
+  }
+});
+
+/**
  * GET /api/solana/tx/status/:sig
  * Returns signature lifecycle status for UI polling.
  */
@@ -196,14 +214,19 @@ router.post('/withdraw', async (req: Request, res: Response) => {
   try {
     const body = req.body as {
       amountSol?: number;
+      amount?: number;
       fromPubkey?: string;
       toPubkey?: string;
+      to?: string;
     };
 
-    if (!body?.amountSol || body.amountSol <= 0) {
+    const amountSol = Number(body.amountSol ?? body.amount);
+    const toPubkey = (body.toPubkey ?? body.to ?? '').trim();
+
+    if (!Number.isFinite(amountSol) || amountSol <= 0) {
       return res.status(400).json({ error: 'amountSol must be > 0' });
     }
-    if (!body?.toPubkey || !isValidSolanaAddress(body.toPubkey)) {
+    if (!toPubkey || !isValidSolanaAddress(toPubkey)) {
       return res.status(400).json({ error: 'toPubkey required and must be valid Solana address' });
     }
 
@@ -214,12 +237,12 @@ router.post('/withdraw', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'fromPubkey does not match configured treasury signer' });
     }
 
-    const amountLamports = Math.floor(body.amountSol * LAMPORTS_PER_SOL);
+    const amountLamports = Math.floor(amountSol * LAMPORTS_PER_SOL);
     if (amountLamports <= 0) {
       return res.status(400).json({ error: 'amountSol too small' });
     }
 
-    const to = new PublicKey(body.toPubkey);
+    const to = new PublicKey(toPubkey);
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
 
     const ixWithdraw = SystemProgram.transfer({
@@ -247,6 +270,7 @@ router.post('/withdraw', async (req: Request, res: Response) => {
     const suffix = cluster === 'mainnet-beta' ? '' : `?cluster=${cluster}`;
 
     return res.json({
+      txSig: signature,
       signature,
       fromPubkey: treasuryPubkey,
       toPubkey: to.toBase58(),

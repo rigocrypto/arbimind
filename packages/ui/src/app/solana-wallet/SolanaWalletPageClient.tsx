@@ -68,6 +68,7 @@ export default function SolanaWalletPageClient() {
   const [withdrawAmount, setWithdrawAmount] = useState('0.1');
   const [withdrawLifecycle, setWithdrawLifecycle] = useState<TransferLifecycle>('idle');
   const [withdrawSignature, setWithdrawSignature] = useState('');
+  const [hasTreasuryKey, setHasTreasuryKey] = useState<boolean | null>(null);
   const withdrawStatusPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const withdrawStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const address = publicKey?.toBase58();
@@ -545,6 +546,34 @@ export default function SolanaWalletPageClient() {
   };
 
   useEffect(() => {
+    let cancelled = false;
+
+    const checkWithdrawCapability = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/solana/tx/withdraw-capabilities`, {
+          method: 'GET',
+          cache: 'no-store',
+        });
+        if (!response.ok) {
+          if (!cancelled) setHasTreasuryKey(false);
+          return;
+        }
+        const body = (await response.json()) as { hasTreasuryKey?: boolean };
+        if (!cancelled) {
+          setHasTreasuryKey(Boolean(body.hasTreasuryKey));
+        }
+      } catch {
+        if (!cancelled) setHasTreasuryKey(false);
+      }
+    };
+
+    void checkWithdrawCapability();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (transferStatusPollRef.current) {
         clearInterval(transferStatusPollRef.current);
@@ -715,6 +744,10 @@ export default function SolanaWalletPageClient() {
   const handleWithdraw = async () => {
     if (!isSolanaConnected || !publicKey) {
       toast.error('Connect wallet first');
+      return;
+    }
+    if (!hasTreasuryKey) {
+      toast.error('Backend missing SOLANA_TREASURY_SECRET_KEY');
       return;
     }
 
@@ -1366,10 +1399,15 @@ export default function SolanaWalletPageClient() {
                 <button
                   type="button"
                   onClick={handleWithdraw}
-                  disabled={!isSolanaConnected || withdrawLifecycle === 'signing' || withdrawLifecycle === 'pending'}
+                  disabled={!isSolanaConnected || !hasTreasuryKey || withdrawLifecycle === 'signing' || withdrawLifecycle === 'pending'}
                   className="w-full xs:w-auto px-4 py-3 rounded-lg bg-green-500/20 border border-green-500/30 text-green-300 font-medium hover:bg-green-500/30 transition disabled:opacity-50"
+                  title={hasTreasuryKey ? 'Withdraw from treasury to connected wallet' : 'Set SOLANA_TREASURY_SECRET_KEY in backend vars'}
                 >
-                  {withdrawLifecycle === 'signing'
+                  {hasTreasuryKey === null
+                    ? 'Checking treasury signer…'
+                    : !hasTreasuryKey
+                      ? 'Withdraw (Treasury Key Missing)'
+                      : withdrawLifecycle === 'signing'
                     ? 'Preparing…'
                     : withdrawLifecycle === 'pending'
                       ? `Pending: ${withdrawSignature ? `${withdrawSignature.slice(0, 8)}...` : 'tx'}`
@@ -1377,6 +1415,11 @@ export default function SolanaWalletPageClient() {
                         ? '✅ Withdraw confirmed'
                         : `Withdraw to ${publicKey ? `${publicKey.toBase58().slice(0, 8)}...` : 'wallet'}`}
                 </button>
+                {hasTreasuryKey === false && (
+                  <p className="text-xs text-amber-300">
+                    Backend hint: set <span className="font-mono">SOLANA_TREASURY_SECRET_KEY</span> in backend vars, then redeploy.
+                  </p>
+                )}
                 {withdrawSignature && (
                   <p className="text-xs text-green-300 break-all">
                     Tx: {withdrawSignature}{' '}
