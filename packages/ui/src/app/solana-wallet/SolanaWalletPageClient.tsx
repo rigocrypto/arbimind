@@ -351,6 +351,7 @@ export default function SolanaWalletPageClient() {
       const tx = VersionedTransaction.deserialize(txBytes);
 
       setTransferLifecycle('broadcast');
+      toast.loading('Broadcasting...', { id: 'solana-transfer' });
       const sig = await sendTransaction(tx, connection, { preflightCommitment: 'confirmed' });
       setTransferSignature(sig);
       setTransferLifecycle('pending');
@@ -408,9 +409,24 @@ export default function SolanaWalletPageClient() {
               setTransferAmount('0.1');
               setTransferToPubkey('');
               const explorerUrl = statusJson.explorer || `${SOLSCAN_BASE}/tx/${sig}${SOLSCAN_TX_SUFFIX}`;
-              toast.success(`${statusJson.status === 'finalized' ? 'Finalized' : 'Confirmed'}: ${sig.slice(0, 8)}...${sig.slice(-8)} · ${explorerUrl}`, {
-                id: 'solana-transfer',
-              });
+              const label = statusJson.status === 'finalized' ? 'Finalized' : 'Confirmed';
+              toast(
+                (t) => (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span>{`✅ ${label}: ${sig.slice(0, 8)}...${sig.slice(-8)}`}</span>
+                    <a
+                      href={explorerUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold underline"
+                      onClick={() => toast.dismiss(t.id)}
+                    >
+                      View
+                    </a>
+                  </div>
+                ),
+                { id: 'solana-transfer', duration: 12000 }
+              );
             }
           } catch {
             // keep polling until timeout
