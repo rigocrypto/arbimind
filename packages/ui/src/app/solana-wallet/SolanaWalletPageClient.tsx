@@ -83,6 +83,8 @@ export default function SolanaWalletPageClient() {
   const [swapSide, setSwapSide] = useState<'SOL_TO_USDC' | 'USDC_TO_SOL'>('SOL_TO_USDC');
   const [swapAmount, setSwapAmount] = useState('0.1');
   const [swapSlippageBps, setSwapSlippageBps] = useState(50);
+  const [engineActive, setEngineActive] = useState(false);
+  const [engineWalletSynced, setEngineWalletSynced] = useState(false);
 
   const treasuryPubkey = useMemo(() => {
     try {
@@ -190,6 +192,60 @@ export default function SolanaWalletPageClient() {
       clearInterval(interval);
     };
   }, [connection, publicKey, treasuryPubkey]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const refreshEngineStatus = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/engine/status`, {
+          method: 'GET',
+          cache: 'no-store',
+        });
+        if (!response.ok) {
+          if (!cancelled) {
+            setEngineActive(false);
+            setEngineWalletSynced(false);
+          }
+          return;
+        }
+
+        const payload = (await response.json()) as {
+          active?: string;
+          walletChain?: 'solana' | 'evm' | null;
+          walletAddress?: string | null;
+        };
+
+        const active = typeof payload.active === 'string' ? payload.active.trim().length > 0 : false;
+        const synced =
+          isSolanaConnected &&
+          !!address &&
+          payload.walletChain === 'solana' &&
+          typeof payload.walletAddress === 'string' &&
+          payload.walletAddress === address;
+
+        if (!cancelled) {
+          setEngineActive(active);
+          setEngineWalletSynced(Boolean(synced));
+        }
+      } catch {
+        if (!cancelled) {
+          setEngineActive(false);
+          setEngineWalletSynced(false);
+        }
+      }
+    };
+
+    void refreshEngineStatus();
+    const interval = setInterval(() => {
+      void refreshEngineStatus();
+    }, 10000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isSolanaConnected, address]);
 
   useEffect(() => {
     let cancelled = false;
@@ -626,6 +682,33 @@ export default function SolanaWalletPageClient() {
               )}
             </div>
           </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-4 flex flex-wrap items-center gap-2"
+        >
+          <span
+            className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold tracking-wide ${
+              engineActive
+                ? 'border-green-500/30 bg-green-500/15 text-green-300'
+                : 'border-dark-700 bg-dark-900/70 text-dark-300'
+            }`}
+          >
+            Bot: {engineActive ? 'ARBITRAGE ACTIVE' : 'INACTIVE'}
+          </span>
+          {isSolanaConnected && (
+            <span
+              className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold tracking-wide ${
+                engineWalletSynced
+                  ? 'border-cyan-500/30 bg-cyan-500/15 text-cyan-300'
+                  : 'border-dark-700 bg-dark-900/70 text-dark-300'
+              }`}
+            >
+              {engineWalletSynced ? 'Solana Synced' : 'Solana Connected'}
+            </span>
+          )}
         </motion.div>
 
         {!isSolanaConnected ? (
