@@ -15,6 +15,7 @@ import toast from 'react-hot-toast';
 import { API_BASE } from '@/lib/apiConfig';
 import { ArbAccountCard, PerformanceCharts, ActivityTable } from '@/components/portfolio';
 import { getPortfolioErrorDetails, usePortfolioSummary, usePortfolioTimeseries } from '@/hooks/usePortfolio';
+import { SOL_EQUIV_DECIMALS } from '@/utils/format';
 
 const IS_MAINNET = process.env.NEXT_PUBLIC_SOLANA_CLUSTER === 'mainnet-beta';
 const SOLSCAN_BASE = 'https://solscan.io';
@@ -725,7 +726,7 @@ export default function SolanaWalletPageClient() {
             </span>
           )}
           <span className="inline-flex items-center rounded-full border border-dark-700 bg-dark-900/70 px-3 py-1 text-xs font-semibold tracking-wide text-dark-200">
-            {engineOppsCount} Opps | {engineLastProfit.toFixed(4)} SOL
+            {engineOppsCount} Opps | {engineLastProfit.toFixed(SOL_EQUIV_DECIMALS)} SOL
           </span>
           <span className="text-xs text-dark-400">
             Last HB:{' '}
