@@ -274,11 +274,21 @@ export default function SolanaWalletPageClient() {
 
       if (wallet?.adapter.name !== targetWallet.adapter.name) {
         select(targetWallet.adapter.name);
+        await new Promise((resolve) => setTimeout(resolve, 120));
       }
 
       await connect();
     } catch (err: unknown) {
       const msg = String(err instanceof Error ? err.message : err ?? 'Wallet connection failed');
+      if (/walletnotselectederror|wallet not selected/i.test(msg)) {
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 180));
+          await connect();
+          return;
+        } catch {
+          // fall through to generic handling
+        }
+      }
       if (/user rejected|cancelled|rejected/i.test(msg)) {
         toast('Connection cancelled', { icon: '🔒' });
         return;
