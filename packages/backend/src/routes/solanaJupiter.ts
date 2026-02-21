@@ -15,6 +15,12 @@ const JUPITER_API_BASES = [
   'https://quote-api.jup.ag',
 ].filter(Boolean);
 
+const SOLANA_RPC_ENDPOINTS = [
+  process.env.SOLANA_JUPITER_RPC_URL?.trim() || '',
+  process.env.SOLANA_JUPITER_RPC_FALLBACK_URL?.trim() || '',
+  'https://api.mainnet-beta.solana.com',
+].filter(Boolean);
+
 const WSOL = 'So11111111111111111111111111111111111111112';
 const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
@@ -52,36 +58,85 @@ async function fetchAltAccounts(
 }
 
 const router = express.Router();
-const rpc =
-  process.env.SOLANA_JUPITER_RPC_URL?.trim() || 'https://api.mainnet-beta.solana.com';
-const connection = new Connection(rpc, 'confirmed');
+const rpcConnections = SOLANA_RPC_ENDPOINTS.map((endpoint) => new Connection(endpoint, 'confirmed'));
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function isTransientStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
+function computeBackoffDelayMs(attempt: number, retryAfterHeader?: string | null): number {
+  const retryAfterSeconds = Number(retryAfterHeader ?? '');
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+    return Math.min(6000, Math.floor(retryAfterSeconds * 1000));
+  }
+
+  const base = 400;
+  const jitter = Math.floor(Math.random() * 200);
+  return Math.min(6000, base * 2 ** attempt + jitter);
+}
+
+async function withRpcFallback<T>(taskName: string, fn: (connection: Connection) => Promise<T>): Promise<T> {
+  const failures: string[] = [];
+  for (const connection of rpcConnections) {
+    try {
+      return await fn(connection);
+    } catch (error) {
+      failures.push(
+        `${connection.rpcEndpoint}: ${error instanceof Error ? error.message : `${taskName} failed`}`
+      );
+    }
+  }
+
+  throw new Error(`All RPC endpoints failed for ${taskName}: ${failures.join(' | ')}`);
+}
 
 async function fetchJsonFromJupiter<T>(options: {
   endpoints: Array<'/v6/quote' | '/v6/swap' | '/swap/v1/quote' | '/swap/v1/swap'>;
   query?: URLSearchParams;
   init?: RequestInit;
+  maxAttempts?: number;
 }): Promise<{ ok: true; data: T } | { ok: false; status: number; error: string; details?: string }> {
-  const { endpoints, query, init } = options;
+  const { endpoints, query, init, maxAttempts = 3 } = options;
   const failures: string[] = [];
 
-  for (const endpoint of endpoints) {
-    for (const base of JUPITER_API_BASES) {
-      const qs = query ? `?${query.toString()}` : '';
-      const url = `${base}${endpoint}${qs}`;
-      try {
-        const response = await fetch(url, init);
-        if (!response.ok) {
-          const text = await response.text().catch(() => '');
-          failures.push(`${base}${endpoint}: HTTP ${response.status}${text ? ` (${text.slice(0, 120)})` : ''}`);
-          continue;
-        }
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let sawTransientFailure = false;
+    let retryAfterHeader: string | null = null;
 
-        const payload = (await response.json()) as T;
-        return { ok: true, data: payload };
-      } catch (error) {
-        failures.push(`${base}${endpoint}: ${error instanceof Error ? error.message : 'fetch failed'}`);
+    for (const endpoint of endpoints) {
+      for (const base of JUPITER_API_BASES) {
+        const qs = query ? `?${query.toString()}` : '';
+        const url = `${base}${endpoint}${qs}`;
+        try {
+          const response = await fetch(url, init);
+          if (!response.ok) {
+            const text = await response.text().catch(() => '');
+            failures.push(
+              `${base}${endpoint}: HTTP ${response.status}${text ? ` (${text.slice(0, 120)})` : ''}`
+            );
+            if (isTransientStatus(response.status)) {
+              sawTransientFailure = true;
+              retryAfterHeader = response.headers.get('retry-after') || retryAfterHeader;
+            }
+            continue;
+          }
+
+          const payload = (await response.json()) as T;
+          return { ok: true, data: payload };
+        } catch (error) {
+          sawTransientFailure = true;
+          failures.push(`${base}${endpoint}: ${error instanceof Error ? error.message : 'fetch failed'}`);
+        }
       }
     }
+
+    if (!sawTransientFailure || attempt >= maxAttempts - 1) {
+      break;
+    }
+
+    await delay(computeBackoffDelayMs(attempt, retryAfterHeader));
   }
 
   return {
@@ -181,7 +236,19 @@ router.post('/swap-tx', async (req: Request, res: Response) => {
 
     const swapTx = VersionedTransaction.deserialize(Buffer.from(swapTxB64, 'base64'));
 
-    const alts = await fetchAltAccounts(connection, swapTx);
+    const { alts, blockhash, lastValidBlockHeight } = await withRpcFallback(
+      'lookup table and blockhash resolution',
+      async (connection) => {
+        const lookupTables = await fetchAltAccounts(connection, swapTx);
+        const latest = await connection.getLatestBlockhash('confirmed');
+        return {
+          alts: lookupTables,
+          blockhash: latest.blockhash,
+          lastValidBlockHeight: latest.lastValidBlockHeight,
+        };
+      }
+    );
+
     const decompiled = TransactionMessage.decompile(swapTx.message, {
       addressLookupTableAccounts: alts,
     });
@@ -200,8 +267,6 @@ router.post('/swap-tx', async (req: Request, res: Response) => {
       toPubkey: new PublicKey(feeWallet),
       lamports: feeLamports,
     });
-
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
 
     const newMsg = new TransactionMessage({
       payerKey: decompiled.payerKey,
