@@ -33,6 +33,40 @@ const router = express.Router();
 const connection = new Connection(resolveSolanaRpc(), 'confirmed');
 
 /**
+ * GET /api/solana/tx/status/:sig
+ * Returns signature lifecycle status for UI polling.
+ */
+router.get('/status/:sig', async (req: Request, res: Response) => {
+  try {
+    const sig = (req.params.sig || '').trim();
+    if (!sig) {
+      return res.status(400).json({ error: 'sig required' });
+    }
+
+    const statusResp = await connection.getSignatureStatuses([sig], {
+      searchTransactionHistory: true,
+    });
+    const status = statusResp.value[0];
+
+    const cluster = process.env.SOLANA_CLUSTER || 'devnet';
+    const suffix = cluster === 'mainnet-beta' ? '' : `?cluster=${cluster}`;
+
+    return res.json({
+      signature: sig,
+      status: status?.confirmationStatus ?? 'unknown',
+      confirmations: status?.confirmations ?? null,
+      err: status?.err ?? null,
+      explorer: `https://solscan.io/tx/${sig}${suffix}`,
+    });
+  } catch (error) {
+    console.error('Solana tx/status error:', error);
+    return res.status(500).json({
+      error: error instanceof Error ? error.message : 'Status lookup failed',
+    });
+  }
+});
+
+/**
  * POST /api/solana/tx/transfer
  * Build unsigned SOL transfer tx (non-custodial). User signs + sends from UI.
  */

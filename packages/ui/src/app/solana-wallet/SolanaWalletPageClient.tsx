@@ -37,6 +37,8 @@ type BotTrade = {
   at: string;
 };
 
+type TransferLifecycle = 'idle' | 'signing' | 'broadcast' | 'pending' | 'confirmed' | 'finalized' | 'failed';
+
 const MOCK_BOT_TRADES: BotTrade[] = [
   { id: 't-1001', pair: 'SOL/USDC', side: 'buy', volumeSol: 0.65, pnlSol: 0.041, status: 'success', at: '2m ago' },
   { id: 't-1000', pair: 'JUP/SOL', side: 'sell', volumeSol: 0.38, pnlSol: -0.007, status: 'failed', at: '7m ago' },
@@ -57,6 +59,10 @@ export default function SolanaWalletPageClient() {
   const [treasurySolBalance, setTreasurySolBalance] = useState(0);
   const [botTrades, setBotTrades] = useState<BotTrade[]>(MOCK_BOT_TRADES);
   const [loading, setLoading] = useState<string | null>(null);
+  const [transferLifecycle, setTransferLifecycle] = useState<TransferLifecycle>('idle');
+  const [transferSignature, setTransferSignature] = useState('');
+  const transferStatusPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const transferStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const address = publicKey?.toBase58();
   const {
     data: portfolio,
@@ -314,7 +320,8 @@ export default function SolanaWalletPageClient() {
         return;
       }
     }
-    setLoading('transfer');
+    setTransferLifecycle('signing');
+    setTransferSignature('');
     try {
       const res = await fetch(`${API_BASE}/solana/tx/transfer`, {
         method: 'POST',
@@ -343,31 +350,106 @@ export default function SolanaWalletPageClient() {
       const txBytes = Uint8Array.from(atob(data.transactionBase64), (c) => c.charCodeAt(0));
       const tx = VersionedTransaction.deserialize(txBytes);
 
+      setTransferLifecycle('broadcast');
       const sig = await sendTransaction(tx, connection, { preflightCommitment: 'confirmed' });
+      setTransferSignature(sig);
+      setTransferLifecycle('pending');
+      toast.loading(`Pending: ${sig.slice(0, 8)}...${sig.slice(-8)}`, { id: 'solana-transfer' });
 
-      await connection.confirmTransaction(
-        {
-          signature: sig,
-          blockhash: data.recentBlockhash,
-          lastValidBlockHeight: data.lastValidBlockHeight,
-        },
-        'confirmed'
-      );
+      if (transferStatusPollRef.current) {
+        clearInterval(transferStatusPollRef.current);
+        transferStatusPollRef.current = null;
+      }
+      if (transferStatusTimeoutRef.current) {
+        clearTimeout(transferStatusTimeoutRef.current);
+        transferStatusTimeoutRef.current = null;
+      }
 
-      toast.success(`Confirmed: ${sig.slice(0, 8)}...${sig.slice(-8)}`);
-      setTransferAmount('0.1');
-      setTransferToPubkey('');
+      transferStatusPollRef.current = setInterval(() => {
+        void (async () => {
+          try {
+            const statusRes = await fetch(`${API_BASE}/solana/tx/status/${sig}`, {
+              method: 'GET',
+              cache: 'no-store',
+            });
+            if (!statusRes.ok) return;
+
+            const statusJson = (await statusRes.json()) as {
+              status?: 'processed' | 'confirmed' | 'finalized' | 'unknown';
+              err?: unknown;
+              explorer?: string;
+            };
+
+            if (statusJson.err) {
+              if (transferStatusPollRef.current) {
+                clearInterval(transferStatusPollRef.current);
+                transferStatusPollRef.current = null;
+              }
+              if (transferStatusTimeoutRef.current) {
+                clearTimeout(transferStatusTimeoutRef.current);
+                transferStatusTimeoutRef.current = null;
+              }
+              setTransferLifecycle('failed');
+              toast.error('Transfer failed on-chain', { id: 'solana-transfer' });
+              return;
+            }
+
+            if (statusJson.status === 'finalized' || statusJson.status === 'confirmed') {
+              if (transferStatusPollRef.current) {
+                clearInterval(transferStatusPollRef.current);
+                transferStatusPollRef.current = null;
+              }
+              if (transferStatusTimeoutRef.current) {
+                clearTimeout(transferStatusTimeoutRef.current);
+                transferStatusTimeoutRef.current = null;
+              }
+
+              setTransferLifecycle(statusJson.status);
+              setTransferAmount('0.1');
+              setTransferToPubkey('');
+              const explorerUrl = statusJson.explorer || `${SOLSCAN_BASE}/tx/${sig}${SOLSCAN_TX_SUFFIX}`;
+              toast.success(`${statusJson.status === 'finalized' ? 'Finalized' : 'Confirmed'}: ${sig.slice(0, 8)}...${sig.slice(-8)} · ${explorerUrl}`, {
+                id: 'solana-transfer',
+              });
+            }
+          } catch {
+            // keep polling until timeout
+          }
+        })();
+      }, 1200);
+
+      transferStatusTimeoutRef.current = setTimeout(() => {
+        if (transferStatusPollRef.current) {
+          clearInterval(transferStatusPollRef.current);
+          transferStatusPollRef.current = null;
+        }
+        transferStatusTimeoutRef.current = null;
+        setTransferLifecycle((prev) => (prev === 'pending' || prev === 'broadcast' ? 'failed' : prev));
+        toast.error('Transfer confirmation timeout', { id: 'solana-transfer' });
+      }, 120000);
     } catch (err: unknown) {
       const msg = String(err instanceof Error ? err.message : err ?? 'Transfer failed');
+      setTransferLifecycle('failed');
       if (msg.includes('disconnected port') || msg.includes('[PHANTOM]')) {
         toast('Phantom connection lost. Open Phantom to unlock, then refresh and try again.', { icon: '🔌' });
         return;
       }
       toast.error(msg || 'Transfer failed');
     } finally {
-      setLoading(null);
+      // transfer lifecycle is managed independently from generic loading
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (transferStatusPollRef.current) {
+        clearInterval(transferStatusPollRef.current);
+      }
+      if (transferStatusTimeoutRef.current) {
+        clearTimeout(transferStatusTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleSwap = async () => {
     if (!isSolanaConnected || !publicKey) {
@@ -845,11 +927,34 @@ export default function SolanaWalletPageClient() {
                 <button
                   type="button"
                   onClick={handleTransfer}
-                  disabled={!!loading}
+                  disabled={transferLifecycle === 'signing' || transferLifecycle === 'broadcast' || transferLifecycle === 'pending'}
                   className="w-full xs:w-auto px-4 py-3 rounded-lg bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 text-cyan-400 font-medium hover:from-cyan-500/30 hover:to-purple-500/30 transition disabled:opacity-50"
                 >
-                  {loading === 'transfer' ? 'Sending…' : 'Transfer (0.5% fee)'}
+                  {transferLifecycle === 'signing'
+                    ? 'Signing…'
+                    : transferLifecycle === 'broadcast'
+                      ? 'Broadcasting…'
+                      : transferLifecycle === 'pending'
+                        ? `Pending: ${transferSignature ? `${transferSignature.slice(0, 8)}...` : 'tx'}`
+                        : transferLifecycle === 'confirmed' || transferLifecycle === 'finalized'
+                          ? '✅ Confirmed'
+                          : transferLifecycle === 'failed'
+                            ? 'Failed'
+                            : 'Transfer (0.5% fee)'}
                 </button>
+                {transferSignature && (
+                  <p className="text-xs text-cyan-300 break-all">
+                    Tx: {transferSignature}{' '}
+                    <a
+                      href={`${SOLSCAN_BASE}/tx/${transferSignature}${SOLSCAN_TX_SUFFIX}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline text-cyan-300 hover:text-cyan-200"
+                    >
+                      View on Solscan
+                    </a>
+                  </p>
+                )}
                 <p className="text-xs text-dark-500">
                   Non-custodial. You sign with your wallet. Fee goes to protocol.
                 </p>
