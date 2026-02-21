@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
@@ -20,6 +20,7 @@ import { SOL_EQUIV_DECIMALS } from '@/utils/format';
 const IS_MAINNET = process.env.NEXT_PUBLIC_SOLANA_CLUSTER === 'mainnet-beta';
 const SOLSCAN_BASE = 'https://solscan.io';
 const SOLSCAN_TX_SUFFIX = IS_MAINNET ? '' : '?cluster=devnet';
+const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const SOLANA_TREASURY_ADDRESS =
   process.env.NEXT_PUBLIC_SOLANA_ARB_ACCOUNT || '6wmAm8uoPQTx9jEnGx4aDKwVFRSfdhKJfL2LJzwCmE6s';
 // Override only the states that display the CTA text so it never regresses to "Select Wallet".
@@ -64,6 +65,11 @@ export default function SolanaWalletPageClient() {
   const [transferSignature, setTransferSignature] = useState('');
   const transferStatusPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const transferStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [withdrawAmount, setWithdrawAmount] = useState('0.1');
+  const [withdrawLifecycle, setWithdrawLifecycle] = useState<TransferLifecycle>('idle');
+  const [withdrawSignature, setWithdrawSignature] = useState('');
+  const withdrawStatusPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const withdrawStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const address = publicKey?.toBase58();
   const {
     data: portfolio,
@@ -84,6 +90,8 @@ export default function SolanaWalletPageClient() {
   const [swapSide, setSwapSide] = useState<'SOL_TO_USDC' | 'USDC_TO_SOL'>('SOL_TO_USDC');
   const [swapAmount, setSwapAmount] = useState('0.1');
   const [swapSlippageBps, setSwapSlippageBps] = useState(50);
+  const [swapQuoteOutAmount, setSwapQuoteOutAmount] = useState<number | null>(null);
+  const [usdcBalance, setUsdcBalance] = useState(0);
   const [engineActive, setEngineActive] = useState(false);
   const [engineWalletSynced, setEngineWalletSynced] = useState(false);
   const [engineLastHeartbeat, setEngineLastHeartbeat] = useState<number | null>(null);
@@ -93,6 +101,14 @@ export default function SolanaWalletPageClient() {
   const treasuryPubkey = useMemo(() => {
     try {
       return new PublicKey(SOLANA_TREASURY_ADDRESS);
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const usdcMintPubkey = useMemo(() => {
+    try {
+      return new PublicKey(USDC_MINT);
     } catch {
       return null;
     }
@@ -536,6 +552,12 @@ export default function SolanaWalletPageClient() {
       if (transferStatusTimeoutRef.current) {
         clearTimeout(transferStatusTimeoutRef.current);
       }
+      if (withdrawStatusPollRef.current) {
+        clearInterval(withdrawStatusPollRef.current);
+      }
+      if (withdrawStatusTimeoutRef.current) {
+        clearTimeout(withdrawStatusTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -589,6 +611,8 @@ export default function SolanaWalletPageClient() {
       );
       toast.success(`Swap confirmed: ${sig.slice(0, 8)}...${sig.slice(-8)}`);
       setSwapAmount('0.1');
+      setSwapQuoteOutAmount(null);
+      await refreshUsdcBalance();
     } catch (err: unknown) {
       const msg = String(err instanceof Error ? err.message : err ?? 'Swap failed');
       if (msg.includes('disconnected port') || msg.includes('[PHANTOM]')) {
@@ -598,6 +622,224 @@ export default function SolanaWalletPageClient() {
       toast.error(msg || 'Swap failed');
     } finally {
       setLoading(null);
+    }
+  };
+
+  const handleGetSwapQuote = async () => {
+    if (!isSolanaConnected || !publicKey) {
+      toast.error('Connect wallet first');
+      return;
+    }
+    const amount = parseFloat(swapAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Enter a valid amount');
+      return;
+    }
+    if (!IS_MAINNET) {
+      toast.error('Quotes are mainnet-only. Set NEXT_PUBLIC_SOLANA_CLUSTER=mainnet-beta');
+      return;
+    }
+
+    setLoading('quote');
+    try {
+      const res = await fetch(`${API_BASE}/solana/jupiter/swap-tx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userPubkey: publicKey.toBase58(),
+          side: swapSide,
+          amount,
+          slippageBps: swapSlippageBps,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(body.error || 'Quote failed');
+        return;
+      }
+
+      const outAmountRaw = Number(body?.quote?.outAmount ?? 0);
+      const outDecimals = swapSide === 'SOL_TO_USDC' ? 6 : 9;
+      setSwapQuoteOutAmount(outAmountRaw > 0 ? outAmountRaw / 10 ** outDecimals : null);
+      toast.success('Quote updated');
+    } catch (err: unknown) {
+      const msg = String(err instanceof Error ? err.message : err ?? 'Quote failed');
+      toast.error(msg || 'Quote failed');
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const refreshUsdcBalance = useCallback(async () => {
+    if (!publicKey || !usdcMintPubkey) {
+      setUsdcBalance(0);
+      return;
+    }
+    try {
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
+        mint: usdcMintPubkey,
+      });
+      if (tokenAccounts.value.length === 0) {
+        setUsdcBalance(0);
+        return;
+      }
+      const amount = tokenAccounts.value.reduce((sum, account) => {
+        const parsed = account.account.data.parsed as { info?: { tokenAmount?: { uiAmount?: number | null } } };
+        return sum + Number(parsed?.info?.tokenAmount?.uiAmount ?? 0);
+      }, 0);
+      setUsdcBalance(amount);
+    } catch {
+      setUsdcBalance(0);
+    }
+  }, [publicKey, usdcMintPubkey, connection]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      if (cancelled) return;
+      await refreshUsdcBalance();
+    };
+
+    void run();
+    const interval = setInterval(() => {
+      void run();
+    }, 20000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [refreshUsdcBalance]);
+
+  const handleWithdraw = async () => {
+    if (!isSolanaConnected || !publicKey) {
+      toast.error('Connect wallet first');
+      return;
+    }
+
+    const amount = parseFloat(withdrawAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Enter a valid amount');
+      return;
+    }
+
+    setWithdrawLifecycle('signing');
+    setWithdrawSignature('');
+
+    try {
+      const res = await fetch(`${API_BASE}/solana/tx/withdraw`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amountSol: amount,
+          fromPubkey: SOLANA_TREASURY_ADDRESS,
+          toPubkey: publicKey.toBase58(),
+        }),
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setWithdrawLifecycle('failed');
+        toast.error(body.error || 'Withdraw failed');
+        return;
+      }
+
+      const signature = String(body.signature || '');
+      if (!signature) {
+        setWithdrawLifecycle('failed');
+        toast.error('Withdraw signature missing');
+        return;
+      }
+
+      setWithdrawLifecycle('pending');
+      setWithdrawSignature(signature);
+      toast.loading(`Pending: ${signature.slice(0, 8)}...${signature.slice(-8)}`, { id: 'solana-withdraw' });
+
+      if (withdrawStatusPollRef.current) {
+        clearInterval(withdrawStatusPollRef.current);
+        withdrawStatusPollRef.current = null;
+      }
+      if (withdrawStatusTimeoutRef.current) {
+        clearTimeout(withdrawStatusTimeoutRef.current);
+        withdrawStatusTimeoutRef.current = null;
+      }
+
+      withdrawStatusPollRef.current = setInterval(() => {
+        void (async () => {
+          try {
+            const statusRes = await fetch(`${API_BASE}/solana/tx/status/${signature}`, {
+              method: 'GET',
+              cache: 'no-store',
+            });
+            if (!statusRes.ok) return;
+
+            const statusJson = (await statusRes.json()) as {
+              status?: 'processed' | 'confirmed' | 'finalized' | 'unknown';
+              err?: unknown;
+              explorer?: string;
+            };
+
+            if (statusJson.err) {
+              if (withdrawStatusPollRef.current) {
+                clearInterval(withdrawStatusPollRef.current);
+                withdrawStatusPollRef.current = null;
+              }
+              if (withdrawStatusTimeoutRef.current) {
+                clearTimeout(withdrawStatusTimeoutRef.current);
+                withdrawStatusTimeoutRef.current = null;
+              }
+              setWithdrawLifecycle('failed');
+              toast.error('Withdraw failed on-chain', { id: 'solana-withdraw' });
+              return;
+            }
+
+            if (statusJson.status === 'finalized' || statusJson.status === 'confirmed') {
+              if (withdrawStatusPollRef.current) {
+                clearInterval(withdrawStatusPollRef.current);
+                withdrawStatusPollRef.current = null;
+              }
+              if (withdrawStatusTimeoutRef.current) {
+                clearTimeout(withdrawStatusTimeoutRef.current);
+                withdrawStatusTimeoutRef.current = null;
+              }
+
+              const label = statusJson.status === 'finalized' ? 'Finalized' : 'Confirmed';
+              const explorerUrl = statusJson.explorer || `${SOLSCAN_BASE}/tx/${signature}${SOLSCAN_TX_SUFFIX}`;
+              setWithdrawLifecycle(statusJson.status);
+              setWithdrawAmount('0.1');
+              toast.success(`${label}: ${signature.slice(0, 8)}...${signature.slice(-8)}`, { id: 'solana-withdraw' });
+              toast((t) => (
+                <a
+                  href={explorerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-semibold underline"
+                  onClick={() => toast.dismiss(t.id)}
+                >
+                  View withdraw on Solscan
+                </a>
+              ));
+            }
+          } catch {
+            // keep polling until timeout
+          }
+        })();
+      }, 1200);
+
+      withdrawStatusTimeoutRef.current = setTimeout(() => {
+        if (withdrawStatusPollRef.current) {
+          clearInterval(withdrawStatusPollRef.current);
+          withdrawStatusPollRef.current = null;
+        }
+        withdrawStatusTimeoutRef.current = null;
+        setWithdrawLifecycle((prev) => (prev === 'pending' ? 'failed' : prev));
+        toast.error('Withdraw confirmation timeout', { id: 'solana-withdraw' });
+      }, 120000);
+    } catch (err: unknown) {
+      const msg = String(err instanceof Error ? err.message : err ?? 'Withdraw failed');
+      setWithdrawLifecycle('failed');
+      toast.error(msg || 'Withdraw failed');
     }
   };
 
@@ -1098,6 +1340,59 @@ export default function SolanaWalletPageClient() {
               </div>
             </motion.div>
 
+            {/* Withdraw SOL (treasury -> connected wallet) */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="glass-card p-4 sm:p-6"
+            >
+              <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                <Send className="w-5 h-5 text-green-400" />
+                Withdraw from Treasury
+              </h2>
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="withdraw-amount" className="block text-sm font-medium text-dark-300 mb-2">Amount (SOL)</label>
+                  <input
+                    id="withdraw-amount"
+                    type="number"
+                    min="0.001"
+                    step="0.001"
+                    value={withdrawAmount}
+                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-lg bg-dark-800 border border-dark-600 text-white text-sm focus:outline-none focus:border-green-500"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleWithdraw}
+                  disabled={!isSolanaConnected || withdrawLifecycle === 'signing' || withdrawLifecycle === 'pending'}
+                  className="w-full xs:w-auto px-4 py-3 rounded-lg bg-green-500/20 border border-green-500/30 text-green-300 font-medium hover:bg-green-500/30 transition disabled:opacity-50"
+                >
+                  {withdrawLifecycle === 'signing'
+                    ? 'Preparing…'
+                    : withdrawLifecycle === 'pending'
+                      ? `Pending: ${withdrawSignature ? `${withdrawSignature.slice(0, 8)}...` : 'tx'}`
+                      : withdrawLifecycle === 'confirmed' || withdrawLifecycle === 'finalized'
+                        ? '✅ Withdraw confirmed'
+                        : `Withdraw to ${publicKey ? `${publicKey.toBase58().slice(0, 8)}...` : 'wallet'}`}
+                </button>
+                {withdrawSignature && (
+                  <p className="text-xs text-green-300 break-all">
+                    Tx: {withdrawSignature}{' '}
+                    <a
+                      href={`${SOLSCAN_BASE}/tx/${withdrawSignature}${SOLSCAN_TX_SUFFIX}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline text-green-300 hover:text-green-200"
+                    >
+                      View on Solscan
+                    </a>
+                  </p>
+                )}
+              </div>
+            </motion.div>
+
             {/* Swap SOL ↔ USDC (Jupiter, mainnet-only) */}
             <motion.div
               initial={{ opacity: 0, y: 8 }}
@@ -1156,6 +1451,22 @@ export default function SolanaWalletPageClient() {
                     className="w-full px-4 py-2.5 rounded-lg bg-dark-800 border border-dark-600 text-white text-sm focus:outline-none focus:border-purple-500"
                   />
                 </div>
+                <button
+                  type="button"
+                  onClick={handleGetSwapQuote}
+                  disabled={!!loading || !IS_MAINNET}
+                  className="w-full xs:w-auto px-4 py-3 rounded-lg bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-medium hover:bg-cyan-500/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading === 'quote' ? 'Getting quote…' : 'Get Quote'}
+                </button>
+                {swapQuoteOutAmount !== null && (
+                  <div className="p-4 rounded-lg border border-green-500/30 bg-green-500/10 text-sm space-y-1">
+                    <p className="text-green-300">
+                      Receive: {swapQuoteOutAmount.toFixed(SOL_EQUIV_DECIMALS)} {swapSide === 'SOL_TO_USDC' ? 'USDC' : 'SOL'}
+                    </p>
+                    <p className="text-dark-300">USDC ATA Balance: {usdcBalance.toFixed(SOL_EQUIV_DECIMALS)} USDC</p>
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={handleSwap}

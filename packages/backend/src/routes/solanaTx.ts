@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import {
   Connection,
+  Keypair,
   PublicKey,
   SystemProgram,
   LAMPORTS_PER_SOL,
@@ -27,6 +28,29 @@ function parseFeeLamports(amountLamports: number): number {
 
 function isValidSolanaAddress(s: string): boolean {
   return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s);
+}
+
+function parseTreasuryKeypair(): Keypair {
+  const raw =
+    process.env.SOLANA_TREASURY_SECRET_KEY?.trim() ||
+    process.env.SOLANA_ARB_SECRET_KEY?.trim() ||
+    '';
+
+  if (!raw) {
+    throw new Error('SOLANA_TREASURY_SECRET_KEY not configured');
+  }
+
+  try {
+    if (raw.startsWith('[')) {
+      const secret = Uint8Array.from(JSON.parse(raw) as number[]);
+      return Keypair.fromSecretKey(secret);
+    }
+
+    const secret = Uint8Array.from(Buffer.from(raw, 'base64'));
+    return Keypair.fromSecretKey(secret);
+  } catch {
+    throw new Error('SOLANA_TREASURY_SECRET_KEY must be a valid base64 key or JSON byte array');
+  }
 }
 
 const router = express.Router();
@@ -160,6 +184,81 @@ router.post('/transfer', async (req: Request, res: Response) => {
     console.error('Solana tx/transfer error:', error);
     return res.status(500).json({
       error: error instanceof Error ? error.message : 'Transfer build failed',
+    });
+  }
+});
+
+/**
+ * POST /api/solana/tx/withdraw
+ * Custodial treasury withdrawal (treasury signs + sends).
+ */
+router.post('/withdraw', async (req: Request, res: Response) => {
+  try {
+    const body = req.body as {
+      amountSol?: number;
+      fromPubkey?: string;
+      toPubkey?: string;
+    };
+
+    if (!body?.amountSol || body.amountSol <= 0) {
+      return res.status(400).json({ error: 'amountSol must be > 0' });
+    }
+    if (!body?.toPubkey || !isValidSolanaAddress(body.toPubkey)) {
+      return res.status(400).json({ error: 'toPubkey required and must be valid Solana address' });
+    }
+
+    const treasury = parseTreasuryKeypair();
+    const treasuryPubkey = treasury.publicKey.toBase58();
+
+    if (body.fromPubkey && body.fromPubkey !== treasuryPubkey) {
+      return res.status(400).json({ error: 'fromPubkey does not match configured treasury signer' });
+    }
+
+    const amountLamports = Math.floor(body.amountSol * LAMPORTS_PER_SOL);
+    if (amountLamports <= 0) {
+      return res.status(400).json({ error: 'amountSol too small' });
+    }
+
+    const to = new PublicKey(body.toPubkey);
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+
+    const ixWithdraw = SystemProgram.transfer({
+      fromPubkey: treasury.publicKey,
+      toPubkey: to,
+      lamports: amountLamports,
+    });
+
+    const msg = new TransactionMessage({
+      payerKey: treasury.publicKey,
+      recentBlockhash: blockhash,
+      instructions: [ixWithdraw],
+    }).compileToV0Message();
+
+    const tx = new VersionedTransaction(msg);
+    tx.sign([treasury]);
+
+    const signature = await connection.sendRawTransaction(tx.serialize(), {
+      skipPreflight: false,
+      preflightCommitment: 'confirmed',
+      maxRetries: 3,
+    });
+
+    const cluster = process.env.SOLANA_CLUSTER || 'devnet';
+    const suffix = cluster === 'mainnet-beta' ? '' : `?cluster=${cluster}`;
+
+    return res.json({
+      signature,
+      fromPubkey: treasuryPubkey,
+      toPubkey: to.toBase58(),
+      amountLamports,
+      recentBlockhash: blockhash,
+      lastValidBlockHeight,
+      explorer: `https://solscan.io/tx/${signature}${suffix}`,
+    });
+  } catch (error) {
+    console.error('Solana tx/withdraw error:', error);
+    return res.status(500).json({
+      error: error instanceof Error ? error.message : 'Withdraw failed',
     });
   }
 });
