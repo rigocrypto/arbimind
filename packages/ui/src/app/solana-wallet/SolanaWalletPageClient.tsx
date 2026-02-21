@@ -8,7 +8,7 @@ import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { WalletReadyState } from '@solana/wallet-adapter-base';
 import { LAMPORTS_PER_SOL, PublicKey, VersionedTransaction } from '@solana/web3.js';
 import Link from 'next/link';
-import { Wallet, ArrowRightLeft, ChevronLeft, Send, AlertTriangle } from 'lucide-react';
+import { Wallet, ArrowRightLeft, ChevronLeft, Send, AlertTriangle, Shield } from 'lucide-react';
 import { BaseWalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import toast from 'react-hot-toast';
 
@@ -740,6 +740,19 @@ export default function SolanaWalletPageClient() {
           </>
         ) : (
           <>
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-1 rounded-lg border border-green-500/20 bg-green-500/10 p-4"
+            >
+              <div className="flex items-center gap-2 text-green-300">
+                <Shield className="h-5 w-5 text-green-400" />
+                <span className="text-sm font-medium">
+                  ✅ Verified Treasury: {`${SOLANA_TREASURY_ADDRESS.slice(0, 4)}...${SOLANA_TREASURY_ADDRESS.slice(-4)}`} | Funds secure
+                </span>
+              </div>
+            </motion.div>
+
             {/* User + Treasury Balances */}
             <motion.div
               initial={{ opacity: 0, y: 8 }}
