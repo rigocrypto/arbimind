@@ -42,6 +42,17 @@ type BotTrade = {
 
 type TransferLifecycle = 'idle' | 'signing' | 'broadcast' | 'pending' | 'confirmed' | 'finalized' | 'failed';
 
+type EngineActivityEvent = {
+  id: string;
+  ts: number;
+  level: 'info' | 'warn' | 'error';
+  type: string;
+  msg: string;
+  strategyId?: string;
+  txSig?: string;
+  meta?: Record<string, unknown>;
+};
+
 const MOCK_BOT_TRADES: BotTrade[] = [
   { id: 't-1001', pair: 'SOL/USDC', side: 'buy', volumeSol: 0.65, pnlSol: 0.041, status: 'success', at: '2m ago' },
   { id: 't-1000', pair: 'JUP/SOL', side: 'sell', volumeSol: 0.38, pnlSol: -0.007, status: 'failed', at: '7m ago' },
@@ -99,6 +110,8 @@ export default function SolanaWalletPageClient() {
   const [engineLastHeartbeat, setEngineLastHeartbeat] = useState<number | null>(null);
   const [engineOppsCount, setEngineOppsCount] = useState(0);
   const [engineLastProfit, setEngineLastProfit] = useState(0);
+  const [engineActivity, setEngineActivity] = useState<EngineActivityEvent[]>([]);
+  const lastEngineActivityTsRef = useRef(0);
 
   const treasuryPubkey = useMemo(() => {
     try {
@@ -282,6 +295,65 @@ export default function SolanaWalletPageClient() {
       clearInterval(interval);
     };
   }, [isSolanaConnected, address]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadEngineActivity = async () => {
+      const since = lastEngineActivityTsRef.current;
+      try {
+        const response = await fetch(`${API_BASE}/engine/logs?since=${since}&limit=100`, {
+          method: 'GET',
+          cache: 'no-store',
+        });
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as {
+          events?: EngineActivityEvent[];
+        };
+
+        const incoming = Array.isArray(payload.events)
+          ? payload.events
+              .filter((event) => event && typeof event.id === 'string' && typeof event.ts === 'number')
+              .sort((a, b) => a.ts - b.ts)
+          : [];
+
+        if (incoming.length === 0 || cancelled) {
+          return;
+        }
+
+        const latestTs = incoming[incoming.length - 1]?.ts;
+        if (typeof latestTs === 'number') {
+          lastEngineActivityTsRef.current = Math.max(lastEngineActivityTsRef.current, latestTs);
+        }
+
+        setEngineActivity((prev) => {
+          const merged = [...prev, ...incoming];
+          const dedup = new Map<string, EngineActivityEvent>();
+          for (const event of merged) {
+            dedup.set(event.id, event);
+          }
+          return Array.from(dedup.values())
+            .sort((a, b) => b.ts - a.ts)
+            .slice(0, 50);
+        });
+      } catch {
+        // keep silent; panel should degrade gracefully
+      }
+    };
+
+    void loadEngineActivity();
+    const interval = setInterval(() => {
+      void loadEngineActivity();
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1012,6 +1084,52 @@ export default function SolanaWalletPageClient() {
               ? `${new Date(engineLastHeartbeat).toISOString().slice(0, 16)}Z`
               : '—'}
           </span>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-card p-4 sm:p-6"
+        >
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-bold text-white">Bot Activity</h2>
+            <span className="text-xs text-dark-400">{engineActivity.length} events</span>
+          </div>
+
+          {engineActivity.length === 0 ? (
+            <p className="text-sm text-dark-400">No activity yet. Start a strategy or run a scan to see live engine events.</p>
+          ) : (
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              {engineActivity.map((event) => {
+                const levelClass =
+                  event.level === 'error'
+                    ? 'border-red-500/30 bg-red-500/10 text-red-200'
+                    : event.level === 'warn'
+                      ? 'border-amber-500/30 bg-amber-500/10 text-amber-200'
+                      : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-100';
+
+                return (
+                  <div key={event.id} className={`rounded-lg border px-3 py-2 text-xs ${levelClass}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold uppercase tracking-wide">{event.type}</span>
+                      <span className="text-dark-400">{new Date(event.ts).toLocaleTimeString()}</span>
+                    </div>
+                    <p className="mt-1 text-sm text-white/90">{event.msg}</p>
+                    {event.txSig && (
+                      <a
+                        href={`${SOLSCAN_BASE}/tx/${event.txSig}${SOLSCAN_TX_SUFFIX}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 inline-block underline text-cyan-300 hover:text-cyan-200"
+                      >
+                        View tx on Solscan
+                      </a>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </motion.div>
 
         {!isSolanaConnected ? (

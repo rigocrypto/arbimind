@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import * as strategies from '../services/strategies';
 import { adminStore } from '../store/adminStore';
+import { emitEngineEvent, getEngineEvents } from '../services/engineActivity';
 
 const router = express.Router();
 
@@ -24,6 +25,13 @@ function runLoop(): void {
   const run = strategyRunners[activeStrategy as keyof typeof strategyRunners];
   if (!run) return;
   const opts = currentReferrer ? { referrer: currentReferrer } : undefined;
+  emitEngineEvent({
+    level: 'info',
+    type: 'engine.tick',
+    msg: `Scanning strategy ${activeStrategy || 'unknown'}`,
+    ...(activeStrategy ? { strategyId: activeStrategy } : {}),
+  });
+
   run(opts)
     .then((summary) => {
       lastOppsCount = Number.isFinite(summary.oppsCount) ? Math.max(0, Math.floor(summary.oppsCount)) : 0;
@@ -31,8 +39,32 @@ function runLoop(): void {
         ? Number(Number(summary.lastProfitSol).toFixed(6))
         : 0;
       lastScanAt = Date.now();
+
+      emitEngineEvent({
+        level: lastOppsCount > 0 ? 'info' : 'warn',
+        type: lastOppsCount > 0 ? 'opportunity.found' : 'opportunity.none',
+        msg:
+          lastOppsCount > 0
+            ? `${lastOppsCount} opportunities found; est profit ${lastProfitSol.toFixed(4)} SOL`
+            : 'No opportunities met current thresholds',
+        ...(activeStrategy ? { strategyId: activeStrategy } : {}),
+        meta: {
+          oppsCount: lastOppsCount,
+          lastProfitSol,
+          walletChain: activeWalletChain,
+          walletAddress: activeWalletAddress,
+        },
+      });
     })
-    .catch(console.error);
+    .catch((error: unknown) => {
+      console.error(error);
+      emitEngineEvent({
+        level: 'error',
+        type: 'engine.error',
+        msg: error instanceof Error ? error.message : 'Engine loop failure',
+        ...(activeStrategy ? { strategyId: activeStrategy } : {}),
+      });
+    });
 }
 
 router.post('/start', (req: Request, res: Response) => {
@@ -68,6 +100,17 @@ router.post('/start', (req: Request, res: Response) => {
     if (run) {
       scanInterval = setInterval(runLoop, 5000);
     }
+    emitEngineEvent({
+      level: 'info',
+      type: 'engine.started',
+      msg: `Strategy ${strategy} started`,
+      strategyId: strategy,
+      meta: {
+        referrer: currentReferrer,
+        walletChain: activeWalletChain,
+        walletAddress: activeWalletAddress,
+      },
+    });
     console.log(
       `🧠 [${strategy.toUpperCase()}] Engine STARTED${
         currentReferrer ? ` (ref: ${currentReferrer.slice(0, 10)}...)` : ''
@@ -101,6 +144,11 @@ router.post('/stop', (req: Request, res: Response) => {
     lastOppsCount = 0;
     lastProfitSol = 0;
     lastScanAt = null;
+    emitEngineEvent({
+      level: 'warn',
+      type: 'engine.stopped',
+      msg: 'Engine stopped',
+    });
     console.log('🛑 Engine STOPPED');
     res.json({ status: 'success', active: false, timestamp: Date.now() });
   } catch (error) {
@@ -122,9 +170,30 @@ router.get('/status', (req: Request, res: Response) => {
   });
 });
 
+router.get('/logs', (req: Request, res: Response) => {
+  const sinceRaw = Number(req.query.since ?? 0);
+  const limitRaw = Number(req.query.limit ?? 100);
+  const since = Number.isFinite(sinceRaw) ? sinceRaw : 0;
+  const limit = Number.isFinite(limitRaw) ? limitRaw : 100;
+
+  const events = getEngineEvents({ since, limit });
+  res.json({
+    success: true,
+    count: events.length,
+    events,
+    now: Date.now(),
+  });
+});
+
 router.post('/single-scan', async (req: Request, res: Response) => {
   try {
     const { strategy = activeStrategy || 'arbitrage' } = req.body || {};
+    emitEngineEvent({
+      level: 'info',
+      type: 'engine.scan.requested',
+      msg: `Single scan requested for ${strategy}`,
+      strategyId: strategy,
+    });
     const run = strategyRunners[strategy as keyof typeof strategyRunners];
     if (run) {
       const opts = currentReferrer ? { referrer: currentReferrer } : undefined;
@@ -134,11 +203,34 @@ router.post('/single-scan', async (req: Request, res: Response) => {
         ? Number(Number(summary.lastProfitSol).toFixed(6))
         : 0;
       lastScanAt = Date.now();
+      emitEngineEvent({
+        level: lastOppsCount > 0 ? 'info' : 'warn',
+        type: lastOppsCount > 0 ? 'opportunity.found' : 'opportunity.none',
+        msg:
+          lastOppsCount > 0
+            ? `${lastOppsCount} opportunities found; est profit ${lastProfitSol.toFixed(4)} SOL`
+            : 'No opportunities met current thresholds',
+        strategyId: strategy,
+        meta: {
+          oppsCount: lastOppsCount,
+          lastProfitSol,
+        },
+      });
     }
     console.log(`🔍 Single scan: ${strategy}`);
     res.json({ status: 'scan-started', strategy, timestamp: Date.now() });
   } catch (error) {
     console.error('Single scan error:', error);
+    const failedStrategyId =
+      typeof req.body?.strategy === 'string' && req.body.strategy.trim().length > 0
+        ? req.body.strategy
+        : activeStrategy;
+    emitEngineEvent({
+      level: 'error',
+      type: 'engine.scan.failed',
+      msg: error instanceof Error ? error.message : 'Single scan failed',
+      ...(failedStrategyId ? { strategyId: failedStrategyId } : {}),
+    });
     res.status(500).json({ success: false, message: 'Single scan failed' });
   }
 });
@@ -147,9 +239,21 @@ router.post('/reload-prices', async (req: Request, res: Response) => {
   try {
     // TODO: Cache bust, refresh DEX quotes when wired
     console.log('📊 Prices reload requested');
+    emitEngineEvent({
+      level: 'info',
+      type: 'engine.prices.reloaded',
+      msg: 'Price reload requested',
+      ...(activeStrategy ? { strategyId: activeStrategy } : {}),
+    });
     res.json({ status: 'prices-refreshed', timestamp: Date.now() });
   } catch (error) {
     console.error('Reload prices error:', error);
+    emitEngineEvent({
+      level: 'error',
+      type: 'engine.prices.reload-failed',
+      msg: error instanceof Error ? error.message : 'Reload failed',
+      ...(activeStrategy ? { strategyId: activeStrategy } : {}),
+    });
     res.status(500).json({ success: false, message: 'Reload failed' });
   }
 });
