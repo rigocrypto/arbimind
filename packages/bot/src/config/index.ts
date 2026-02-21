@@ -7,6 +7,28 @@ import { Logger } from '../utils/Logger';
 
 const logger = new Logger('Config');
 
+function shouldAllowLocalRpc(): boolean {
+  return process.env['ALLOW_LOCAL_RPC'] === 'true';
+}
+
+function isLocalRpc(url: string | undefined): boolean {
+  if (!url) return false;
+  const value = url.trim().toLowerCase();
+  return value.includes('localhost') || value.includes('127.0.0.1');
+}
+
+function sanitizeRpcUrl(url: string | undefined, fallback: string, chainName: string): string {
+  const candidate = (url || '').trim();
+  if (!candidate) return fallback;
+
+  if (isLocalRpc(candidate) && !shouldAllowLocalRpc()) {
+    logger.warn(`⚠️ Ignoring local RPC for ${chainName} in non-local mode; using fallback RPC.`);
+    return fallback;
+  }
+
+  return candidate;
+}
+
 export interface BotConfig {
   // Ethereum Configuration
   ethereumRpcUrl: string;
@@ -59,35 +81,47 @@ function getEvmChainConfig() {
   const evmChain = (process.env['EVM_CHAIN'] || 'arbitrum').toLowerCase();
   
   if (evmChain === 'polygon') {
+    const fallback = isTestnet ? 'https://rpc-amoy.polygon.technology' : 'https://polygon-rpc.com';
     return {
       viemChain: isTestnet ? polygonAmoy : polygon,
       chainId: isTestnet ? 80002 : 137,
-      rpcUrl:
+      rpcUrl: sanitizeRpcUrl(
         process.env['POLYGON_RPC_URL'] ||
         process.env['EVM_RPC_URL'] ||
-        (isTestnet ? 'https://rpc-amoy.polygon.technology' : 'https://polygon-rpc.com'),
+        process.env['ETHEREUM_RPC_URL'],
+        fallback,
+        'polygon'
+      ),
       name: evmChain
     };
   }
   if (evmChain === 'ethereum') {
+    const fallback = isTestnet ? 'https://rpc.sepolia.org' : 'https://eth.llamarpc.com';
     return {
       viemChain: isTestnet ? sepolia : mainnet,
       chainId: isTestnet ? 11155111 : 1,
-      rpcUrl:
+      rpcUrl: sanitizeRpcUrl(
         process.env['ETHEREUM_RPC_URL'] ||
         process.env['EVM_RPC_URL'] ||
-        (isTestnet ? 'https://rpc.sepolia.org' : 'https://eth.llamarpc.com'),
+        process.env['POLYGON_RPC_URL'],
+        fallback,
+        'ethereum'
+      ),
       name: evmChain
     };
   }
+  const fallback = isTestnet ? 'https://sepolia-rollup.arbitrum.io/rpc' : 'https://arb1.arbitrum.io/rpc';
   return {
     viemChain: isTestnet ? arbitrumSepolia : arbitrum,
     chainId: isTestnet ? 421614 : 42161,
-    rpcUrl:
+    rpcUrl: sanitizeRpcUrl(
       process.env['ARBITRUM_RPC_URL'] ||
       process.env['ETHEREUM_RPC_URL'] ||
       process.env['EVM_RPC_URL'] ||
-      (isTestnet ? 'https://sepolia-rollup.arbitrum.io/rpc' : 'https://arb1.arbitrum.io/rpc'),
+      process.env['POLYGON_RPC_URL'],
+      fallback,
+      'arbitrum'
+    ),
     name: 'arbitrum'
   };
 }
