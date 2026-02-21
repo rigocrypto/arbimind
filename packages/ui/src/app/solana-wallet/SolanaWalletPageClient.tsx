@@ -86,6 +86,8 @@ export default function SolanaWalletPageClient() {
   const [engineActive, setEngineActive] = useState(false);
   const [engineWalletSynced, setEngineWalletSynced] = useState(false);
   const [engineLastHeartbeat, setEngineLastHeartbeat] = useState<number | null>(null);
+  const [engineOppsCount, setEngineOppsCount] = useState(0);
+  const [engineLastProfit, setEngineLastProfit] = useState(0);
 
   const treasuryPubkey = useMemo(() => {
     try {
@@ -208,6 +210,8 @@ export default function SolanaWalletPageClient() {
             setEngineActive(false);
             setEngineWalletSynced(false);
             setEngineLastHeartbeat(null);
+            setEngineOppsCount(0);
+            setEngineLastProfit(0);
           }
           return;
         }
@@ -217,6 +221,8 @@ export default function SolanaWalletPageClient() {
           walletChain?: 'solana' | 'evm' | null;
           walletAddress?: string | null;
           timestamp?: number;
+          oppsCount?: number;
+          lastProfit?: number;
         };
 
         const active = typeof payload.active === 'string' ? payload.active.trim().length > 0 : false;
@@ -231,12 +237,16 @@ export default function SolanaWalletPageClient() {
           setEngineActive(active);
           setEngineWalletSynced(Boolean(synced));
           setEngineLastHeartbeat(typeof payload.timestamp === 'number' ? payload.timestamp : null);
+          setEngineOppsCount(Number.isFinite(payload.oppsCount) ? Math.max(0, Math.floor(payload.oppsCount as number)) : 0);
+          setEngineLastProfit(Number.isFinite(payload.lastProfit) ? Number(payload.lastProfit as number) : 0);
         }
       } catch {
         if (!cancelled) {
           setEngineActive(false);
           setEngineWalletSynced(false);
           setEngineLastHeartbeat(null);
+          setEngineOppsCount(0);
+          setEngineLastProfit(0);
         }
       }
     };
@@ -714,6 +724,9 @@ export default function SolanaWalletPageClient() {
               {engineWalletSynced ? 'Solana Synced' : 'Solana Connected'}
             </span>
           )}
+          <span className="inline-flex items-center rounded-full border border-dark-700 bg-dark-900/70 px-3 py-1 text-xs font-semibold tracking-wide text-dark-200">
+            {engineOppsCount} Opps | {engineLastProfit.toFixed(4)} SOL
+          </span>
           <span className="text-xs text-dark-400">
             Last HB:{' '}
             {engineLastHeartbeat

@@ -9,24 +9,43 @@ export interface StrategyOpts {
   referrer?: string;
 }
 
-export async function runArbitrage(opts?: StrategyOpts): Promise<void> {
-  // TODO: DEX scan via ArbitrageBot, ethers RPC quotes
-  const delta = (Math.random() * 0.8 + 0.1).toFixed(2);
-  const profitEth = parseFloat((Math.random() * 0.02 + 0.001).toFixed(4));
-  console.log(`🔍 Arbitrage: UNI vs Sushi delta ${delta}% → Est profit ${profitEth} ETH`);
-  if (opts?.referrer && profitEth > 0) {
-    creditReferral(opts.referrer, profitEth);
-  }
+export interface StrategyRunSummary {
+  oppsCount: number;
+  lastProfitSol: number;
 }
 
-export async function runTrend(opts?: StrategyOpts): Promise<void> {
+export async function runArbitrage(opts?: StrategyOpts): Promise<StrategyRunSummary> {
+  // TODO: DEX scan via ArbitrageBot, ethers RPC quotes
+  const oppsCount = Math.floor(Math.random() * 4) + 1;
+  const delta = (Math.random() * 0.8 + 0.1).toFixed(2);
+  const profitSol = parseFloat((Math.random() * 0.02 + 0.001).toFixed(4));
+  console.log(`🔍 Arbitrage: UNI vs Sushi delta ${delta}% → Est profit ${profitSol} SOL`);
+  if (opts?.referrer && profitSol > 0) {
+    creditReferral(opts.referrer, profitSol);
+  }
+
+  return {
+    oppsCount,
+    lastProfitSol: profitSol,
+  };
+}
+
+export async function runTrend(opts?: StrategyOpts): Promise<StrategyRunSummary> {
   // TODO: Trend following, momentum signals
   const signal = Math.random() > 0.5 ? 'bullish' : 'bearish';
   console.log(`📈 Trend: WETH ${signal} momentum → Scanning entry`);
+  return {
+    oppsCount: 0,
+    lastProfitSol: 0,
+  };
 }
 
-export async function runMarketMaking(opts?: StrategyOpts): Promise<void> {
+export async function runMarketMaking(opts?: StrategyOpts): Promise<StrategyRunSummary> {
   // TODO: MM positions, Uniswap V3 liquidity
   const spread = (0.2 + Math.random() * 0.2).toFixed(2);
   console.log(`💧 MM: WETH/USDC ±${spread}% spread → Monitoring`);
+  return {
+    oppsCount: 0,
+    lastProfitSol: 0,
+  };
 }

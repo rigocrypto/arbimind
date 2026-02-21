@@ -9,8 +9,11 @@ let currentReferrer: string | null = null;
 let activeWalletChain: 'evm' | 'solana' | null = null;
 let activeWalletAddress: string | null = null;
 let scanInterval: ReturnType<typeof setInterval> | null = null;
+let lastOppsCount = 0;
+let lastProfitSol = 0;
+let lastScanAt: number | null = null;
 
-const strategyRunners: Record<string, (opts?: { referrer?: string }) => Promise<void>> = {
+const strategyRunners: Record<string, (opts?: { referrer?: string }) => Promise<strategies.StrategyRunSummary>> = {
   arbitrage: strategies.runArbitrage,
   trend: strategies.runTrend,
   'market-making': strategies.runMarketMaking,
@@ -21,7 +24,15 @@ function runLoop(): void {
   const run = strategyRunners[activeStrategy as keyof typeof strategyRunners];
   if (!run) return;
   const opts = currentReferrer ? { referrer: currentReferrer } : undefined;
-  run(opts).catch(console.error);
+  run(opts)
+    .then((summary) => {
+      lastOppsCount = Number.isFinite(summary.oppsCount) ? Math.max(0, Math.floor(summary.oppsCount)) : 0;
+      lastProfitSol = Number.isFinite(summary.lastProfitSol)
+        ? Number(Number(summary.lastProfitSol).toFixed(6))
+        : 0;
+      lastScanAt = Date.now();
+    })
+    .catch(console.error);
 }
 
 router.post('/start', (req: Request, res: Response) => {
@@ -47,6 +58,10 @@ router.post('/start', (req: Request, res: Response) => {
       activeWalletChain = null;
       activeWalletAddress = null;
     }
+
+    lastOppsCount = 0;
+    lastProfitSol = 0;
+    lastScanAt = null;
 
     if (scanInterval) clearInterval(scanInterval);
     const run = strategyRunners[strategy as keyof typeof strategyRunners];
@@ -83,6 +98,9 @@ router.post('/stop', (req: Request, res: Response) => {
     currentReferrer = null;
     activeWalletChain = null;
     activeWalletAddress = null;
+    lastOppsCount = 0;
+    lastProfitSol = 0;
+    lastScanAt = null;
     console.log('🛑 Engine STOPPED');
     res.json({ status: 'success', active: false, timestamp: Date.now() });
   } catch (error) {
@@ -96,6 +114,9 @@ router.get('/status', (req: Request, res: Response) => {
     active: activeStrategy,
     walletChain: activeWalletChain,
     walletAddress: activeWalletAddress,
+    oppsCount: lastOppsCount,
+    lastProfit: lastProfitSol,
+    lastScanAt,
     uptime: process.uptime(),
     timestamp: Date.now(),
   });
@@ -107,7 +128,12 @@ router.post('/single-scan', async (req: Request, res: Response) => {
     const run = strategyRunners[strategy as keyof typeof strategyRunners];
     if (run) {
       const opts = currentReferrer ? { referrer: currentReferrer } : undefined;
-      await run(opts);
+      const summary = await run(opts);
+      lastOppsCount = Number.isFinite(summary.oppsCount) ? Math.max(0, Math.floor(summary.oppsCount)) : 0;
+      lastProfitSol = Number.isFinite(summary.lastProfitSol)
+        ? Number(Number(summary.lastProfitSol).toFixed(6))
+        : 0;
+      lastScanAt = Date.now();
     }
     console.log(`🔍 Single scan: ${strategy}`);
     res.json({ status: 'scan-started', strategy, timestamp: Date.now() });
