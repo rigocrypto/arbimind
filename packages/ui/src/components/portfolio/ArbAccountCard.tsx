@@ -134,7 +134,7 @@ export function ArbAccountCard({
           <div className="text-sm font-bold text-white">
             {formatUSD(totalDeposited)}
             {depositedSolEquivalent !== null && (
-              <span className="text-dark-300"> · {depositedSolEquivalent.toFixed(6)} SOL</span>
+              <span className="text-dark-300"> · {depositedSolEquivalent.toFixed(4)} SOL</span>
             )}
           </div>
           <div className="text-[10px] text-dark-500 mt-0.5">Est. (static price)</div>
@@ -144,7 +144,7 @@ export function ArbAccountCard({
           <div className="text-sm font-bold text-white">
             {formatUSD(totalWithdrawn)}
             {withdrawnSolEquivalent !== null && (
-              <span className="text-dark-300"> · {withdrawnSolEquivalent.toFixed(6)} SOL</span>
+              <span className="text-dark-300"> · {withdrawnSolEquivalent.toFixed(4)} SOL</span>
             )}
           </div>
           <div className="text-[10px] text-dark-500 mt-0.5">Est. (static price)</div>
