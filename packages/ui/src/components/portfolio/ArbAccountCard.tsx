@@ -42,6 +42,8 @@ export function ArbAccountCard({
     : null;
   const depositedSolEquivalent =
     solUsdPrice && solUsdPrice > 0 ? totalDeposited / solUsdPrice : null;
+  const withdrawnSolEquivalent =
+    solUsdPrice && solUsdPrice > 0 ? totalWithdrawn / solUsdPrice : null;
 
   const copyAddress = () => {
     if (arbAddr) {
@@ -139,7 +141,12 @@ export function ArbAccountCard({
         </div>
         <div className="p-3 rounded-lg bg-dark-800/50 border border-dark-700">
           <div className="text-xs text-dark-400">Withdrawn</div>
-          <div className="text-sm font-bold text-white">{formatUSD(totalWithdrawn)}</div>
+          <div className="text-sm font-bold text-white">
+            {formatUSD(totalWithdrawn)}
+            {withdrawnSolEquivalent !== null && (
+              <span className="text-dark-300"> · {withdrawnSolEquivalent.toFixed(6)} SOL</span>
+            )}
+          </div>
           <div className="text-[10px] text-dark-500 mt-0.5">Est. (static price)</div>
         </div>
         <div className="p-3 rounded-lg bg-dark-800/50 border border-dark-700">
