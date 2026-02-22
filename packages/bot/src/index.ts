@@ -76,6 +76,13 @@ async function main(): Promise<void> {
     // Validate configuration
     validateConfig();
     logger.info('✅ Configuration validated');
+
+    console.log(
+      `[MODE] network=${config.network} allowTestnetTrades=${config.allowTestnetTrades} logOnly=${config.logOnly}`
+    );
+    console.log(
+      `[CHAIN] evmChain=${config.evmChain} chainId=${config.evmChainId} rpc=${config.ethereumRpcUrl}`
+    );
     
     // Log selected chain
     logger.info(`📡 Selected chain: ${config.evmChain} (chainId=${config.evmChainId})`);

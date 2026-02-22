@@ -157,10 +157,17 @@ export class ArbitrageBot {
   private async runMainLoop(): Promise<void> {
     while (this.isRunning) {
       try {
-        await this.scanForOpportunities();
+        const tickStartedAt = Date.now();
+        const cycle = await this.scanForOpportunities();
+        console.log(
+          `[TICK] ts=${new Date().toISOString()} durationMs=${Date.now() - tickStartedAt} opportunities=${cycle.opportunitiesFound} executed=${cycle.executed} scored=${cycle.scoredOpps}`
+        );
         await this.sleep(this.botConfig.scanIntervalMs);
       } catch (error) {
         this.logger.error('Error in main loop', { error: error instanceof Error ? error.message : error });
+        console.error(
+          `[TICK_ERROR] ts=${new Date().toISOString()} error=${error instanceof Error ? error.message : String(error)}`
+        );
         await this.sleep(1000); // Wait longer on error
       }
     }
@@ -384,6 +391,9 @@ export class ArbitrageBot {
     }
 
     if (this.botConfig.logOnly) {
+      console.log(
+        `[EXECUTE_SKIP_LOG_ONLY] route=${opportunity.route} tokenA=${opportunity.tokenA} tokenB=${opportunity.tokenB} netProfitEth=${ethers.formatEther(opportunity.netProfit)}`
+      );
       this.logger.info('Testnet mode: skipping real execution', {
         tokenA: opportunity.tokenA,
         tokenB: opportunity.tokenB,
@@ -405,11 +415,17 @@ export class ArbitrageBot {
     });
 
     if (!this.executionService) {
+      console.error(
+        `[EXECUTE_ERROR] execution service unavailable route=${opportunity.route}`
+      );
       this.logger.error('Execution service unavailable: wallet not initialized for live execution mode');
       return false;
     }
 
     try {
+      console.log(
+        `[EXECUTE_ATTEMPT] ts=${new Date().toISOString()} route=${opportunity.route} tokenA=${opportunity.tokenA} tokenB=${opportunity.tokenB} netProfitEth=${ethers.formatEther(opportunity.netProfit)}`
+      );
       const result = await this.executionService.executeArbitrage(opportunity);
       
       if (result.success) {
@@ -423,6 +439,9 @@ export class ArbitrageBot {
           profit: ethers.formatEther(result.profit),
           gasUsed: result.gasUsed
         });
+        console.log(
+          `[EXECUTE_OK] hash=${result.hash} gasUsed=${result.gasUsed} profitEth=${ethers.formatEther(result.profit)}`
+        );
         this.updateCanaryPnl(result);
         this.updateStats();
         return true;
@@ -432,6 +451,9 @@ export class ArbitrageBot {
           error: result.error,
           gasUsed: result.gasUsed
         });
+        console.error(
+          `[EXECUTE_FAIL] error=${result.error || 'unknown'} gasUsed=${result.gasUsed}`
+        );
         this.updateCanaryPnl(result);
         this.updateStats();
         return false;
@@ -441,6 +463,9 @@ export class ArbitrageBot {
       this.logger.error('Error executing arbitrage', { 
         error: error instanceof Error ? error.message : error 
       });
+      console.error(
+        `[EXECUTE_THROW] error=${error instanceof Error ? error.message : String(error)}`
+      );
       this.updateStats();
       return false;
     }
