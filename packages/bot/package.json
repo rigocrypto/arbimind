@@ -7,7 +7,7 @@
     "buildCommand": "npm run build --workspace=@arbimind/bot || npm run build"
   },
   "deploy": {
-    "startCommand": "npm run start --workspace=@arbimind/bot || npm run start"
+    "startCommand": "npm run build --workspace=@arbimind/bot && npm run start --workspace=@arbimind/bot"
   },
   "main": "dist/index.js",
   "scripts": {
