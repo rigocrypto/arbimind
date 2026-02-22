@@ -1,27 +1,11 @@
 import { loadEnv } from './bootstrapEnv';
-const bootTs = new Date().toISOString();
-console.log(`[BOOT] arbimind-bot entrypoint loaded @ ${bootTs} node=${process.version} pid=${process.pid}`);
 
 try {
   loadEnv();
-  console.log(`[BOOT] env bootstrap completed @ ${new Date().toISOString()}`);
 } catch (error) {
   const message = error instanceof Error ? error.stack || error.message : String(error);
-  console.error(`[BOOT] env bootstrap failed @ ${new Date().toISOString()} error=${message}`);
+  console.error(`env bootstrap failed: ${message}`);
 }
-
-const heartbeatSecRaw = process.env['BOT_HEARTBEAT_LOG_SEC'] || '30';
-const heartbeatSec = Number.parseInt(heartbeatSecRaw, 10);
-if (Number.isFinite(heartbeatSec) && heartbeatSec > 0) {
-  const heartbeatTimer = setInterval(() => {
-    console.log(`[HEARTBEAT] arbimind-bot alive @ ${new Date().toISOString()} pid=${process.pid}`);
-  }, heartbeatSec * 1000);
-  heartbeatTimer.unref();
-}
-
-console.log(
-  `[SANITY_ENV_RAW] SANITY_MODE=${process.env['SANITY_MODE'] ?? ''} SANITY_TX_ENABLED=${process.env['SANITY_TX_ENABLED'] ?? ''} SANITY_VALUE_WEI=${process.env['SANITY_VALUE_WEI'] ?? ''} SANITY_TX_WEI=${process.env['SANITY_TX_WEI'] ?? ''} SANITY_INTERVAL_SEC=${process.env['SANITY_INTERVAL_SEC'] ?? ''} SANITY_TX_INTERVAL_SEC=${process.env['SANITY_TX_INTERVAL_SEC'] ?? ''}`
-);
 
 function isValidPrivateKey(value: string): boolean {
   return value.length === 66 && value.startsWith('0x');
@@ -81,16 +65,6 @@ async function main(): Promise<void> {
     validateConfig();
     logger.info('✅ Configuration validated');
 
-    console.log(
-      `[MODE] network=${config.network} allowTestnetTrades=${config.allowTestnetTrades} logOnly=${config.logOnly}`
-    );
-    console.log(
-      `[CHAIN] evmChain=${config.evmChain} chainId=${config.evmChainId} rpc=${config.ethereumRpcUrl}`
-    );
-    console.log(
-      `[SANITY_MODE] enabled=${config.sanityTxEnabled} intervalSec=${config.sanityTxIntervalSec} valueWei=${config.sanityTxWei} to=${config.sanityTxTo || '(self)'}`
-    );
-    
     // Log selected chain
     logger.info(`📡 Selected chain: ${config.evmChain} (chainId=${config.evmChainId})`);
     logger.info(`🌐 RPC: ${config.ethereumRpcUrl.split('/').slice(0, 3).join('/')}/...`);
@@ -177,11 +151,12 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 process.on('exit', (code) => {
-  console.log(`[EXIT] arbimind-bot exiting with code=${code} @ ${new Date().toISOString()}`);
+  if (code !== 0) {
+    console.error(`arbimind-bot exiting with non-zero code=${code}`);
+  }
 });
 
 // Start the application
-console.log(`[BOOT] invoking main() @ ${new Date().toISOString()}`);
 main().catch((error) => {
   const message = error instanceof Error ? error.stack || error.message : String(error);
   console.error(`[FATAL] main() rejected @ ${new Date().toISOString()} error=${message}`);

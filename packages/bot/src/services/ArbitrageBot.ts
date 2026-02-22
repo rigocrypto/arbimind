@@ -159,17 +159,10 @@ export class ArbitrageBot {
     while (this.isRunning) {
       try {
         await this.maybeRunSanityTransfer();
-        const tickStartedAt = Date.now();
-        const cycle = await this.scanForOpportunities();
-        console.log(
-          `[TICK] ts=${new Date().toISOString()} durationMs=${Date.now() - tickStartedAt} opportunities=${cycle.opportunitiesFound} executed=${cycle.executed} scored=${cycle.scoredOpps}`
-        );
+        await this.scanForOpportunities();
         await this.sleep(this.botConfig.scanIntervalMs);
       } catch (error) {
         this.logger.error('Error in main loop', { error: error instanceof Error ? error.message : error });
-        console.error(
-          `[TICK_ERROR] ts=${new Date().toISOString()} error=${error instanceof Error ? error.message : String(error)}`
-        );
         await this.sleep(1000); // Wait longer on error
       }
     }
