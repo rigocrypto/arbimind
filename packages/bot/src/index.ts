@@ -19,6 +19,10 @@ if (Number.isFinite(heartbeatSec) && heartbeatSec > 0) {
   heartbeatTimer.unref();
 }
 
+console.log(
+  `[SANITY_ENV_RAW] SANITY_MODE=${process.env['SANITY_MODE'] ?? ''} SANITY_TX_ENABLED=${process.env['SANITY_TX_ENABLED'] ?? ''} SANITY_VALUE_WEI=${process.env['SANITY_VALUE_WEI'] ?? ''} SANITY_TX_WEI=${process.env['SANITY_TX_WEI'] ?? ''} SANITY_INTERVAL_SEC=${process.env['SANITY_INTERVAL_SEC'] ?? ''} SANITY_TX_INTERVAL_SEC=${process.env['SANITY_TX_INTERVAL_SEC'] ?? ''}`
+);
+
 function isValidPrivateKey(value: string): boolean {
   return value.length === 66 && value.startsWith('0x');
 }
