@@ -162,10 +162,19 @@ function createConfig(): BotConfig {
   const explicitLogOnly =
     isEnvTrue(process.env['LOG_ONLY']) ||
     isEnvTrue(process.env['BOT_LOG_ONLY']);
-  const sanityTxEnabled = isEnvTrue(process.env['SANITY_TX_ENABLED']);
-  const sanityTxIntervalSec = parseInt(process.env['SANITY_TX_INTERVAL_SEC'] || '60', 10);
-  const sanityTxWei = normalizeEnvValue(process.env['SANITY_TX_WEI']) || '0';
-  const sanityTxTo = normalizeEnvValue(process.env['SANITY_TX_TO']) || undefined;
+  const sanityTxEnabled = isEnvTrue(process.env['SANITY_TX_ENABLED'] ?? process.env['SANITY_MODE']);
+  const sanityTxIntervalSec = parseInt(
+    process.env['SANITY_TX_INTERVAL_SEC'] || process.env['SANITY_INTERVAL_SEC'] || '60',
+    10
+  );
+  const sanityTxWei =
+    normalizeEnvValue(process.env['SANITY_TX_WEI']) ||
+    normalizeEnvValue(process.env['SANITY_VALUE_WEI']) ||
+    '0';
+  const sanityTxTo =
+    normalizeEnvValue(process.env['SANITY_TX_TO']) ||
+    normalizeEnvValue(process.env['SANITY_TO_ADDRESS']) ||
+    undefined;
   
   return {
     // Ethereum Configuration
@@ -252,10 +261,19 @@ export function validateConfig(): void {
   const canaryEnabled = isEnvTrue(process.env['CANARY_ENABLED']);
   const canaryNotionalEth = parseFloat(process.env['CANARY_NOTIONAL_ETH'] || '0.01');
   const canaryMaxDailyLossEth = parseFloat(process.env['CANARY_MAX_DAILY_LOSS_ETH'] || '0.005');
-  const sanityTxEnabled = isEnvTrue(process.env['SANITY_TX_ENABLED']);
-  const sanityTxIntervalSec = parseInt(process.env['SANITY_TX_INTERVAL_SEC'] || '60', 10);
-  const sanityTxWei = normalizeEnvValue(process.env['SANITY_TX_WEI']) || '0';
-  const sanityTxTo = normalizeEnvValue(process.env['SANITY_TX_TO']) || '';
+  const sanityTxEnabled = isEnvTrue(process.env['SANITY_TX_ENABLED'] ?? process.env['SANITY_MODE']);
+  const sanityTxIntervalSec = parseInt(
+    process.env['SANITY_TX_INTERVAL_SEC'] || process.env['SANITY_INTERVAL_SEC'] || '60',
+    10
+  );
+  const sanityTxWei =
+    normalizeEnvValue(process.env['SANITY_TX_WEI']) ||
+    normalizeEnvValue(process.env['SANITY_VALUE_WEI']) ||
+    '0';
+  const sanityTxTo =
+    normalizeEnvValue(process.env['SANITY_TX_TO']) ||
+    normalizeEnvValue(process.env['SANITY_TO_ADDRESS']) ||
+    '';
 
   if (canaryEnabled) {
     if (!Number.isFinite(canaryNotionalEth) || canaryNotionalEth <= 0) {
