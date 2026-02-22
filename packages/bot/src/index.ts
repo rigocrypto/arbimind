@@ -19,27 +19,55 @@ if (Number.isFinite(heartbeatSec) && heartbeatSec > 0) {
   heartbeatTimer.unref();
 }
 
-import { ethers } from 'ethers';
-import { ArbitrageBot } from './services/ArbitrageBot';
-import { validateConfig, refreshConfig, config } from './config';
-import { getIdentitySource, shortAddress } from './config/identity';
-import { Logger } from './utils/Logger';
-import { SolanaScanner } from './solana/Scanner';
-
-const logger = new Logger('Main');
-
 function isValidPrivateKey(value: string): boolean {
   return value.length === 66 && value.startsWith('0x');
 }
 
-function hasWalletIdentity(): boolean {
-  const privateKey = config.privateKey?.trim() || '';
-  const walletAddress = config.walletAddress?.trim() || '';
-  return isValidPrivateKey(privateKey) || walletAddress.length > 0;
+function normalizeEnvValue(value: string | undefined): string {
+  if (!value) return '';
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function isEnvTrue(value: string | undefined): boolean {
+  const normalized = normalizeEnvValue(value).toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
+}
+
+function shouldGracefulExitFromEnv(): boolean {
+  if (isEnvTrue(process.env['LOG_ONLY']) || isEnvTrue(process.env['BOT_LOG_ONLY'])) {
+    return true;
+  }
+  const isTestnet = normalizeEnvValue(process.env['NETWORK'] || 'mainnet').toLowerCase() === 'testnet';
+  const allowTestnetTrades = isEnvTrue(process.env['ALLOW_TESTNET_TRADES']);
+  return isTestnet && !allowTestnetTrades;
 }
 
 async function main(): Promise<void> {
   try {
+    const [{ ethers }, configModule, identityModule, loggerModule, botModule, solanaModule] = await Promise.all([
+      import('ethers'),
+      import('./config'),
+      import('./config/identity'),
+      import('./utils/Logger'),
+      import('./services/ArbitrageBot'),
+      import('./solana/Scanner'),
+    ]);
+
+    const { refreshConfig, validateConfig, config } = configModule;
+    const { getIdentitySource, shortAddress } = identityModule;
+    const { Logger } = loggerModule;
+    const { ArbitrageBot } = botModule;
+    const { SolanaScanner } = solanaModule;
+
+    const logger = new Logger('Main');
+
     // Refresh config with loaded env vars
     refreshConfig();
     
@@ -104,34 +132,30 @@ async function main(): Promise<void> {
     await bot.start();
 
   } catch (error) {
-    const shouldGracefulExit = config.logOnly;
+    const shouldGracefulExit = shouldGracefulExitFromEnv();
+    const message = error instanceof Error ? error.stack || error.message : String(error);
+    console.error(`[FATAL] bot startup error @ ${new Date().toISOString()} error=${message}`);
 
     if (shouldGracefulExit) {
-      logger.warn('⚠️ Startup failed in LOG_ONLY mode. Exiting gracefully to avoid restart loop.', {
-        error: error instanceof Error ? error.message : error
-      });
+      console.warn('⚠️ Startup failed in LOG_ONLY mode. Exiting gracefully to avoid restart loop.');
       process.exit(0);
     }
 
-    logger.error('❌ Failed to start bot', {
-      error: error instanceof Error ? error.message : error,
-      stack: error instanceof Error ? error.stack : undefined
-    });
     process.exit(1);
   }
 }
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
-  logger.error('💥 Uncaught Exception', {
+  console.error('💥 Uncaught Exception', {
     error: error.message,
-    stack: error.stack
+    stack: error.stack,
   });
   process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error('💥 Unhandled Rejection', {
+  console.error('💥 Unhandled Rejection', {
     reason: reason instanceof Error ? reason.message : reason,
     promise: promise
   });
@@ -145,9 +169,7 @@ process.on('exit', (code) => {
 // Start the application
 console.log(`[BOOT] invoking main() @ ${new Date().toISOString()}`);
 main().catch((error) => {
-  logger.error('💥 Main function failed', {
-    error: error instanceof Error ? error.message : error,
-    stack: error instanceof Error ? error.stack : undefined
-  });
+  const message = error instanceof Error ? error.stack || error.message : String(error);
+  console.error(`[FATAL] main() rejected @ ${new Date().toISOString()} error=${message}`);
   process.exit(1);
 });
