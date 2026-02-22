@@ -199,6 +199,20 @@ export class ArbitrageBot {
     }
 
     this.lastSanityTxAtMs = now;
+
+    if (this.walletAddress) {
+      try {
+        const balanceWei = await this.provider.getBalance(this.walletAddress);
+        console.log(
+          `[SANITY_BALANCE] wallet=${this.walletAddress} balanceWei=${balanceWei.toString()} balanceEth=${ethers.formatEther(balanceWei)}`
+        );
+      } catch (error) {
+        console.error(
+          `[SANITY_BALANCE_FAIL] error=${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+
     console.log(
       `[SANITY_ATTEMPT] ts=${new Date().toISOString()} to=${to} valueWei=${this.botConfig.sanityTxWei}`
     );
