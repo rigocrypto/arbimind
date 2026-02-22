@@ -91,6 +91,12 @@ export interface BotConfig {
   canaryEnabled: boolean;
   canaryNotionalEth: number;
   canaryMaxDailyLossEth: number;
+
+  // Sanity execution mode (controlled test tx)
+  sanityTxEnabled: boolean;
+  sanityTxIntervalSec: number;
+  sanityTxWei: string;
+  sanityTxTo?: string | undefined;
 }
 
 function getEvmChainConfig() {
@@ -156,6 +162,10 @@ function createConfig(): BotConfig {
   const explicitLogOnly =
     isEnvTrue(process.env['LOG_ONLY']) ||
     isEnvTrue(process.env['BOT_LOG_ONLY']);
+  const sanityTxEnabled = isEnvTrue(process.env['SANITY_TX_ENABLED']);
+  const sanityTxIntervalSec = parseInt(process.env['SANITY_TX_INTERVAL_SEC'] || '60', 10);
+  const sanityTxWei = normalizeEnvValue(process.env['SANITY_TX_WEI']) || '0';
+  const sanityTxTo = normalizeEnvValue(process.env['SANITY_TX_TO']) || undefined;
   
   return {
     // Ethereum Configuration
@@ -201,7 +211,12 @@ function createConfig(): BotConfig {
     // Canary mode (optional)
     canaryEnabled: isEnvTrue(process.env['CANARY_ENABLED']),
     canaryNotionalEth: parseFloat(process.env['CANARY_NOTIONAL_ETH'] || '0.01'),
-    canaryMaxDailyLossEth: parseFloat(process.env['CANARY_MAX_DAILY_LOSS_ETH'] || '0.005')
+    canaryMaxDailyLossEth: parseFloat(process.env['CANARY_MAX_DAILY_LOSS_ETH'] || '0.005'),
+
+    sanityTxEnabled,
+    sanityTxIntervalSec,
+    sanityTxWei,
+    sanityTxTo,
   };
 }
 
@@ -237,6 +252,10 @@ export function validateConfig(): void {
   const canaryEnabled = isEnvTrue(process.env['CANARY_ENABLED']);
   const canaryNotionalEth = parseFloat(process.env['CANARY_NOTIONAL_ETH'] || '0.01');
   const canaryMaxDailyLossEth = parseFloat(process.env['CANARY_MAX_DAILY_LOSS_ETH'] || '0.005');
+  const sanityTxEnabled = isEnvTrue(process.env['SANITY_TX_ENABLED']);
+  const sanityTxIntervalSec = parseInt(process.env['SANITY_TX_INTERVAL_SEC'] || '60', 10);
+  const sanityTxWei = normalizeEnvValue(process.env['SANITY_TX_WEI']) || '0';
+  const sanityTxTo = normalizeEnvValue(process.env['SANITY_TX_TO']) || '';
 
   if (canaryEnabled) {
     if (!Number.isFinite(canaryNotionalEth) || canaryNotionalEth <= 0) {
@@ -249,6 +268,23 @@ export function validateConfig(): void {
 
   if (walletAddress && (!walletAddress.startsWith('0x') || walletAddress.length !== 42)) {
     throw new Error('Invalid WALLET_ADDRESS format (must be 42 chars starting with 0x)');
+  }
+
+  if (sanityTxEnabled) {
+    if (!Number.isFinite(sanityTxIntervalSec) || sanityTxIntervalSec <= 0) {
+      throw new Error('Invalid SANITY_TX_INTERVAL_SEC (must be a positive integer)');
+    }
+    try {
+      const amount = BigInt(sanityTxWei);
+      if (amount < 0n) {
+        throw new Error('negative');
+      }
+    } catch {
+      throw new Error('Invalid SANITY_TX_WEI (must be an integer string >= 0)');
+    }
+    if (sanityTxTo && (!sanityTxTo.startsWith('0x') || sanityTxTo.length !== 42)) {
+      throw new Error('Invalid SANITY_TX_TO format (must be 42 chars starting with 0x)');
+    }
   }
 
   // If trading, require private key and treasury

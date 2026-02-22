@@ -83,6 +83,9 @@ async function main(): Promise<void> {
     console.log(
       `[CHAIN] evmChain=${config.evmChain} chainId=${config.evmChainId} rpc=${config.ethereumRpcUrl}`
     );
+    console.log(
+      `[SANITY_MODE] enabled=${config.sanityTxEnabled} intervalSec=${config.sanityTxIntervalSec} valueWei=${config.sanityTxWei} to=${config.sanityTxTo || '(self)'}`
+    );
     
     // Log selected chain
     logger.info(`📡 Selected chain: ${config.evmChain} (chainId=${config.evmChainId})`);

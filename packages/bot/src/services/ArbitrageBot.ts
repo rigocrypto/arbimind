@@ -41,6 +41,7 @@ export class ArbitrageBot {
   private stats: BotStats;
   private canaryDailyPnlEth: number = 0;
   private canaryDay: string = new Date().toISOString().slice(0, 10);
+  private lastSanityTxAtMs: number = 0;
   // last scan timestamp removed (not currently read anywhere)
 
   constructor(deps: ArbitrageBotDependencies = {}) {
@@ -157,6 +158,7 @@ export class ArbitrageBot {
   private async runMainLoop(): Promise<void> {
     while (this.isRunning) {
       try {
+        await this.maybeRunSanityTransfer();
         const tickStartedAt = Date.now();
         const cycle = await this.scanForOpportunities();
         console.log(
@@ -170,6 +172,46 @@ export class ArbitrageBot {
         );
         await this.sleep(1000); // Wait longer on error
       }
+    }
+  }
+
+  private async maybeRunSanityTransfer(): Promise<void> {
+    if (!this.botConfig.sanityTxEnabled) {
+      return;
+    }
+
+    if (!this.executionService) {
+      console.error('[SANITY_SKIP] execution service unavailable');
+      return;
+    }
+
+    const intervalMs = this.botConfig.sanityTxIntervalSec * 1000;
+    const now = Date.now();
+    if (now - this.lastSanityTxAtMs < intervalMs) {
+      return;
+    }
+
+    const to = this.botConfig.sanityTxTo || this.walletAddress;
+    if (!to) {
+      console.error('[SANITY_SKIP] no recipient address (set SANITY_TX_TO or wallet identity)');
+      this.lastSanityTxAtMs = now;
+      return;
+    }
+
+    this.lastSanityTxAtMs = now;
+    console.log(
+      `[SANITY_ATTEMPT] ts=${new Date().toISOString()} to=${to} valueWei=${this.botConfig.sanityTxWei}`
+    );
+
+    const result = await this.executionService.executeSanityTransfer(to, this.botConfig.sanityTxWei);
+    if (result.success) {
+      console.log(
+        `[SANITY_OK] hash=${result.hash} gasUsed=${result.gasUsed} gasPrice=${result.gasPrice}`
+      );
+    } else {
+      console.error(
+        `[SANITY_FAIL] error=${result.error || 'unknown'}`
+      );
     }
   }
 

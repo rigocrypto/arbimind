@@ -14,6 +14,58 @@ export class ExecutionService {
     this.logger = new Logger('ExecutionService');
   }
 
+  public async executeSanityTransfer(to: string, amountWei: string): Promise<TransactionResult> {
+    try {
+      const value = BigInt(amountWei);
+      const txReq: ethers.TransactionRequest = {
+        to,
+        value,
+      };
+
+      const gasEstimate = await this.wallet.provider?.estimateGas?.(txReq);
+      if (!gasEstimate) throw new Error('Failed to estimate gas for sanity transfer');
+
+      const feeData = await this.wallet.provider?.getFeeData?.();
+      if (!feeData) throw new Error('Failed to fetch fee data for sanity transfer');
+
+      const tx = await this.wallet.sendTransaction({
+        ...txReq,
+        gasLimit: gasEstimate,
+        maxFeePerGas: feeData.maxFeePerGas,
+        maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+      });
+
+      const receipt = await tx.wait();
+      if (receipt?.status !== 1) {
+        throw new Error('Sanity transfer transaction failed');
+      }
+
+      const gasPrice =
+        (receipt as any).effectiveGasPrice
+          ? (receipt as any).effectiveGasPrice.toString()
+          : ((receipt as any).gasPrice ? (receipt as any).gasPrice.toString() : '0');
+
+      return {
+        hash: tx.hash,
+        success: true,
+        gasUsed: receipt.gasUsed.toString(),
+        gasPrice,
+        profit: '0',
+        timestamp: Date.now(),
+      };
+    } catch (error) {
+      return {
+        hash: '',
+        success: false,
+        gasUsed: '0',
+        gasPrice: '0',
+        profit: '0',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: Date.now(),
+      };
+    }
+  }
+
   /**
    * Execute an arbitrage opportunity
    */
