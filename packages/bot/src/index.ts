@@ -2,6 +2,18 @@ import { loadEnv } from './bootstrapEnv';
 // Load environment variables FIRST, before importing anything else
 loadEnv();
 
+const bootTs = new Date().toISOString();
+console.log(`[BOOT] arbimind-bot entrypoint loaded @ ${bootTs} node=${process.version} pid=${process.pid}`);
+
+const heartbeatSecRaw = process.env['BOT_HEARTBEAT_LOG_SEC'] || '30';
+const heartbeatSec = Number.parseInt(heartbeatSecRaw, 10);
+if (Number.isFinite(heartbeatSec) && heartbeatSec > 0) {
+  const heartbeatTimer = setInterval(() => {
+    console.log(`[HEARTBEAT] arbimind-bot alive @ ${new Date().toISOString()} pid=${process.pid}`);
+  }, heartbeatSec * 1000);
+  heartbeatTimer.unref();
+}
+
 import { ethers } from 'ethers';
 import { ArbitrageBot } from './services/ArbitrageBot';
 import { validateConfig, refreshConfig, config } from './config';
@@ -119,6 +131,10 @@ process.on('unhandledRejection', (reason, promise) => {
     promise: promise
   });
   process.exit(1);
+});
+
+process.on('exit', (code) => {
+  console.log(`[EXIT] arbimind-bot exiting with code=${code} @ ${new Date().toISOString()}`);
 });
 
 // Start the application
