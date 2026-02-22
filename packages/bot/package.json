@@ -14,6 +14,7 @@
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
     "canary": "tsx src/canary.ts",
+    "prestart": "node -e \"console.log('[PRESTART] @arbimind/bot launching')\"",
     "start": "node dist/index.js",
     "test": "vitest",
     "test:ui": "vitest --ui",
