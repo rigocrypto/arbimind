@@ -7,8 +7,25 @@ import { Logger } from '../utils/Logger';
 
 const logger = new Logger('Config');
 
+function normalizeEnvValue(value: string | undefined): string {
+  if (!value) return '';
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function isEnvTrue(value: string | undefined): boolean {
+  const normalized = normalizeEnvValue(value).toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
+}
+
 function shouldAllowLocalRpc(): boolean {
-  return process.env['ALLOW_LOCAL_RPC'] === 'true';
+  return isEnvTrue(process.env['ALLOW_LOCAL_RPC']);
 }
 
 function isLocalRpc(url: string | undefined): boolean {
@@ -77,8 +94,8 @@ export interface BotConfig {
 }
 
 function getEvmChainConfig() {
-  const isTestnet = (process.env['NETWORK'] || 'mainnet') === 'testnet';
-  const evmChain = (process.env['EVM_CHAIN'] || 'arbitrum').toLowerCase();
+  const isTestnet = normalizeEnvValue(process.env['NETWORK'] || 'mainnet').toLowerCase() === 'testnet';
+  const evmChain = normalizeEnvValue(process.env['EVM_CHAIN'] || 'arbitrum').toLowerCase();
   
   if (evmChain === 'polygon') {
     const fallback = isTestnet ? 'https://rpc-amoy.polygon.technology' : 'https://polygon-rpc.com';
@@ -133,12 +150,12 @@ export const viemChain = evmChainConfig.viemChain;
 // Create config object with current environment variables
 function createConfig(): BotConfig {
   const chainConfig = getEvmChainConfig();
-  const isTestnet = (process.env['NETWORK'] || 'mainnet') === 'testnet';
-  const evmChain = (process.env['EVM_CHAIN'] || 'arbitrum').toLowerCase();
-  const allowTestnetTrades = process.env['ALLOW_TESTNET_TRADES'] === 'true';
+  const isTestnet = normalizeEnvValue(process.env['NETWORK'] || 'mainnet').toLowerCase() === 'testnet';
+  const evmChain = normalizeEnvValue(process.env['EVM_CHAIN'] || 'arbitrum').toLowerCase();
+  const allowTestnetTrades = isEnvTrue(process.env['ALLOW_TESTNET_TRADES']);
   const explicitLogOnly =
-    process.env['LOG_ONLY'] === 'true' ||
-    process.env['BOT_LOG_ONLY'] === 'true';
+    isEnvTrue(process.env['LOG_ONLY']) ||
+    isEnvTrue(process.env['BOT_LOG_ONLY']);
   
   return {
     // Ethereum Configuration
@@ -182,7 +199,7 @@ function createConfig(): BotConfig {
     aiMinExpectedProfitPct: parseFloat(process.env['AI_MIN_EXPECTED_PROFIT_PCT'] || '0.5'),
 
     // Canary mode (optional)
-    canaryEnabled: process.env['CANARY_ENABLED'] === 'true',
+    canaryEnabled: isEnvTrue(process.env['CANARY_ENABLED']),
     canaryNotionalEth: parseFloat(process.env['CANARY_NOTIONAL_ETH'] || '0.01'),
     canaryMaxDailyLossEth: parseFloat(process.env['CANARY_MAX_DAILY_LOSS_ETH'] || '0.005')
   };
@@ -208,16 +225,16 @@ export function validateConfig(): void {
     process.env['EVM_RPC_URL'] ||
     '';
   const logOnly =
-    process.env['LOG_ONLY'] === 'true' ||
-    process.env['BOT_LOG_ONLY'] === 'true' ||
-    ((process.env['NETWORK'] || 'mainnet') === 'testnet' && process.env['ALLOW_TESTNET_TRADES'] !== 'true');
+    isEnvTrue(process.env['LOG_ONLY']) ||
+    isEnvTrue(process.env['BOT_LOG_ONLY']) ||
+    (normalizeEnvValue(process.env['NETWORK'] || 'mainnet').toLowerCase() === 'testnet' && !isEnvTrue(process.env['ALLOW_TESTNET_TRADES']));
 
   // Always require RPC URL
   if (!ethereumRpcUrl) {
     throw new Error('Missing required configuration: ethereumRpcUrl (set ETHEREUM_RPC_URL or chain-specific RPC_URL)');
   }
 
-  const canaryEnabled = process.env['CANARY_ENABLED'] === 'true';
+  const canaryEnabled = isEnvTrue(process.env['CANARY_ENABLED']);
   const canaryNotionalEth = parseFloat(process.env['CANARY_NOTIONAL_ETH'] || '0.01');
   const canaryMaxDailyLossEth = parseFloat(process.env['CANARY_MAX_DAILY_LOSS_ETH'] || '0.005');
 
