@@ -1,9 +1,14 @@
 import { loadEnv } from './bootstrapEnv';
-// Load environment variables FIRST, before importing anything else
-loadEnv();
-
 const bootTs = new Date().toISOString();
 console.log(`[BOOT] arbimind-bot entrypoint loaded @ ${bootTs} node=${process.version} pid=${process.pid}`);
+
+try {
+  loadEnv();
+  console.log(`[BOOT] env bootstrap completed @ ${new Date().toISOString()}`);
+} catch (error) {
+  const message = error instanceof Error ? error.stack || error.message : String(error);
+  console.error(`[BOOT] env bootstrap failed @ ${new Date().toISOString()} error=${message}`);
+}
 
 const heartbeatSecRaw = process.env['BOT_HEARTBEAT_LOG_SEC'] || '30';
 const heartbeatSec = Number.parseInt(heartbeatSecRaw, 10);
@@ -138,6 +143,7 @@ process.on('exit', (code) => {
 });
 
 // Start the application
+console.log(`[BOOT] invoking main() @ ${new Date().toISOString()}`);
 main().catch((error) => {
   logger.error('💥 Main function failed', {
     error: error instanceof Error ? error.message : error,
