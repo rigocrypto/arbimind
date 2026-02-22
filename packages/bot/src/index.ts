@@ -53,11 +53,11 @@ async function main(): Promise<void> {
   try {
     const [{ ethers }, configModule, identityModule, loggerModule, botModule, solanaModule] = await Promise.all([
       import('ethers'),
-      import('./config'),
-      import('./config/identity'),
-      import('./utils/Logger'),
-      import('./services/ArbitrageBot'),
-      import('./solana/Scanner'),
+      import('./config/index.js'),
+      import('./config/identity.js'),
+      import('./utils/Logger.js'),
+      import('./services/ArbitrageBot.js'),
+      import('./solana/Scanner.js'),
     ]);
 
     const { refreshConfig, validateConfig, config } = configModule;
