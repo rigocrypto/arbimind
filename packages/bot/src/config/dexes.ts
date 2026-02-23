@@ -9,7 +9,88 @@ export interface DexConfig {
   enabled: boolean;
 }
 
-export const DEX_CONFIG: Record<string, DexConfig> = {
+function normalizeEnvValue(value: string | undefined): string {
+  if (!value) return '';
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function isEthereumSepoliaProfile(): boolean {
+  const network = normalizeEnvValue(process.env['NETWORK'] || 'mainnet').toLowerCase();
+  const evmChain = normalizeEnvValue(process.env['EVM_CHAIN'] || 'arbitrum').toLowerCase();
+  return network === 'testnet' && evmChain === 'ethereum';
+}
+
+function boolFromEnv(value: string | undefined, defaultValue: boolean): boolean {
+  const normalized = normalizeEnvValue(value).toLowerCase();
+  if (!normalized) return defaultValue;
+  return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
+}
+
+function buildSepoliaDexConfig(): Record<string, DexConfig> {
+  const v2Router = normalizeEnvValue(process.env['SEPOLIA_UNISWAP_V2_ROUTER']);
+  const v2Factory = normalizeEnvValue(process.env['SEPOLIA_UNISWAP_V2_FACTORY']);
+
+  const v3Router = normalizeEnvValue(process.env['SEPOLIA_UNISWAP_V3_ROUTER']);
+  const v3Factory = normalizeEnvValue(process.env['SEPOLIA_UNISWAP_V3_FACTORY']);
+  const v3Quoter = normalizeEnvValue(process.env['SEPOLIA_UNISWAP_V3_QUOTER']);
+
+  const sushiRouter = normalizeEnvValue(process.env['SEPOLIA_SUSHISWAP_ROUTER']);
+  const sushiFactory = normalizeEnvValue(process.env['SEPOLIA_SUSHISWAP_FACTORY']);
+
+  return {
+    UNISWAP_V2: {
+      name: 'Uniswap V2 (Sepolia)',
+      router: v2Router,
+      factory: v2Factory,
+      fee: 0.003,
+      version: 'v2',
+      enabled: Boolean(v2Router && v2Factory) && boolFromEnv(process.env['SEPOLIA_UNISWAP_V2_ENABLED'], true),
+    },
+    UNISWAP_V3: {
+      name: 'Uniswap V3 (Sepolia)',
+      router: v3Router,
+      factory: v3Factory,
+      quoter: v3Quoter || undefined,
+      fee: 0.003,
+      version: 'v3',
+      feeTiers: [500, 3000, 10000],
+      enabled: Boolean(v3Router && v3Factory) && boolFromEnv(process.env['SEPOLIA_UNISWAP_V3_ENABLED'], true),
+    },
+    SUSHISWAP: {
+      name: 'SushiSwap (Sepolia)',
+      router: sushiRouter,
+      factory: sushiFactory,
+      fee: 0.003,
+      version: 'v2',
+      enabled: Boolean(sushiRouter && sushiFactory) && boolFromEnv(process.env['SEPOLIA_SUSHISWAP_ENABLED'], false),
+    },
+    BALANCER: {
+      name: 'Balancer',
+      router: '',
+      factory: '',
+      fee: 0.003,
+      version: 'v2',
+      enabled: false,
+    },
+    CURVE: {
+      name: 'Curve',
+      router: '',
+      factory: '',
+      fee: 0.0004,
+      version: 'v2',
+      enabled: false,
+    },
+  };
+}
+
+const DEFAULT_DEX_CONFIG: Record<string, DexConfig> = {
   UNISWAP_V2: {
     name: "Uniswap V2",
     router: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
@@ -53,6 +134,9 @@ export const DEX_CONFIG: Record<string, DexConfig> = {
     enabled: false // Disabled for MVP
   }
 };
+
+export const DEX_CONFIG: Record<string, DexConfig> =
+  isEthereumSepoliaProfile() ? buildSepoliaDexConfig() : DEFAULT_DEX_CONFIG;
 
 export const ENABLED_DEXES = Object.entries(DEX_CONFIG)
   .filter(([_, config]) => config.enabled)

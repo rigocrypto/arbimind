@@ -149,6 +149,23 @@ function getEvmChainConfig() {
   };
 }
 
+function isEthereumSepoliaProfile(): boolean {
+  const network = normalizeEnvValue(process.env['NETWORK'] || 'mainnet').toLowerCase();
+  const evmChain = normalizeEnvValue(process.env['EVM_CHAIN'] || 'arbitrum').toLowerCase();
+  return network === 'testnet' && evmChain === 'ethereum';
+}
+
+function hasValidSepoliaProfile(): boolean {
+  if (!isEthereumSepoliaProfile()) {
+    return true;
+  }
+
+  const hasWeth = Boolean(ALLOWLISTED_TOKENS['WETH']?.address);
+  const hasTokenPairs = TOKEN_PAIRS.length > 0;
+  const enabledDexes = Object.values(DEX_CONFIG).filter((entry) => entry.enabled);
+  return hasWeth && hasTokenPairs && enabledDexes.length >= 2;
+}
+
 const evmChainConfig = getEvmChainConfig();
 
 export const viemChain = evmChainConfig.viemChain;
@@ -162,6 +179,8 @@ function createConfig(): BotConfig {
   const explicitLogOnly =
     isEnvTrue(process.env['LOG_ONLY']) ||
     isEnvTrue(process.env['BOT_LOG_ONLY']);
+  const sepoliaProfileReady = hasValidSepoliaProfile();
+  const forcedLogOnlyForSafety = isEthereumSepoliaProfile() && !sepoliaProfileReady;
   const sanityTxEnabled = isEnvTrue(process.env['SANITY_TX_ENABLED'] ?? process.env['SANITY_MODE']);
   const sanityTxIntervalSec = parseInt(
     process.env['SANITY_TX_INTERVAL_SEC'] || process.env['SANITY_INTERVAL_SEC'] || '60',
@@ -185,7 +204,7 @@ function createConfig(): BotConfig {
     network: isTestnet ? 'testnet' : 'mainnet',
     evmChain: evmChain === 'polygon' || evmChain === 'ethereum' ? (evmChain as 'polygon' | 'ethereum') : 'arbitrum',
     evmChainId: chainConfig.chainId,
-    logOnly: explicitLogOnly || (isTestnet && !allowTestnetTrades),
+    logOnly: forcedLogOnlyForSafety || explicitLogOnly || (isTestnet && !allowTestnetTrades),
     allowTestnetTrades,
     
     // Bot Configuration
@@ -251,7 +270,8 @@ export function validateConfig(): void {
   const logOnly =
     isEnvTrue(process.env['LOG_ONLY']) ||
     isEnvTrue(process.env['BOT_LOG_ONLY']) ||
-    (normalizeEnvValue(process.env['NETWORK'] || 'mainnet').toLowerCase() === 'testnet' && !isEnvTrue(process.env['ALLOW_TESTNET_TRADES']));
+    (normalizeEnvValue(process.env['NETWORK'] || 'mainnet').toLowerCase() === 'testnet' && !isEnvTrue(process.env['ALLOW_TESTNET_TRADES'])) ||
+    (isEthereumSepoliaProfile() && !hasValidSepoliaProfile());
 
   // Always require RPC URL
   if (!ethereumRpcUrl) {
@@ -286,6 +306,10 @@ export function validateConfig(): void {
 
   if (walletAddress && (!walletAddress.startsWith('0x') || walletAddress.length !== 42)) {
     throw new Error('Invalid WALLET_ADDRESS format (must be 42 chars starting with 0x)');
+  }
+
+  if (isEthereumSepoliaProfile() && !hasValidSepoliaProfile()) {
+    logger.warn('⚠️ Ethereum Sepolia profile incomplete: forcing LOG_ONLY. Configure SEPOLIA_* token/router/factory addresses and at least two enabled DEXes.');
   }
 
   if (sanityTxEnabled) {

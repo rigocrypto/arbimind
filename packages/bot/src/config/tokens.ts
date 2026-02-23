@@ -6,7 +6,7 @@ export interface TokenConfig {
   logoURI?: string;
 }
 
-export const ALLOWLISTED_TOKENS: Record<string, TokenConfig> = {
+const DEFAULT_ALLOWLISTED_TOKENS: Record<string, TokenConfig> = {
   WETH: {
     address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
     symbol: "WETH",
@@ -65,7 +65,7 @@ export const ALLOWLISTED_TOKENS: Record<string, TokenConfig> = {
   }
 };
 
-export const TOKEN_PAIRS = [
+const DEFAULT_TOKEN_PAIRS = [
   { tokenA: "WETH", tokenB: "USDC" },
   { tokenA: "WETH", tokenB: "USDT" },
   { tokenA: "WETH", tokenB: "DAI" },
@@ -77,6 +77,80 @@ export const TOKEN_PAIRS = [
   { tokenA: "WETH", tokenB: "UNI" },
   { tokenA: "WETH", tokenB: "AAVE" }
 ];
+
+function normalizeEnvValue(value: string | undefined): string {
+  if (!value) return '';
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function isEthereumSepoliaProfile(): boolean {
+  const network = normalizeEnvValue(process.env['NETWORK'] || 'mainnet').toLowerCase();
+  const evmChain = normalizeEnvValue(process.env['EVM_CHAIN'] || 'arbitrum').toLowerCase();
+  return network === 'testnet' && evmChain === 'ethereum';
+}
+
+function buildSepoliaTokens(): Record<string, TokenConfig> {
+  const sepoliaTokens: Record<string, TokenConfig> = {};
+
+  const weth = normalizeEnvValue(process.env['SEPOLIA_WETH_ADDRESS']) || '0x7b79995e5f793a07bc00c21412e50ecae098e7f9';
+  if (weth) {
+    sepoliaTokens['WETH'] = {
+      address: weth,
+      symbol: 'WETH',
+      name: 'Wrapped Ether (Sepolia)',
+      decimals: 18,
+      logoURI: DEFAULT_ALLOWLISTED_TOKENS['WETH']?.logoURI,
+    };
+  }
+
+  const usdc = normalizeEnvValue(process.env['SEPOLIA_USDC_ADDRESS']);
+  if (usdc) {
+    sepoliaTokens['USDC'] = {
+      address: usdc,
+      symbol: 'USDC',
+      name: 'USD Coin (Sepolia)',
+      decimals: 6,
+      logoURI: DEFAULT_ALLOWLISTED_TOKENS['USDC']?.logoURI,
+    };
+  }
+
+  const dai = normalizeEnvValue(process.env['SEPOLIA_DAI_ADDRESS']);
+  if (dai) {
+    sepoliaTokens['DAI'] = {
+      address: dai,
+      symbol: 'DAI',
+      name: 'Dai (Sepolia)',
+      decimals: 18,
+      logoURI: DEFAULT_ALLOWLISTED_TOKENS['DAI']?.logoURI,
+    };
+  }
+
+  return sepoliaTokens;
+}
+
+function buildTokenPairs(tokens: Record<string, TokenConfig>): Array<{ tokenA: string; tokenB: string }> {
+  if (!isEthereumSepoliaProfile()) {
+    return DEFAULT_TOKEN_PAIRS;
+  }
+
+  const pairs: Array<{ tokenA: string; tokenB: string }> = [];
+  if (tokens['WETH'] && tokens['USDC']) pairs.push({ tokenA: 'WETH', tokenB: 'USDC' });
+  if (tokens['WETH'] && tokens['DAI']) pairs.push({ tokenA: 'WETH', tokenB: 'DAI' });
+  if (tokens['USDC'] && tokens['DAI']) pairs.push({ tokenA: 'USDC', tokenB: 'DAI' });
+  return pairs;
+}
+
+export const ALLOWLISTED_TOKENS: Record<string, TokenConfig> =
+  isEthereumSepoliaProfile() ? buildSepoliaTokens() : DEFAULT_ALLOWLISTED_TOKENS;
+
+export const TOKEN_PAIRS = buildTokenPairs(ALLOWLISTED_TOKENS);
 
 export function getTokenAddress(symbol: string): string {
   const token = ALLOWLISTED_TOKENS[symbol];
