@@ -108,6 +108,12 @@ Enable live testnet execution after deploy:
 ./scripts/deploy-sepolia-executor.ps1 -SepoliaRpcUrl "https://sepolia.infura.io/v3/<KEY>" -PrivateKey "<PRIVATE_KEY>" -ExecutorAddress "0x<bot-wallet>" -TreasuryAddress "0x<treasury-wallet>" -RailwayService "arbimind" -EnableLiveExecution
 ```
 
+Dry-run validation (no broadcast, no Railway changes):
+
+```powershell
+./scripts/deploy-sepolia-executor.ps1 -SepoliaRpcUrl "https://sepolia.infura.io/v3/<KEY>" -PrivateKey "<PRIVATE_KEY>" -ExecutorAddress "0x<bot-wallet>" -TreasuryAddress "0x<treasury-wallet>" -RailwayService "arbimind" -WhatIf
+```
+
 ## ⚡ Features
 
 - **Multi-DEX Support**: Uniswap V2/V3, SushiSwap, Balancer, Curve
