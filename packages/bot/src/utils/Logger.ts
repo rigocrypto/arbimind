@@ -1,4 +1,6 @@
 import winston from 'winston';
+import fs from 'fs';
+import path from 'path';
 import { LogLevel } from '../types';
 
 export class Logger {
@@ -7,7 +9,24 @@ export class Logger {
 
   constructor(context: string) {
     this.context = context;
-    
+
+    const fileTransports: winston.transport[] = [];
+    try {
+      const logsDir = path.resolve(process.cwd(), 'logs');
+      fs.mkdirSync(logsDir, { recursive: true });
+      fileTransports.push(
+        new winston.transports.File({
+          filename: path.join(logsDir, 'error.log'),
+          level: 'error'
+        }),
+        new winston.transports.File({
+          filename: path.join(logsDir, 'combined.log')
+        })
+      );
+    } catch (error) {
+      console.warn(`Logger file transport disabled: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
     this.logger = winston.createLogger({
       level: process.env['LOG_LEVEL'] || 'info',
       format: winston.format.combine(
@@ -23,13 +42,7 @@ export class Logger {
             winston.format.simple()
           )
         }),
-        new winston.transports.File({ 
-          filename: 'logs/error.log', 
-          level: 'error' 
-        }),
-        new winston.transports.File({ 
-          filename: 'logs/combined.log' 
-        })
+        ...fileTransports
       ]
     });
   }

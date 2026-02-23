@@ -1,7 +1,10 @@
 import { loadEnv } from './bootstrapEnv';
 
+console.error(`[BOOT] ArbiMind bot process start pid=${process.pid} node=${process.version} ts=${new Date().toISOString()}`);
+
 try {
   loadEnv();
+  console.error(`[BOOT] env bootstrap completed ts=${new Date().toISOString()}`);
 } catch (error) {
   const message = error instanceof Error ? error.stack || error.message : String(error);
   console.error(`env bootstrap failed: ${message}`);
