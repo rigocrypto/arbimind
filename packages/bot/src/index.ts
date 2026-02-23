@@ -42,14 +42,29 @@ function shouldGracefulExitFromEnv(): boolean {
 
 async function main(): Promise<void> {
   try {
-    const [{ ethers }, configModule, identityModule, loggerModule, botModule, solanaModule] = await Promise.all([
-      import('ethers'),
-      import('./config/index.js'),
-      import('./config/identity.js'),
-      import('./utils/Logger.js'),
-      import('./services/ArbitrageBot.js'),
-      import('./solana/Scanner.js'),
-    ]);
+    console.error('[BOOT] importing ethers');
+    const { ethers } = await import('ethers');
+    console.error('[BOOT] imported ethers');
+
+    console.error('[BOOT] importing config/index');
+    const configModule = await import('./config/index.js');
+    console.error('[BOOT] imported config/index');
+
+    console.error('[BOOT] importing config/identity');
+    const identityModule = await import('./config/identity.js');
+    console.error('[BOOT] imported config/identity');
+
+    console.error('[BOOT] importing utils/Logger');
+    const loggerModule = await import('./utils/Logger.js');
+    console.error('[BOOT] imported utils/Logger');
+
+    console.error('[BOOT] importing services/ArbitrageBot');
+    const botModule = await import('./services/ArbitrageBot.js');
+    console.error('[BOOT] imported services/ArbitrageBot');
+
+    console.error('[BOOT] importing solana/Scanner');
+    const solanaModule = await import('./solana/Scanner.js');
+    console.error('[BOOT] imported solana/Scanner');
 
     const { refreshConfig, validateConfig, config } = configModule;
     const { getIdentitySource, shortAddress } = identityModule;
