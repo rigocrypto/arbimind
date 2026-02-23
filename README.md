@@ -1,12 +1,33 @@
 # 🧠 ArbiMind
 
-![Post-Deploy Smoke](https://github.com/rigocrypto/arbimind/actions/workflows/post-deploy-smoke.yml/badge.svg)
-![Nightly Smoke](https://github.com/rigocrypto/arbimind/actions/workflows/nightly-smoke.yml/badge.svg)
-![Deploy UI to Vercel](https://github.com/rigocrypto/arbimind/actions/workflows/deploy-ui.yml/badge.svg)
-![Bot Canary Sanity](https://github.com/rigocrypto/arbimind/actions/workflows/bot-canary-sanity.yml/badge.svg)
-![Bot Typecheck / Build](https://github.com/rigocrypto/arbimind/actions/workflows/bot-build-check.yml/badge.svg)
+[![Post-Deploy Smoke](https://github.com/rigocrypto/arbimind/actions/workflows/post-deploy-smoke.yml/badge.svg)](https://github.com/rigocrypto/arbimind/actions/workflows/post-deploy-smoke.yml)
+[![Nightly Smoke](https://github.com/rigocrypto/arbimind/actions/workflows/nightly-smoke.yml/badge.svg)](https://github.com/rigocrypto/arbimind/actions/workflows/nightly-smoke.yml)
+[![Deploy UI to Vercel](https://github.com/rigocrypto/arbimind/actions/workflows/deploy-ui.yml/badge.svg)](https://github.com/rigocrypto/arbimind/actions/workflows/deploy-ui.yml)
+[![Bot Canary Sanity](https://github.com/rigocrypto/arbimind/actions/workflows/bot-canary-sanity.yml/badge.svg)](https://github.com/rigocrypto/arbimind/actions/workflows/bot-canary-sanity.yml)
+[![Bot Heartbeat Monitor](https://github.com/rigocrypto/arbimind/actions/workflows/bot-heartbeat-monitor.yml/badge.svg)](https://github.com/rigocrypto/arbimind/actions/workflows/bot-heartbeat-monitor.yml)
+[![Bot Typecheck / Build](https://github.com/rigocrypto/arbimind/actions/workflows/bot-build-check.yml/badge.svg)](https://github.com/rigocrypto/arbimind/actions/workflows/bot-build-check.yml)
 
 _Workflow roles: **PR gating** → Bot Typecheck / Build. **Release/Ops gating** → Post-Deploy Smoke, Nightly Smoke, Bot Canary Sanity._
+
+## 📋 Ops Dashboard
+
+- [Post-Deploy Smoke Runs](https://github.com/rigocrypto/arbimind/actions/workflows/post-deploy-smoke.yml)
+- [Nightly Smoke Runs](https://github.com/rigocrypto/arbimind/actions/workflows/nightly-smoke.yml)
+- [Deploy UI Runs](https://github.com/rigocrypto/arbimind/actions/workflows/deploy-ui.yml)
+- [Bot Canary Sanity Runs](https://github.com/rigocrypto/arbimind/actions/workflows/bot-canary-sanity.yml)
+- [Bot Heartbeat Monitor Runs](https://github.com/rigocrypto/arbimind/actions/workflows/bot-heartbeat-monitor.yml)
+- [Bot Typecheck / Build Runs](https://github.com/rigocrypto/arbimind/actions/workflows/bot-build-check.yml)
+
+Manual Run Shortcuts (opens workflow page with manual-dispatch context):
+
+- [Run Post-Deploy Smoke](https://github.com/rigocrypto/arbimind/actions/workflows/post-deploy-smoke.yml?query=event%3Aworkflow_dispatch)
+- [Run Nightly Smoke](https://github.com/rigocrypto/arbimind/actions/workflows/nightly-smoke.yml?query=event%3Aworkflow_dispatch)
+- [Run Bot Canary Sanity](https://github.com/rigocrypto/arbimind/actions/workflows/bot-canary-sanity.yml?query=event%3Aworkflow_dispatch)
+- [Run Bot Heartbeat Monitor](https://github.com/rigocrypto/arbimind/actions/workflows/bot-heartbeat-monitor.yml?query=event%3Aworkflow_dispatch)
+
+Troubleshooting:
+
+- [Wallet Extension Console Noise Guide](WALLET_EXTENSION_NOISE_TROUBLESHOOTING.md)
 
 > **The brain of on-chain arbitrage**
 
@@ -32,6 +53,60 @@ Runs `smoke:all` daily at 3:00 AM UTC → opens issue + webhook on failure → p
 Manual run: Actions → Nightly Smoke → Run workflow.
 
 Growth Experiments: [CTA A/B Template](CTA_AB_DECISION_TEMPLATE.md)
+
+## ❤️ Bot Heartbeat (Manual Quick Check)
+
+Use this command to verify the canonical Railway bot is still emitting recent activity logs:
+
+```powershell
+$env:RAILWAY_TOKEN="<your-railway-token>"; ./scripts/check-bot-heartbeat.ps1 -Service "arbimind-production" -MaxMinutesSinceHeartbeat 20 -LogLines 250 -VerboseOutput
+```
+
+Expected success output includes:
+
+- `Latest heartbeat timestamp (UTC): ...`
+- `Heartbeat age (minutes): <value <= 20>`
+- `Bot heartbeat check PASSED.`
+
+Expected stale/failure output includes:
+
+- `Bot heartbeat is stale: <value> minutes old (threshold: 20).`
+
+## 🧪 Sepolia Executor Deploy (Automated)
+
+Use the deployment helper script to deploy `ArbExecutor` on Ethereum Sepolia, configure routers/tokens, update Railway vars, and redeploy the bot service.
+
+Script: [scripts/deploy-sepolia-executor.ps1](scripts/deploy-sepolia-executor.ps1)
+
+Prerequisites:
+
+- `forge` and `cast` (Foundry)
+- `railway` CLI (logged in to the target project)
+- A funded Sepolia deployer key
+
+Windows Foundry install quickstart:
+
+```powershell
+iwr https://foundry.paradigm.xyz -useb | iex; foundryup
+```
+
+macOS/Linux Foundry install quickstart:
+
+```bash
+curl -L https://foundry.paradigm.xyz | bash && foundryup
+```
+
+Safe mode (keeps `LOG_ONLY=true`):
+
+```powershell
+./scripts/deploy-sepolia-executor.ps1 -SepoliaRpcUrl "https://sepolia.infura.io/v3/<KEY>" -PrivateKey "<PRIVATE_KEY>" -ExecutorAddress "0x<bot-wallet>" -TreasuryAddress "0x<treasury-wallet>" -RailwayService "arbimind"
+```
+
+Enable live testnet execution after deploy:
+
+```powershell
+./scripts/deploy-sepolia-executor.ps1 -SepoliaRpcUrl "https://sepolia.infura.io/v3/<KEY>" -PrivateKey "<PRIVATE_KEY>" -ExecutorAddress "0x<bot-wallet>" -TreasuryAddress "0x<treasury-wallet>" -RailwayService "arbimind" -EnableLiveExecution
+```
 
 ## ⚡ Features
 
