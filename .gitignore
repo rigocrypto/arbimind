@@ -10,3 +10,10 @@ logs/
 *-credentials*.env
 testnet-credentials-NEW.env
 pnpm-debug.log*
+
+# Foundry/Forge submodule artifacts (untracked after cleanup)
+.gitmodules
+packages/contracts/lib/forge-std
+packages/contracts/lib/openzeppelin-contracts
+packages/contracts/lib/v3-core
+packages/contracts/lib/v3-periphery
