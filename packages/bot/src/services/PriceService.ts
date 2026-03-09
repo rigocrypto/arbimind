@@ -16,12 +16,29 @@ const V2_ROUTER_ABI = [
 
 const V3_FEE_TIERS = [500, 3000, 10000]; // 0.05%, 0.3%, 1%
 
+const MAINNET_V3_QUOTER = '0xb27308f9f90d607463bb33ea1bebb41c27ce5ab6';
+const MAINNET_V2_ROUTER = '0x7a250d5630b4cf539739df2c5dacb4c659f2488d';
+
+function normalizeAddress(value: string | undefined): string {
+  return (value || '').trim().toLowerCase();
+}
+
+function isEthereumSepoliaProfile(): boolean {
+  const network = (process.env['NETWORK'] || '').trim().toLowerCase();
+  const evmChain = (process.env['EVM_CHAIN'] || '').trim().toLowerCase();
+  return network === 'testnet' && evmChain === 'ethereum';
+}
+
+function resolveAddress(primaryEnv: string, fallbackEnv: string): string {
+  return (process.env[primaryEnv] || process.env[fallbackEnv] || '').trim();
+}
+
 function isSepoliaQuoterConfigured(): boolean {
-  return Boolean(process.env['SEPOLIA_UNISWAP_V3_QUOTER']?.trim());
+  return Boolean(resolveAddress('SEPOLIA_UNISWAP_V3_QUOTER', 'UNISWAP_V3_QUOTER'));
 }
 
 function isSepoliaV2Configured(): boolean {
-  return Boolean(process.env['SEPOLIA_UNISWAP_V2_ROUTER']?.trim());
+  return Boolean(resolveAddress('SEPOLIA_UNISWAP_V2_ROUTER', 'UNISWAP_V2_ROUTER'));
 }
 
 export class PriceService {
@@ -33,8 +50,22 @@ export class PriceService {
 
   constructor(provider: Provider) {
     this.provider = provider;
-    const quoterAddr = process.env['SEPOLIA_UNISWAP_V3_QUOTER']?.trim();
-    const routerAddr = process.env['SEPOLIA_UNISWAP_V2_ROUTER']?.trim();
+    const quoterAddr = resolveAddress('SEPOLIA_UNISWAP_V3_QUOTER', 'UNISWAP_V3_QUOTER');
+    const routerAddr = resolveAddress('SEPOLIA_UNISWAP_V2_ROUTER', 'UNISWAP_V2_ROUTER');
+    const isSepolia = isEthereumSepoliaProfile();
+
+    if (isSepolia && (!quoterAddr || !routerAddr)) {
+      throw new Error('Missing Sepolia DEX configuration: set SEPOLIA_UNISWAP_V3_QUOTER and SEPOLIA_UNISWAP_V2_ROUTER');
+    }
+
+    if (isSepolia && normalizeAddress(quoterAddr) === MAINNET_V3_QUOTER) {
+      throw new Error('Invalid Sepolia config: SEPOLIA_UNISWAP_V3_QUOTER points to mainnet quoter 0xb273...');
+    }
+
+    if (isSepolia && normalizeAddress(routerAddr) === MAINNET_V2_ROUTER) {
+      throw new Error('Invalid Sepolia config: SEPOLIA_UNISWAP_V2_ROUTER points to mainnet router 0x7a25...');
+    }
+
     if (quoterAddr) {
       this.quoterV3 = new Contract(quoterAddr, QUOTER_V2_ABI, provider);
     }
@@ -46,6 +77,7 @@ export class PriceService {
     console.log('[PRICE_SERVICE_INIT]', {
       v3Quoter: quoterAddr || 'MISSING',
       v2Router: routerAddr || 'MISSING',
+      mode: isSepolia ? 'sepolia' : 'generic',
     });
   }
 

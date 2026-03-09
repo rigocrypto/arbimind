@@ -10,6 +10,22 @@ const ERC20_ABI = [
   'function approve(address spender, uint256 amount) returns (bool)',
 ];
 
+const MAINNET_V2_ROUTER = '0x7a250d5630b4cf539739df2c5dacb4c659f2488d';
+
+function normalizeAddress(value: string | undefined): string {
+  return (value || '').trim().toLowerCase();
+}
+
+function isEthereumSepoliaProfile(): boolean {
+  const network = (process.env['NETWORK'] || '').trim().toLowerCase();
+  const evmChain = (process.env['EVM_CHAIN'] || '').trim().toLowerCase();
+  return network === 'testnet' && evmChain === 'ethereum';
+}
+
+function resolveAddress(primaryEnv: string, fallbackEnv: string): string {
+  return (process.env[primaryEnv] || process.env[fallbackEnv] || '').trim();
+}
+
 export async function ensureApproval(
   tokenAddress: string,
   spender: string,
@@ -41,8 +57,12 @@ export class ExecutionService {
    * Call at startup before the scan loop.
    */
   public async ensureSepoliaRouterApprovals(): Promise<void> {
-    const v2Router = process.env['SEPOLIA_UNISWAP_V2_ROUTER']?.trim();
-    const v3Router = process.env['SEPOLIA_UNISWAP_V3_ROUTER']?.trim();
+    const v2Router = resolveAddress('SEPOLIA_UNISWAP_V2_ROUTER', 'UNISWAP_V2_ROUTER');
+    const v3Router = resolveAddress('SEPOLIA_UNISWAP_V3_ROUTER', 'UNISWAP_V3_ROUTER');
+    if (isEthereumSepoliaProfile() && normalizeAddress(v2Router) === MAINNET_V2_ROUTER) {
+      this.logger.warn('Skipping approvals: SEPOLIA_UNISWAP_V2_ROUTER is set to mainnet router 0x7a25...');
+      return;
+    }
     if (!v2Router && !v3Router) return;
 
     const symbols = Object.keys(ALLOWLISTED_TOKENS);
@@ -223,8 +243,15 @@ export class ExecutionService {
     const expectedOut = amountOut1 >= amountOut2 ? amountOut1 : amountOut2;
     const amountOutMin = (expectedOut * BigInt(10000 - slippageBps)) / BigInt(10000);
     const deadline = Math.floor(Date.now() / 1000) + 60;
-    const v2RouterAddr = process.env['SEPOLIA_UNISWAP_V2_ROUTER']!.trim();
-    const v3RouterAddr = process.env['SEPOLIA_UNISWAP_V3_ROUTER']!.trim();
+    const v3RouterAddr = resolveAddress('SEPOLIA_UNISWAP_V3_ROUTER', 'UNISWAP_V3_ROUTER');
+    const v2RouterResolved = resolveAddress('SEPOLIA_UNISWAP_V2_ROUTER', 'UNISWAP_V2_ROUTER');
+    if (!v2RouterResolved || !v3RouterAddr) {
+      throw new Error('Missing router configuration for direct swap execution');
+    }
+    if (isEthereumSepoliaProfile() && normalizeAddress(v2RouterResolved) === MAINNET_V2_ROUTER) {
+      throw new Error('Invalid Sepolia config: router points to mainnet 0x7a25...');
+    }
+    const v2RouterAddr = v2RouterResolved;
     const v3Fee = 3000;
 
     const swapOnV2 = amountOut1 >= amountOut2 ? opportunity.dex1 === 'UNISWAP_V2' : opportunity.dex2 === 'UNISWAP_V2';

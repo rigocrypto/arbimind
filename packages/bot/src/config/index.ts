@@ -6,6 +6,8 @@ import { Logger } from '../utils/Logger';
 // Note: dotenv.config() is called in src/index.ts BEFORE this module is imported
 
 const logger = new Logger('Config');
+const MAINNET_V2_ROUTER = '0x7a250d5630b4cf539739df2c5dacb4c659f2488d';
+const MAINNET_V3_QUOTER = '0xb27308f9f90d607463bb33ea1bebb41c27ce5ab6';
 
 function normalizeEnvValue(value: string | undefined): string {
   if (!value) return '';
@@ -17,6 +19,10 @@ function normalizeEnvValue(value: string | undefined): string {
     return trimmed.slice(1, -1).trim();
   }
   return trimmed;
+}
+
+function normalizeAddress(value: string | undefined): string {
+  return normalizeEnvValue(value).toLowerCase();
 }
 
 function isEnvTrue(value: string | undefined): boolean {
@@ -317,6 +323,18 @@ export function validateConfig(): void {
 
   if (isEthereumSepoliaProfile() && !hasValidSepoliaProfile()) {
     logger.warn('⚠️ Ethereum Sepolia profile incomplete: forcing LOG_ONLY. Configure SEPOLIA_* token/router/factory addresses and at least two enabled DEXes.');
+  }
+
+  if (isEthereumSepoliaProfile()) {
+    const sepoliaV2Router = normalizeAddress(process.env['SEPOLIA_UNISWAP_V2_ROUTER'] || process.env['UNISWAP_V2_ROUTER']);
+    const sepoliaV3Quoter = normalizeAddress(process.env['SEPOLIA_UNISWAP_V3_QUOTER'] || process.env['UNISWAP_V3_QUOTER']);
+
+    if (sepoliaV2Router && sepoliaV2Router === MAINNET_V2_ROUTER) {
+      throw new Error('Invalid Sepolia config: SEPOLIA_UNISWAP_V2_ROUTER points to mainnet router 0x7a25...');
+    }
+    if (sepoliaV3Quoter && sepoliaV3Quoter === MAINNET_V3_QUOTER) {
+      throw new Error('Invalid Sepolia config: SEPOLIA_UNISWAP_V3_QUOTER points to mainnet quoter 0xb273...');
+    }
   }
 
   if (sanityTxEnabled) {
