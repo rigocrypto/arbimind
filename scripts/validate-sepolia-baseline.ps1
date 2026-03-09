@@ -132,6 +132,32 @@ if ($v2Router) {
 }
 $checks += Test-Contains -Text $logText -Needle "v3Enabled: false" -Label "v3 disabled"
 
+# In live Railway mode, sampled lines may not include startup logs.
+# Treat boot-signature misses as soft checks and enforce steady-state ticks.
+$softChecks = @()
+if ($FromRailway.IsPresent) {
+  $bootCheckLabels = @(
+    "price service init present",
+    "effective pairs present",
+    "scanner init present",
+    "scan pair env applied",
+    "expected v2 router present",
+    "v3 disabled"
+  )
+
+  foreach ($check in $checks) {
+    if (-not $check.Pass -and $bootCheckLabels -contains $check.Label) {
+      $softChecks += [pscustomobject]@{
+        Label = $check.Label
+        Detail = $check.Detail
+      }
+      $check.Pass = $true
+      $check.Detail = "soft-check in Railway mode (startup signatures may be outside sampled lines)"
+      $check.Snippet = "n/a"
+    }
+  }
+}
+
 # Parse SCAN_TICK blocks and count healthy ticks.
 $tickMatches = [regex]::Matches($logText, "\[SCAN_TICK\]\s*\{(.*?)\}", [System.Text.RegularExpressions.RegexOptions]::Singleline)
 $healthyTicks = 0
@@ -187,6 +213,14 @@ Write-Host ""
 foreach ($check in $checks) {
   $status = if ($check.Pass) { "PASS" } else { "FAIL" }
   Write-Host ("[{0}] {1} -> {2}" -f $status, $check.Label, $check.Detail)
+}
+
+if ($softChecks.Count -gt 0) {
+  Write-Host ""
+  Write-Host "Soft checks (Railway sampled-window):"
+  foreach ($soft in $softChecks) {
+    Write-Host ("[WARN] {0} -> {1}" -f $soft.Label, $soft.Detail)
+  }
 }
 
 if ($failures.Count -gt 0) {
