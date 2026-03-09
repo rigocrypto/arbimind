@@ -215,7 +215,7 @@ function createConfig(): BotConfig {
     minProfitEth: parseFloat(process.env['MIN_PROFIT_ETH'] || '0.01'),
     maxGasGwei: parseFloat(process.env['MAX_GAS_GWEI'] || '50'),
     minProfitThreshold: parseFloat(process.env['MIN_PROFIT_THRESHOLD'] || '0.005'),
-    scanIntervalMs: parseInt(process.env['SCAN_INTERVAL_MS'] || '200'),
+    scanIntervalMs: parseInt(process.env['SCAN_INTERVAL_MS'] || (isTestnet ? '5000' : '200'), 10),
     
     // Contract Configuration
     arbExecutorAddress: process.env['ARB_EXECUTOR_ADDRESS'] || '',

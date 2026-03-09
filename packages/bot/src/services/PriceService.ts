@@ -28,6 +28,8 @@ export class PriceService {
   private provider: Provider;
   private quoterV3: Contract | null = null;
   private routerV2: Contract | null = null;
+  private rateLimitedUntilMs: number = 0;
+  private lastRateLimitLogMs: number = 0;
 
   constructor(provider: Provider) {
     this.provider = provider;
@@ -39,6 +41,12 @@ export class PriceService {
     if (routerAddr) {
       this.routerV2 = new Contract(routerAddr, V2_ROUTER_ABI, provider);
     }
+
+    // Log once at startup so we can verify exactly which addresses are being used.
+    console.log('[PRICE_SERVICE_INIT]', {
+      v3Quoter: quoterAddr || 'MISSING',
+      v2Router: routerAddr || 'MISSING',
+    });
   }
 
   async getQuote(
@@ -47,16 +55,10 @@ export class PriceService {
     amountIn: string,
     dex: string
   ): Promise<PriceQuote | null> {
-    console.log('[PRICE_SERVICE_ENV]', {
-      dex,
-      hasV3Quoter: Boolean(process.env['SEPOLIA_UNISWAP_V3_QUOTER']?.trim()),
-      hasV2Router: Boolean(process.env['SEPOLIA_UNISWAP_V2_ROUTER']?.trim()),
-      hasWeth: Boolean(process.env['SEPOLIA_WETH_ADDRESS']?.trim()),
-      hasUsdc: Boolean(process.env['SEPOLIA_USDC_ADDRESS']?.trim()),
-      hasDai: Boolean(process.env['SEPOLIA_DAI_ADDRESS']?.trim()),
-      tokenIn: tokenInSymbol,
-      tokenOut: tokenOutSymbol,
-    });
+    const nowMs = Date.now();
+    if (nowMs < this.rateLimitedUntilMs) {
+      return null;
+    }
 
     if (!isSepoliaQuoterConfigured() && !isSepoliaV2Configured()) {
       console.log('[QUOTE_FAIL]', {
@@ -98,11 +100,7 @@ export class PriceService {
         decimalsOut
       );
       if (!quote) {
-        console.log('[QUOTE_FAIL]', {
-          dex,
-          pair: `${tokenInSymbol}/${tokenOutSymbol}`,
-          reason: 'v3_no_quote_for_all_fee_tiers',
-        });
+        // Keep this lightweight; detailed per-fee errors are logged only when useful.
         return null;
       }
       return {
@@ -125,11 +123,7 @@ export class PriceService {
         decimalsOut
       );
       if (!quote) {
-        console.log('[QUOTE_FAIL]', {
-          dex,
-          pair: `${tokenInSymbol}/${tokenOutSymbol}`,
-          reason: 'v2_no_quote_or_pair_missing',
-        });
+        // Keep this lightweight; the underlying call failure logs include details.
         return null;
       }
       return {
@@ -175,13 +169,7 @@ export class PriceService {
           best = { amountOut, fee };
         }
       } catch (error) {
-        console.log('[QUOTE_FAIL]', {
-          dex: 'UNISWAP_V3',
-          pair: `${tokenIn}/${tokenOut}`,
-          fee,
-          reason: 'v3_quote_call_failed',
-          error: error instanceof Error ? error.message : String(error),
-        });
+        this.handleRpcError('UNISWAP_V3', `${tokenIn}/${tokenOut}`, error, fee);
       }
     }
     return best;
@@ -200,13 +188,36 @@ export class PriceService {
       const amountOut = Array.isArray(amounts) ? (amounts as bigint[])[1] : amounts[1];
       if (amountOut && amountOut > 0n) return { amountOut };
     } catch (error) {
-      console.log('[QUOTE_FAIL]', {
-        dex: 'UNISWAP_V2',
-        pair: `${tokenIn}/${tokenOut}`,
-        reason: 'v2_getAmountsOut_failed',
-        error: error instanceof Error ? error.message : String(error),
-      });
+      this.handleRpcError('UNISWAP_V2', `${tokenIn}/${tokenOut}`, error);
     }
     return null;
+  }
+
+  private handleRpcError(dex: 'UNISWAP_V2' | 'UNISWAP_V3', pair: string, error: unknown, fee?: number): void {
+    const message = error instanceof Error ? error.message : String(error);
+    const isRateLimit = message.includes('Too Many Requests') || message.includes('code": -32005');
+
+    if (isRateLimit) {
+      this.rateLimitedUntilMs = Date.now() + 10_000;
+      if (Date.now() - this.lastRateLimitLogMs > 10_000) {
+        this.lastRateLimitLogMs = Date.now();
+        console.warn('[QUOTE_BACKOFF]', {
+          dex,
+          pair,
+          fee,
+          reason: 'rpc_rate_limited',
+          backoffMs: 10_000,
+        });
+      }
+      return;
+    }
+
+    console.log('[QUOTE_FAIL]', {
+      dex,
+      pair,
+      fee,
+      reason: dex === 'UNISWAP_V3' ? 'v3_quote_call_failed' : 'v2_getAmountsOut_failed',
+      error: message,
+    });
   }
 }
