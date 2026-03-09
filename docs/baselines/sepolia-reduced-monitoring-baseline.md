@@ -92,6 +92,43 @@ Optional flags:
 - `-IgnoreFirstTick`
 - `-Lines 200` (Railway mode only)
 
+## Post-Deploy Wrapper
+Use `scripts/post-deploy-verify-sepolia.ps1` as a single-step deployment gate.
+
+```powershell
+# Standard post-deploy check
+./scripts/post-deploy-verify-sepolia.ps1
+
+# Faster iteration
+./scripts/post-deploy-verify-sepolia.ps1 -StabilizationWait 30 -MinTicks 3
+
+# Stricter verification
+./scripts/post-deploy-verify-sepolia.ps1 -StabilizationWait 90 -MinTicks 10 -Lines 400
+```
+
+## CI/CD Usage
+### Recommended thresholds by context
+
+| Context | StabilizationWait | MinTicks | Lines |
+|---|---|---|---|
+| Quick iteration / PR | 30s | 3 | 150 |
+| Standard post-deploy | 60s | 5 | 300 |
+| Pre-mainnet config change | 90s | 10 | 500 |
+
+### GitHub Actions example
+
+```yaml
+- name: Post-deploy Sepolia verification
+  shell: pwsh
+  env:
+    RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  run: |
+    ./scripts/post-deploy-verify-sepolia.ps1 \
+      -StabilizationWait 60 \
+      -MinTicks 5 \
+      -Lines 300
+```
+
 ## Notes
 - Sepolia liquidity is sparse and volatile. For reduced monitoring, keep pair scope narrow.
 - If moving toward execution testing, re-enable V3 quotes, broaden pair set, and re-tune scan interval/RPC capacity.
