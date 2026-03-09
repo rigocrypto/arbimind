@@ -309,8 +309,8 @@ if ($failures.Count -gt 0) {
     Write-Host ("  snippet: {0}" -f $failure.Snippet)
   }
   Write-Host ""
-  Write-Host ("BASELINE_CHECK: FAIL ({0} failing checks)" -f $failures.Count)
-  Write-Error "Mainnet baseline validation failed with $($failures.Count) failing check(s)."
+  Write-Host ("BASELINE_CHECK: FAIL ({0} failing checks)" -f $failures.Count) -ForegroundColor Red
+  exit 1
 }
 
 Write-Host ""
