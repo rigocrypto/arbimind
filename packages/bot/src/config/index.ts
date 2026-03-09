@@ -97,6 +97,10 @@ export interface BotConfig {
   sanityTxIntervalSec: number;
   sanityTxWei: string;
   sanityTxTo?: string | undefined;
+
+  // Arb execution (Sepolia direct router)
+  minEdgeBps: number;
+  swapAmountEth: number;
 }
 
 function getEvmChainConfig() {
@@ -245,6 +249,9 @@ function createConfig(): BotConfig {
     sanityTxIntervalSec,
     sanityTxWei,
     sanityTxTo,
+
+    minEdgeBps: parseInt(process.env['MIN_EDGE_BPS'] || '10', 10),
+    swapAmountEth: parseFloat(process.env['SWAP_AMOUNT_ETH'] || '0.001'),
   };
 }
 

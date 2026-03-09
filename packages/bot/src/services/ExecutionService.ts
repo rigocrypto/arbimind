@@ -2,6 +2,28 @@ import { ethers } from 'ethers';
 import { ArbitrageOpportunity, TransactionResult } from '../types';
 import { Logger } from '../utils/Logger';
 import { DEX_CONFIG } from '../config';
+import { getTokenAddress } from '../config/tokens';
+import { ALLOWLISTED_TOKENS } from '../config/tokens';
+
+const ERC20_ABI = [
+  'function allowance(address owner, address spender) view returns (uint256)',
+  'function approve(address spender, uint256 amount) returns (bool)',
+];
+
+export async function ensureApproval(
+  tokenAddress: string,
+  spender: string,
+  amount: bigint,
+  wallet: ethers.Wallet
+): Promise<void> {
+  const erc20 = new ethers.Contract(tokenAddress, ERC20_ABI, wallet);
+  const allowance = await erc20.allowance(wallet.address, spender);
+  if (allowance < amount) {
+    const tx = await erc20.approve(spender, ethers.MaxUint256);
+    await tx.wait();
+    console.log('[APPROVED]', { token: tokenAddress, spender });
+  }
+}
 
 export class ExecutionService {
   private wallet: ethers.Wallet;
@@ -12,6 +34,29 @@ export class ExecutionService {
     this.wallet = wallet;
     this.executorAddress = executorAddress;
     this.logger = new Logger('ExecutionService');
+  }
+
+  /**
+   * One-time approval for Sepolia routers so swaps can spend ERC20s.
+   * Call at startup before the scan loop.
+   */
+  public async ensureSepoliaRouterApprovals(): Promise<void> {
+    const v2Router = process.env['SEPOLIA_UNISWAP_V2_ROUTER']?.trim();
+    const v3Router = process.env['SEPOLIA_UNISWAP_V3_ROUTER']?.trim();
+    if (!v2Router && !v3Router) return;
+
+    const symbols = Object.keys(ALLOWLISTED_TOKENS);
+    const amount = ethers.MaxUint256;
+
+    for (const symbol of symbols) {
+      try {
+        const tokenAddress = getTokenAddress(symbol);
+        if (v2Router) await ensureApproval(tokenAddress, v2Router, amount, this.wallet);
+        if (v3Router) await ensureApproval(tokenAddress, v3Router, amount, this.wallet);
+      } catch (e) {
+        this.logger.debug(`Skip approval for ${symbol}`, { error: e instanceof Error ? e.message : String(e) });
+      }
+    }
   }
 
   public async executeSanityTransfer(to: string, amountWei: string): Promise<TransactionResult> {
@@ -67,7 +112,7 @@ export class ExecutionService {
   }
 
   /**
-   * Execute an arbitrage opportunity
+   * Execute an arbitrage opportunity (executor contract or direct router on Sepolia)
    */
   public async executeArbitrage(opportunity: ArbitrageOpportunity): Promise<TransactionResult> {
     try {
@@ -79,7 +124,16 @@ export class ExecutionService {
         amountIn: opportunity.amountIn
       });
 
-      // Build transaction data
+      const useDirectSwap =
+        !this.executorAddress &&
+        process.env['SEPOLIA_UNISWAP_V2_ROUTER']?.trim() &&
+        process.env['SEPOLIA_UNISWAP_V3_ROUTER']?.trim();
+
+      if (useDirectSwap) {
+        return await this.executeSwapDirect(opportunity);
+      }
+
+      // Build transaction data (executor contract)
       const txData = await this.buildArbitrageTransaction(opportunity);
       
   // Estimate gas
@@ -145,6 +199,90 @@ export class ExecutionService {
         profit: '0',
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: Date.now()
+      };
+    }
+  }
+
+  private static readonly V2_ROUTER_ABI = [
+    'function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, address[] path, address to, uint256 deadline) returns (uint256[] amounts)',
+  ];
+  private static readonly V3_ROUTER_ABI = [
+    'function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96)) returns (uint256 amountOut)',
+  ];
+
+  /**
+   * Execute a single swap on the DEX with better price (Sepolia direct router path).
+   */
+  private async executeSwapDirect(opportunity: ArbitrageOpportunity): Promise<TransactionResult> {
+    const tokenInAddr = getTokenAddress(opportunity.tokenA);
+    const tokenOutAddr = getTokenAddress(opportunity.tokenB);
+    const amountIn = ethers.getBigInt(opportunity.amountIn);
+    const amountOut1 = ethers.getBigInt(opportunity.amountOut1);
+    const amountOut2 = ethers.getBigInt(opportunity.amountOut2);
+    const slippageBps = 50; // 0.5%
+    const expectedOut = amountOut1 >= amountOut2 ? amountOut1 : amountOut2;
+    const amountOutMin = (expectedOut * BigInt(10000 - slippageBps)) / BigInt(10000);
+    const deadline = Math.floor(Date.now() / 1000) + 60;
+    const v2RouterAddr = process.env['SEPOLIA_UNISWAP_V2_ROUTER']!.trim();
+    const v3RouterAddr = process.env['SEPOLIA_UNISWAP_V3_ROUTER']!.trim();
+    const v3Fee = 3000;
+
+    const swapOnV2 = amountOut1 >= amountOut2 ? opportunity.dex1 === 'UNISWAP_V2' : opportunity.dex2 === 'UNISWAP_V2';
+
+    console.log('[EXEC_ATTEMPT]', {
+      pair: `${opportunity.tokenA}/${opportunity.tokenB}`,
+      buyDex: swapOnV2 ? 'UNISWAP_V2' : 'UNISWAP_V3',
+      amountIn: opportunity.amountIn,
+      amountOutMin: amountOutMin.toString(),
+    });
+
+    try {
+      let tx: ethers.ContractTransactionResponse;
+      if (swapOnV2) {
+        const router = new ethers.Contract(v2RouterAddr, ExecutionService.V2_ROUTER_ABI, this.wallet);
+        tx = await router.swapExactTokensForTokens(
+          amountIn,
+          amountOutMin,
+          [tokenInAddr, tokenOutAddr],
+          this.wallet.address,
+          deadline
+        );
+      } else {
+        const router = new ethers.Contract(v3RouterAddr, ExecutionService.V3_ROUTER_ABI, this.wallet);
+        tx = await router.exactInputSingle({
+          tokenIn: tokenInAddr,
+          tokenOut: tokenOutAddr,
+          fee: v3Fee,
+          recipient: this.wallet.address,
+          amountIn,
+          amountOutMinimum: amountOutMin,
+          sqrtPriceLimitX96: 0n,
+        });
+      }
+      const receipt = await tx.wait();
+      const gasPrice = (receipt as any).effectiveGasPrice
+        ? (receipt as any).effectiveGasPrice.toString()
+        : ((receipt as any).gasPrice ? (receipt as any).gasPrice.toString() : '0');
+      console.log('[EXEC_OK]', { hash: receipt!.hash, gasUsed: receipt!.gasUsed.toString() });
+      return {
+        hash: receipt!.hash,
+        success: true,
+        gasUsed: receipt!.gasUsed.toString(),
+        gasPrice,
+        profit: opportunity.profit,
+        timestamp: Date.now(),
+      };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.error('[EXEC_FAIL]', { error: message });
+      return {
+        hash: '',
+        success: false,
+        gasUsed: '0',
+        gasPrice: '0',
+        profit: '0',
+        error: message,
+        timestamp: Date.now(),
       };
     }
   }
