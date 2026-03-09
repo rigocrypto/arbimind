@@ -1,0 +1,39 @@
+{
+  "name": "mainnet-live-baseline",
+  "lastUpdated": "2026-03-09",
+  "profile": "mainnet-live",
+  "chainId": 1,
+  "expectedMode": "LIVE",
+  "v3Enabled": true,
+  "scanPairs": [
+    "WETH/USDC",
+    "WETH/DAI",
+    "USDC/DAI"
+  ],
+  "minPairsChecked": 3,
+  "minQuotesOk": 2,
+  "maxQuotesFailed": 0,
+  "maxScanIntervalMs": 1000,
+  "minWalletBalanceEth": 0.05,
+  "ethPriceSanityRange": {
+    "min": 500,
+    "max": 50000
+  },
+  "requiredDexes": [
+    "UNISWAP_V2",
+    "UNISWAP_V3"
+  ],
+  "minTicks": 5,
+  "addresses": {
+    "v2Router": "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
+    "v3Quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"
+  },
+  "validationProcedure": [
+    "Deploy mainnet LIVE config.",
+    "Wait for stabilization window.",
+    "Validate chainId=1 and mode=LIVE.",
+    "Validate V2 and V3 quote streams and strict tick health.",
+    "Validate wallet balance and ETH price sanity.",
+    "Pass only when all hard checks succeed."
+  ]
+}
