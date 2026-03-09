@@ -152,6 +152,23 @@ export const ALLOWLISTED_TOKENS: Record<string, TokenConfig> =
 
 export const TOKEN_PAIRS = buildTokenPairs(ALLOWLISTED_TOKENS);
 
+/** Sepolia pairs (symbols only). Use at runtime so scan never gets 0 pairs when env is set. */
+export function getSepoliaPairs(): Array<{ tokenA: string; tokenB: string }> {
+  return [
+    { tokenA: 'WETH', tokenB: 'USDC' },
+    { tokenA: 'WETH', tokenB: 'DAI' },
+    { tokenA: 'USDC', tokenB: 'DAI' },
+  ];
+}
+
+/** Pairs to use for scanning. On Sepolia, prefer explicit 3 pairs if TOKEN_PAIRS is empty. */
+export function getEffectiveTokenPairs(): Array<{ tokenA: string; tokenB: string }> {
+  if (isEthereumSepoliaProfile() && TOKEN_PAIRS.length === 0) {
+    return getSepoliaPairs();
+  }
+  return TOKEN_PAIRS;
+}
+
 export function getTokenAddress(symbol: string): string {
   const token = ALLOWLISTED_TOKENS[symbol];
   if (!token) {

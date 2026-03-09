@@ -1,6 +1,7 @@
 import { ethers } from 'ethers';
-import { config, TOKEN_PAIRS, type BotConfig } from '../config';
+import { config, type BotConfig } from '../config';
 import { DEX_CONFIG } from '../config';
+import { getTokenConfig, getEffectiveTokenPairs } from '../config/tokens';
 import { ArbitrageOpportunity, PriceQuote, BotStats } from '../types';
 import { PriceService } from './PriceService';
 import { ExecutionService } from './ExecutionService';
@@ -95,7 +96,12 @@ export class ArbitrageBot {
     this.aiScoringService = deps.aiScoringService ?? (aiConfig ? new AiScoringService(aiConfig) : undefined);
     // AI orchestrator initialization deferred until used
     // this.aiOrchestrator = new AIOrchestrator();
-    this.tokenPairs = deps.tokenPairs ?? TOKEN_PAIRS;
+    this.tokenPairs = deps.tokenPairs ?? getEffectiveTokenPairs();
+
+    console.log('[SCANNER_INIT]', {
+      pairsLoaded: this.tokenPairs.length,
+      pairs: this.tokenPairs.map((p) => `${p.tokenA}/${p.tokenB}`),
+    });
     
     this.stats = {
       totalOpportunities: 0,
@@ -132,6 +138,18 @@ export class ArbitrageBot {
 
     // Validate configuration
     this.validateSetup();
+
+    // One-time token approvals for Sepolia routers (before scan loop)
+    const isSepolia = this.botConfig.network === 'testnet' && this.botConfig.evmChain === 'ethereum';
+    if (isSepolia && this.executionService) {
+      try {
+        await this.executionService.ensureSepoliaRouterApprovals();
+      } catch (e) {
+        this.logger.warn('Sepolia router approvals failed (non-fatal)', {
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
 
     // Start the main loop
     await this.runMainLoop();
@@ -233,18 +251,26 @@ export class ArbitrageBot {
    * Scan for arbitrage opportunities across all configured pairs and DEXes
    */
   private async scanForOpportunities(): Promise<BotRunResult> {
-  const startTime = Date.now();
-  let opportunitiesFound = 0;
-  let executed = 0;
-  let scoredOpps = 0;
+    const startTime = Date.now();
+    let opportunitiesFound = 0;
+    let executed = 0;
+    let scoredOpps = 0;
+    let quotesOk = 0;
+    let quotesFailed = 0;
 
     this.logger.debug('Scanning for arbitrage opportunities...');
+    console.log('[SCAN_START]', { pairsCount: this.tokenPairs.length });
 
     for (const pair of this.tokenPairs) {
       try {
-        const opportunities = await this.findOpportunitiesForPair(pair.tokenA, pair.tokenB);
+        const { opportunities, quotesOk: ok, quotesFailed: fail } = await this.findOpportunitiesForPair(
+          pair.tokenA,
+          pair.tokenB
+        );
+        quotesOk += ok;
+        quotesFailed += fail;
         opportunitiesFound += opportunities.length;
-        
+
         for (const opportunity of opportunities) {
           const { approved, scored } = await this.isAiApproved(opportunity);
           if (scored) scoredOpps++;
@@ -255,8 +281,8 @@ export class ArbitrageBot {
           }
         }
       } catch (error) {
-        this.logger.error(`Error scanning pair ${pair.tokenA}-${pair.tokenB}`, { 
-          error: error instanceof Error ? error.message : error 
+        this.logger.error(`Error scanning pair ${pair.tokenA}-${pair.tokenB}`, {
+          error: error instanceof Error ? error.message : error,
         });
       }
     }
@@ -264,21 +290,38 @@ export class ArbitrageBot {
     const scanDuration = Date.now() - startTime;
     this.logger.debug(`Scan completed in ${scanDuration}ms`);
 
+    console.log('[SCAN_TICK]', {
+      ts: new Date().toISOString(),
+      pairsChecked: this.tokenPairs.length,
+      quotesOk,
+      quotesFailed,
+      opportunitiesFound,
+      durationMs: scanDuration,
+    });
+
     return { opportunitiesFound, executed, scoredOpps };
   }
 
   /**
    * Find arbitrage opportunities for a specific token pair
    */
-  private async findOpportunitiesForPair(tokenA: string, tokenB: string): Promise<ArbitrageOpportunity[]> {
+  private async findOpportunitiesForPair(
+    tokenA: string,
+    tokenB: string
+  ): Promise<{ opportunities: ArbitrageOpportunity[]; quotesOk: number; quotesFailed: number }> {
     const opportunities: ArbitrageOpportunity[] = [];
-  const enabledDexes = Object.entries(DEX_CONFIG).filter(([_, cfg]) => cfg.enabled);
-    
-    // Get quotes from all DEXes
-    const quotes: PriceQuote[] = [];
-    const amountIn = ethers.parseEther('1'); // 1 ETH base amount
+    const enabledDexes = Object.entries(DEX_CONFIG).filter(([_, cfg]) => cfg.enabled);
+    let quotesOk = 0;
+    let quotesFailed = 0;
 
-  for (const [dexName] of enabledDexes) {
+    const quotes: PriceQuote[] = [];
+    const amountIn = ethers.parseEther(
+      String(this.botConfig.swapAmountEth ?? 0.001)
+    );
+    const decimalsIn = getTokenConfig(tokenA).decimals;
+    const decimalsOut = getTokenConfig(tokenB).decimals;
+
+    for (const [dexName] of enabledDexes) {
       try {
         const quote = await this.priceService.getQuote(
           tokenA,
@@ -288,30 +331,80 @@ export class ArbitrageBot {
         );
         if (quote) {
           quotes.push(quote);
+          quotesOk++;
+          this.logger.debug('[QUOTE]', {
+            pair: `${tokenA}/${tokenB}`,
+            dex: quote.dex,
+            fee: quote.fee,
+            amountIn: amountIn.toString(),
+            amountOut: quote.amountOut,
+            price: Number(quote.amountOut) / Number(amountIn),
+          });
+        } else {
+          quotesFailed++;
         }
       } catch (error) {
-        this.logger.debug(`Failed to get quote from ${dexName}`, { 
-          error: error instanceof Error ? error.message : error 
+        quotesFailed++;
+        this.logger.debug(`Failed to get quote from ${dexName}`, {
+          error: error instanceof Error ? error.message : error,
         });
       }
     }
 
-    // Find arbitrage opportunities between different DEXes
+    const v3Quote = quotes.find((q) => q.dex === 'UNISWAP_V3');
+    const v2Quote = quotes.find((q) => q.dex === 'UNISWAP_V2');
+    const amountInNum = Number(amountIn.toString());
+    console.log('[QUOTE_RESULT]', {
+      pair: `${tokenA}/${tokenB}`,
+      v3: v3Quote
+        ? (Number(v3Quote.amountOut) / 10 ** decimalsOut) / (amountInNum / 10 ** decimalsIn)
+        : 'null',
+      v2: v2Quote
+        ? (Number(v2Quote.amountOut) / 10 ** decimalsOut) / (amountInNum / 10 ** decimalsIn)
+        : 'null',
+    });
+
+    // Find arbitrage opportunities between different DEXes (with spread threshold)
+    const minEdgeBps = this.botConfig.minEdgeBps ?? 10;
+
     for (let i = 0; i < quotes.length; i++) {
       for (let j = i + 1; j < quotes.length; j++) {
-  const quote1 = quotes[i] as PriceQuote;
-  const quote2 = quotes[j] as PriceQuote;
+        const quote1 = quotes[i] as PriceQuote;
+        const quote2 = quotes[j] as PriceQuote;
+        if (!quote1 || !quote2) continue;
 
-  if (!quote1 || !quote2) continue;
+        const amountInNum = Number(amountIn.toString());
+        const price1 = (Number(quote1.amountOut) / 10 ** decimalsOut) / (amountInNum / 10 ** decimalsIn);
+        const price2 = (Number(quote2.amountOut) / 10 ** decimalsOut) / (amountInNum / 10 ** decimalsIn);
+        const spread = Math.abs(price1 - price2) / Math.min(price1, price2);
+        const spreadBps = spread * 10000;
+        const v3Quote = quote1.dex === 'UNISWAP_V3' ? quote1 : quote2;
+        const v2Quote = quote1.dex === 'UNISWAP_V2' ? quote1 : quote2;
+        const v3Price = v3Quote === quote1 ? price1 : price2;
+        const v2Price = v2Quote === quote1 ? price1 : price2;
 
-  const opportunity = this.calculateArbitrageOpportunity(quote1, quote2, amountIn.toString());
+        console.log('[SPREAD]', {
+          pair: `${tokenA}/${tokenB}`,
+          v3Price,
+          v2Price,
+          spreadBps: spreadBps.toFixed(2),
+          threshold: minEdgeBps,
+        });
+
+        if (spreadBps < minEdgeBps) continue;
+
+        const opportunity = this.calculateArbitrageOpportunity(quote1, quote2, amountIn.toString());
         if (opportunity) {
           opportunities.push(opportunity);
         }
       }
     }
 
-    return opportunities.sort((a, b) => parseFloat(b.profit) - parseFloat(a.profit));
+    return {
+      opportunities: opportunities.sort((a, b) => parseFloat(b.profit) - parseFloat(a.profit)),
+      quotesOk,
+      quotesFailed,
+    };
   }
 
   /**
