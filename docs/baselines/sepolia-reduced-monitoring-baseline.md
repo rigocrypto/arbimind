@@ -78,6 +78,9 @@ Use `scripts/validate-sepolia-baseline.ps1` to validate an exported deploy log a
 
 ```powershell
 ./scripts/validate-sepolia-baseline.ps1 -LogPath .\tmp\deploy-log.txt
+
+# Optional: fetch logs live from Railway CLI (requires railway login)
+./scripts/validate-sepolia-baseline.ps1 -FromRailway -RailwayService arbimind-bot
 ```
 
 Optional flags:

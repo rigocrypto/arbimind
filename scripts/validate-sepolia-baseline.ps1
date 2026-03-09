@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory = $true)]
+  [Parameter(Mandatory = $false)]
   [string]$LogPath,
 
   [Parameter(Mandatory = $false)]
@@ -10,7 +10,13 @@ param(
   [int]$MinTicks = 3,
 
   [Parameter(Mandatory = $false)]
-  [switch]$IgnoreFirstTick
+  [switch]$IgnoreFirstTick,
+
+  [Parameter(Mandatory = $false)]
+  [switch]$FromRailway,
+
+  [Parameter(Mandatory = $false)]
+  [string]$RailwayService = "arbimind-bot"
 )
 
 $ErrorActionPreference = "Stop"
@@ -71,14 +77,38 @@ function Test-Regex {
   return [pscustomobject]@{ Label = $Label; Pass = $false; Detail = "pattern not found: $Pattern"; Snippet = "n/a" }
 }
 
-if (-not (Test-Path $LogPath)) {
-  Write-Error "Log file not found: $LogPath"
+if (-not $FromRailway.IsPresent -and [string]::IsNullOrWhiteSpace($LogPath)) {
+  Write-Error "Provide -LogPath or use -FromRailway."
 }
+
 if (-not (Test-Path $BaselinePath)) {
   Write-Error "Baseline JSON not found: $BaselinePath"
 }
 
-$logText = Get-Content -Raw -Path $LogPath
+$logText = ""
+if ($FromRailway.IsPresent) {
+  $railwayCmd = Get-Command railway -ErrorAction SilentlyContinue
+  if (-not $railwayCmd) {
+    Write-Error "Railway CLI not found. Install with: npm install -g @railway/cli"
+  }
+
+  try {
+    Write-Host "Fetching logs from Railway service '$RailwayService'..."
+    $logText = (& railway logs --service $RailwayService 2>&1 | Out-String)
+  } catch {
+    Write-Error "Failed to fetch logs from Railway CLI: $($_.Exception.Message)"
+  }
+
+  if ([string]::IsNullOrWhiteSpace($logText)) {
+    Write-Error "Railway CLI returned empty logs for service '$RailwayService'."
+  }
+} else {
+  if (-not (Test-Path $LogPath)) {
+    Write-Error "Log file not found: $LogPath"
+  }
+  $logText = Get-Content -Raw -Path $LogPath
+}
+
 $baseline = Get-Content -Raw -Path $BaselinePath | ConvertFrom-Json
 
 $checks = @()
@@ -136,7 +166,12 @@ $checks += [pscustomobject]@{
 $failures = $checks | Where-Object { -not $_.Pass }
 
 Write-Host "Sepolia baseline validation results"
-Write-Host "- LogPath: $LogPath"
+if ($FromRailway.IsPresent) {
+  Write-Host "- Source: Railway CLI"
+  Write-Host "- RailwayService: $RailwayService"
+} else {
+  Write-Host "- LogPath: $LogPath"
+}
 Write-Host "- BaselinePath: $BaselinePath"
 Write-Host "- SCAN_TICK blocks: $($tickMatches.Count)"
 if ($IgnoreFirstTick.IsPresent) {
