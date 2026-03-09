@@ -337,7 +337,7 @@ export function validateConfig(): void {
       throw new Error('Invalid Sepolia config: SEPOLIA_UNISWAP_V3_QUOTER points to mainnet quoter 0xb273...');
     }
     if (sepoliaV3RouterRaw && (!sepoliaV3RouterRaw.startsWith('0x') || sepoliaV3RouterRaw.length !== 42)) {
-      throw new Error('Invalid Sepolia config: SEPOLIA_UNISWAP_V3_ROUTER must be a 42-char 0x address');
+      logger.warn('Invalid SEPOLIA_UNISWAP_V3_ROUTER format; V3 swap approvals/execution will be skipped until fixed.');
     }
   }
 
