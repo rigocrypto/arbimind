@@ -1,4 +1,4 @@
-import { ethers } from 'ethers';
+import { ethers, getAddress } from 'ethers';
 import { ArbitrageOpportunity, TransactionResult } from '../types';
 import { Logger } from '../utils/Logger';
 import { DEX_CONFIG } from '../config';
@@ -22,8 +22,14 @@ function isEthereumSepoliaProfile(): boolean {
   return network === 'testnet' && evmChain === 'ethereum';
 }
 
-function resolveAddress(primaryEnv: string, fallbackEnv: string): string {
-  return (process.env[primaryEnv] || process.env[fallbackEnv] || '').trim();
+function resolveAddress(primaryEnv: string, fallbackEnv: string, label: string): string {
+  const raw = (process.env[primaryEnv] || process.env[fallbackEnv] || '').trim();
+  if (!raw) return '';
+  try {
+    return getAddress(raw.toLowerCase());
+  } catch {
+    throw new Error(`Invalid address for ${label}: ${raw}`);
+  }
 }
 
 export async function ensureApproval(
@@ -57,8 +63,8 @@ export class ExecutionService {
    * Call at startup before the scan loop.
    */
   public async ensureSepoliaRouterApprovals(): Promise<void> {
-    const v2Router = resolveAddress('SEPOLIA_UNISWAP_V2_ROUTER', 'UNISWAP_V2_ROUTER');
-    const v3Router = resolveAddress('SEPOLIA_UNISWAP_V3_ROUTER', 'UNISWAP_V3_ROUTER');
+    const v2Router = resolveAddress('SEPOLIA_UNISWAP_V2_ROUTER', 'UNISWAP_V2_ROUTER', 'SEPOLIA_UNISWAP_V2_ROUTER');
+    const v3Router = resolveAddress('SEPOLIA_UNISWAP_V3_ROUTER', 'UNISWAP_V3_ROUTER', 'SEPOLIA_UNISWAP_V3_ROUTER');
     if (isEthereumSepoliaProfile() && normalizeAddress(v2Router) === MAINNET_V2_ROUTER) {
       this.logger.warn('Skipping approvals: SEPOLIA_UNISWAP_V2_ROUTER is set to mainnet router 0x7a25...');
       return;
@@ -243,8 +249,8 @@ export class ExecutionService {
     const expectedOut = amountOut1 >= amountOut2 ? amountOut1 : amountOut2;
     const amountOutMin = (expectedOut * BigInt(10000 - slippageBps)) / BigInt(10000);
     const deadline = Math.floor(Date.now() / 1000) + 60;
-    const v3RouterAddr = resolveAddress('SEPOLIA_UNISWAP_V3_ROUTER', 'UNISWAP_V3_ROUTER');
-    const v2RouterResolved = resolveAddress('SEPOLIA_UNISWAP_V2_ROUTER', 'UNISWAP_V2_ROUTER');
+    const v3RouterAddr = resolveAddress('SEPOLIA_UNISWAP_V3_ROUTER', 'UNISWAP_V3_ROUTER', 'SEPOLIA_UNISWAP_V3_ROUTER');
+    const v2RouterResolved = resolveAddress('SEPOLIA_UNISWAP_V2_ROUTER', 'UNISWAP_V2_ROUTER', 'SEPOLIA_UNISWAP_V2_ROUTER');
     if (!v2RouterResolved || !v3RouterAddr) {
       throw new Error('Missing router configuration for direct swap execution');
     }

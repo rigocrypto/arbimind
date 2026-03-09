@@ -328,12 +328,16 @@ export function validateConfig(): void {
   if (isEthereumSepoliaProfile()) {
     const sepoliaV2Router = normalizeAddress(process.env['SEPOLIA_UNISWAP_V2_ROUTER'] || process.env['UNISWAP_V2_ROUTER']);
     const sepoliaV3Quoter = normalizeAddress(process.env['SEPOLIA_UNISWAP_V3_QUOTER'] || process.env['UNISWAP_V3_QUOTER']);
+    const sepoliaV3RouterRaw = normalizeEnvValue(process.env['SEPOLIA_UNISWAP_V3_ROUTER'] || process.env['UNISWAP_V3_ROUTER']);
 
     if (sepoliaV2Router && sepoliaV2Router === MAINNET_V2_ROUTER) {
       throw new Error('Invalid Sepolia config: SEPOLIA_UNISWAP_V2_ROUTER points to mainnet router 0x7a25...');
     }
     if (sepoliaV3Quoter && sepoliaV3Quoter === MAINNET_V3_QUOTER) {
       throw new Error('Invalid Sepolia config: SEPOLIA_UNISWAP_V3_QUOTER points to mainnet quoter 0xb273...');
+    }
+    if (sepoliaV3RouterRaw && (!sepoliaV3RouterRaw.startsWith('0x') || sepoliaV3RouterRaw.length !== 42)) {
+      throw new Error('Invalid Sepolia config: SEPOLIA_UNISWAP_V3_ROUTER must be a 42-char 0x address');
     }
   }
 

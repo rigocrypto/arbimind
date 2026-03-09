@@ -2,7 +2,7 @@
  * Price service – fetches DEX quotes for arbitrage.
  * Uniswap V3 (Quoter V2) + Uniswap V2 on Ethereum Sepolia.
  */
-import { Contract, type Provider } from 'ethers';
+import { Contract, getAddress, type Provider } from 'ethers';
 import type { PriceQuote } from '../types';
 import { getTokenAddress, getTokenConfig } from '../config/tokens';
 
@@ -29,16 +29,23 @@ function isEthereumSepoliaProfile(): boolean {
   return network === 'testnet' && evmChain === 'ethereum';
 }
 
-function resolveAddress(primaryEnv: string, fallbackEnv: string): string {
-  return (process.env[primaryEnv] || process.env[fallbackEnv] || '').trim();
+function resolveAddress(primaryEnv: string, fallbackEnv: string, label: string): string {
+  const raw = (process.env[primaryEnv] || process.env[fallbackEnv] || '').trim();
+  if (!raw) return '';
+  try {
+    // Lowercase first so non-checksummed mixed-case env values are accepted and canonicalized.
+    return getAddress(raw.toLowerCase());
+  } catch {
+    throw new Error(`Invalid address for ${label}: ${raw}`);
+  }
 }
 
 function isSepoliaQuoterConfigured(): boolean {
-  return Boolean(resolveAddress('SEPOLIA_UNISWAP_V3_QUOTER', 'UNISWAP_V3_QUOTER'));
+  return Boolean(resolveAddress('SEPOLIA_UNISWAP_V3_QUOTER', 'UNISWAP_V3_QUOTER', 'SEPOLIA_UNISWAP_V3_QUOTER'));
 }
 
 function isSepoliaV2Configured(): boolean {
-  return Boolean(resolveAddress('SEPOLIA_UNISWAP_V2_ROUTER', 'UNISWAP_V2_ROUTER'));
+  return Boolean(resolveAddress('SEPOLIA_UNISWAP_V2_ROUTER', 'UNISWAP_V2_ROUTER', 'SEPOLIA_UNISWAP_V2_ROUTER'));
 }
 
 export class PriceService {
@@ -50,8 +57,8 @@ export class PriceService {
 
   constructor(provider: Provider) {
     this.provider = provider;
-    const quoterAddr = resolveAddress('SEPOLIA_UNISWAP_V3_QUOTER', 'UNISWAP_V3_QUOTER');
-    const routerAddr = resolveAddress('SEPOLIA_UNISWAP_V2_ROUTER', 'UNISWAP_V2_ROUTER');
+    const quoterAddr = resolveAddress('SEPOLIA_UNISWAP_V3_QUOTER', 'UNISWAP_V3_QUOTER', 'SEPOLIA_UNISWAP_V3_QUOTER');
+    const routerAddr = resolveAddress('SEPOLIA_UNISWAP_V2_ROUTER', 'UNISWAP_V2_ROUTER', 'SEPOLIA_UNISWAP_V2_ROUTER');
     const isSepolia = isEthereumSepoliaProfile();
 
     if (isSepolia && (!quoterAddr || !routerAddr)) {
