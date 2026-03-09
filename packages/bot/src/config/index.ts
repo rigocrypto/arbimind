@@ -165,8 +165,51 @@ function isEthereumSepoliaProfile(): boolean {
   return network === 'testnet' && evmChain === 'ethereum';
 }
 
+function isV3QuotesExplicitlyDisabled(): boolean {
+  const value = normalizeEnvValue(process.env['ENABLE_V3_QUOTES'] || process.env['SEPOLIA_ENABLE_V3_QUOTES']).toLowerCase();
+  return value === 'false' || value === '0' || value === 'no' || value === 'off';
+}
+
+function parseScanPairs(): string[] {
+  return normalizeEnvValue(process.env['SCAN_PAIRS'])
+    .split(',')
+    .map((p) => p.trim().toUpperCase())
+    .filter(Boolean);
+}
+
+function hasPairMatch(pair: string, configuredPairSet: Set<string>): boolean {
+  if (configuredPairSet.has(pair)) return true;
+  const [a, b] = pair.split('/');
+  if (!a || !b) return false;
+  return configuredPairSet.has(`${b}/${a}`);
+}
+
+function isIntentionalReducedSepoliaMode(): boolean {
+  if (!isEthereumSepoliaProfile()) return false;
+  if (!isV3QuotesExplicitlyDisabled()) return false;
+
+  const requestedPairs = parseScanPairs();
+  if (requestedPairs.length === 0) return false;
+
+  const enabledDexes = Object.values(DEX_CONFIG).filter((entry) => entry.enabled);
+  if (enabledDexes.length < 1) return false;
+
+  const configuredPairSet = new Set(TOKEN_PAIRS.map((p) => `${p.tokenA}/${p.tokenB}`.toUpperCase()));
+  const matchingPairs = requestedPairs.filter((pair) => hasPairMatch(pair, configuredPairSet));
+  if (matchingPairs.length === 0) return false;
+
+  return matchingPairs.every((pair) => {
+    const [tokenA, tokenB] = pair.split('/');
+    return Boolean(ALLOWLISTED_TOKENS[tokenA]) && Boolean(ALLOWLISTED_TOKENS[tokenB]);
+  });
+}
+
 function hasValidSepoliaProfile(): boolean {
   if (!isEthereumSepoliaProfile()) {
+    return true;
+  }
+
+  if (isIntentionalReducedSepoliaMode()) {
     return true;
   }
 
