@@ -59,6 +59,11 @@ export class PriceService {
     });
 
     if (!isSepoliaQuoterConfigured() && !isSepoliaV2Configured()) {
+      console.log('[QUOTE_FAIL]', {
+        dex,
+        pair: `${tokenInSymbol}/${tokenOutSymbol}`,
+        reason: 'missing_sepolia_quoter_and_v2_router',
+      });
       return null;
     }
 
@@ -71,7 +76,13 @@ export class PriceService {
       tokenOutAddr = getTokenAddress(tokenOutSymbol);
       decimalsIn = getTokenConfig(tokenInSymbol).decimals;
       decimalsOut = getTokenConfig(tokenOutSymbol).decimals;
-    } catch {
+    } catch (error) {
+      console.log('[QUOTE_FAIL]', {
+        dex,
+        pair: `${tokenInSymbol}/${tokenOutSymbol}`,
+        reason: 'token_config_missing',
+        error: error instanceof Error ? error.message : String(error),
+      });
       return null;
     }
 
@@ -86,7 +97,14 @@ export class PriceService {
         decimalsIn,
         decimalsOut
       );
-      if (!quote) return null;
+      if (!quote) {
+        console.log('[QUOTE_FAIL]', {
+          dex,
+          pair: `${tokenInSymbol}/${tokenOutSymbol}`,
+          reason: 'v3_no_quote_for_all_fee_tiers',
+        });
+        return null;
+      }
       return {
         tokenIn: tokenInSymbol,
         tokenOut: tokenOutSymbol,
@@ -106,7 +124,14 @@ export class PriceService {
         decimalsIn,
         decimalsOut
       );
-      if (!quote) return null;
+      if (!quote) {
+        console.log('[QUOTE_FAIL]', {
+          dex,
+          pair: `${tokenInSymbol}/${tokenOutSymbol}`,
+          reason: 'v2_no_quote_or_pair_missing',
+        });
+        return null;
+      }
       return {
         tokenIn: tokenInSymbol,
         tokenOut: tokenOutSymbol,
@@ -118,6 +143,11 @@ export class PriceService {
       };
     }
 
+    console.log('[QUOTE_FAIL]', {
+      dex,
+      pair: `${tokenInSymbol}/${tokenOutSymbol}`,
+      reason: 'dex_not_supported_or_not_configured',
+    });
     return null;
   }
 
@@ -144,8 +174,14 @@ export class PriceService {
         if (amountOut > 0n && (!best || amountOut > best.amountOut)) {
           best = { amountOut, fee };
         }
-      } catch {
-        // pool may not exist for this fee tier
+      } catch (error) {
+        console.log('[QUOTE_FAIL]', {
+          dex: 'UNISWAP_V3',
+          pair: `${tokenIn}/${tokenOut}`,
+          fee,
+          reason: 'v3_quote_call_failed',
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
     return best;
@@ -163,8 +199,13 @@ export class PriceService {
       const amounts = await this.routerV2.getAmountsOut.staticCall(amountIn, [tokenIn, tokenOut]);
       const amountOut = Array.isArray(amounts) ? (amounts as bigint[])[1] : amounts[1];
       if (amountOut && amountOut > 0n) return { amountOut };
-    } catch {
-      // pair may not exist
+    } catch (error) {
+      console.log('[QUOTE_FAIL]', {
+        dex: 'UNISWAP_V2',
+        pair: `${tokenIn}/${tokenOut}`,
+        reason: 'v2_getAmountsOut_failed',
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
     return null;
   }
