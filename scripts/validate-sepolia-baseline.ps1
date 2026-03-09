@@ -16,7 +16,11 @@ param(
   [switch]$FromRailway,
 
   [Parameter(Mandatory = $false)]
-  [string]$RailwayService = "arbimind-bot"
+  [string]$RailwayService = "arbimind-bot",
+
+  [Parameter(Mandatory = $false)]
+  [ValidateRange(20, 5000)]
+  [int]$Lines = 200
 )
 
 $ErrorActionPreference = "Stop"
@@ -93,8 +97,8 @@ if ($FromRailway.IsPresent) {
   }
 
   try {
-    Write-Host "Fetching logs from Railway service '$RailwayService'..."
-    $logText = (& railway logs --service $RailwayService 2>&1 | Out-String)
+    Write-Host "Fetching logs from Railway service '$RailwayService' (lines=$Lines)..."
+    $logText = (& railway logs --service $RailwayService --lines $Lines 2>&1 | Out-String)
   } catch {
     Write-Error "Failed to fetch logs from Railway CLI: $($_.Exception.Message)"
   }
@@ -169,6 +173,7 @@ Write-Host "Sepolia baseline validation results"
 if ($FromRailway.IsPresent) {
   Write-Host "- Source: Railway CLI"
   Write-Host "- RailwayService: $RailwayService"
+  Write-Host "- Lines: $Lines"
 } else {
   Write-Host "- LogPath: $LogPath"
 }

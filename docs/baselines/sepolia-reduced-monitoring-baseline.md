@@ -81,12 +81,16 @@ Use `scripts/validate-sepolia-baseline.ps1` to validate an exported deploy log a
 
 # Optional: fetch logs live from Railway CLI (requires railway login)
 ./scripts/validate-sepolia-baseline.ps1 -FromRailway -RailwayService arbimind-bot
+
+# Optional: increase fetched log window to avoid false negatives for higher -MinTicks
+./scripts/validate-sepolia-baseline.ps1 -FromRailway -RailwayService arbimind-bot -Lines 400 -MinTicks 10
 ```
 
 Optional flags:
 - `-BaselinePath docs/baselines/sepolia-reduced-monitoring-baseline.json`
 - `-MinTicks 3`
 - `-IgnoreFirstTick`
+- `-Lines 200` (Railway mode only)
 
 ## Notes
 - Sepolia liquidity is sparse and volatile. For reduced monitoring, keep pair scope narrow.
