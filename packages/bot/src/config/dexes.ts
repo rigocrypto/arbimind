@@ -33,6 +33,11 @@ function boolFromEnv(value: string | undefined, defaultValue: boolean): boolean 
   return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
 }
 
+function isV3QuotesEnabled(): boolean {
+  const value = normalizeEnvValue(process.env['ENABLE_V3_QUOTES'] || process.env['SEPOLIA_ENABLE_V3_QUOTES'] || 'true').toLowerCase();
+  return value !== 'false' && value !== '0' && value !== 'no' && value !== 'off';
+}
+
 function buildSepoliaDexConfig(): Record<string, DexConfig> {
   const v2Router = normalizeEnvValue(process.env['SEPOLIA_UNISWAP_V2_ROUTER']);
   const v2Factory = normalizeEnvValue(process.env['SEPOLIA_UNISWAP_V2_FACTORY']);
@@ -51,7 +56,7 @@ function buildSepoliaDexConfig(): Record<string, DexConfig> {
       factory: v2Factory,
       fee: 0.003,
       version: 'v2',
-      enabled: Boolean(v2Router && v2Factory) && boolFromEnv(process.env['SEPOLIA_UNISWAP_V2_ENABLED'], true),
+      enabled: Boolean(v2Router) && boolFromEnv(process.env['SEPOLIA_UNISWAP_V2_ENABLED'], true),
     },
     UNISWAP_V3: {
       name: 'Uniswap V3 (Sepolia)',
@@ -61,7 +66,10 @@ function buildSepoliaDexConfig(): Record<string, DexConfig> {
       fee: 0.003,
       version: 'v3',
       feeTiers: [500, 3000, 10000],
-      enabled: Boolean(v3Router && v3Factory) && boolFromEnv(process.env['SEPOLIA_UNISWAP_V3_ENABLED'], true),
+      enabled:
+        isV3QuotesEnabled() &&
+        Boolean(v3Quoter || v3Router) &&
+        boolFromEnv(process.env['SEPOLIA_UNISWAP_V3_ENABLED'], true),
     },
     SUSHISWAP: {
       name: 'SushiSwap (Sepolia)',
