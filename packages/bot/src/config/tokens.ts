@@ -163,10 +163,19 @@ export function getSepoliaPairs(): Array<{ tokenA: string; tokenB: string }> {
 
 /** Pairs to use for scanning. On Sepolia, prefer explicit 3 pairs if TOKEN_PAIRS is empty. */
 export function getEffectiveTokenPairs(): Array<{ tokenA: string; tokenB: string }> {
-  if (isEthereumSepoliaProfile() && TOKEN_PAIRS.length === 0) {
-    return getSepoliaPairs();
-  }
-  return TOKEN_PAIRS;
+  const pairs = isEthereumSepoliaProfile() && TOKEN_PAIRS.length === 0
+    ? getSepoliaPairs()
+    : TOKEN_PAIRS;
+
+  console.log('[EFFECTIVE_PAIRS]', {
+    count: pairs.length,
+    pairs: pairs.map((p) => `${p.tokenA}/${p.tokenB}`),
+    WETH: process.env['SEPOLIA_WETH_ADDRESS']?.trim() || 'MISSING',
+    USDC: process.env['SEPOLIA_USDC_ADDRESS']?.trim() || 'MISSING',
+    DAI: process.env['SEPOLIA_DAI_ADDRESS']?.trim() || 'MISSING',
+  });
+
+  return pairs;
 }
 
 export function getTokenAddress(symbol: string): string {
