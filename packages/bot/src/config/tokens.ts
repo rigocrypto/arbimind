@@ -163,13 +163,26 @@ export function getSepoliaPairs(): Array<{ tokenA: string; tokenB: string }> {
 
 /** Pairs to use for scanning. On Sepolia, prefer explicit 3 pairs if TOKEN_PAIRS is empty. */
 export function getEffectiveTokenPairs(): Array<{ tokenA: string; tokenB: string }> {
-  const pairs = isEthereumSepoliaProfile() && TOKEN_PAIRS.length === 0
+  const basePairs = isEthereumSepoliaProfile() && TOKEN_PAIRS.length === 0
     ? getSepoliaPairs()
     : TOKEN_PAIRS;
+
+  const scanPairsEnv = normalizeEnvValue(process.env['SCAN_PAIRS']);
+  const requestedPairs = new Set(
+    scanPairsEnv
+      .split(',')
+      .map((p) => p.trim().toUpperCase())
+      .filter(Boolean)
+  );
+
+  const pairs = requestedPairs.size > 0
+    ? basePairs.filter((p) => requestedPairs.has(`${p.tokenA}/${p.tokenB}`) || requestedPairs.has(`${p.tokenB}/${p.tokenA}`))
+    : basePairs;
 
   console.log('[EFFECTIVE_PAIRS]', {
     count: pairs.length,
     pairs: pairs.map((p) => `${p.tokenA}/${p.tokenB}`),
+    scanPairsEnv: scanPairsEnv || 'ALL',
     WETH: process.env['SEPOLIA_WETH_ADDRESS']?.trim() || 'MISSING',
     USDC: process.env['SEPOLIA_USDC_ADDRESS']?.trim() || 'MISSING',
     DAI: process.env['SEPOLIA_DAI_ADDRESS']?.trim() || 'MISSING',

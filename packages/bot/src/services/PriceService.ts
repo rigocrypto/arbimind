@@ -29,6 +29,13 @@ function isEthereumSepoliaProfile(): boolean {
   return network === 'testnet' && evmChain === 'ethereum';
 }
 
+function isV3QuotesEnabled(): boolean {
+  const value = (process.env['ENABLE_V3_QUOTES'] || process.env['SEPOLIA_ENABLE_V3_QUOTES'] || 'true')
+    .trim()
+    .toLowerCase();
+  return value !== 'false' && value !== '0' && value !== 'no' && value !== 'off';
+}
+
 function resolveAddress(primaryEnv: string, fallbackEnv: string, label: string): string {
   const raw = (process.env[primaryEnv] || process.env[fallbackEnv] || '').trim();
   if (!raw) return '';
@@ -54,12 +61,14 @@ export class PriceService {
   private routerV2: Contract | null = null;
   private rateLimitedUntilMs: number = 0;
   private lastRateLimitLogMs: number = 0;
+  private readonly v3Enabled: boolean;
 
   constructor(provider: Provider) {
     this.provider = provider;
     const quoterAddr = resolveAddress('SEPOLIA_UNISWAP_V3_QUOTER', 'UNISWAP_V3_QUOTER', 'SEPOLIA_UNISWAP_V3_QUOTER');
     const routerAddr = resolveAddress('SEPOLIA_UNISWAP_V2_ROUTER', 'UNISWAP_V2_ROUTER', 'SEPOLIA_UNISWAP_V2_ROUTER');
     const isSepolia = isEthereumSepoliaProfile();
+    this.v3Enabled = isV3QuotesEnabled();
 
     if (isSepolia && (!quoterAddr || !routerAddr)) {
       throw new Error('Missing Sepolia DEX configuration: set SEPOLIA_UNISWAP_V3_QUOTER and SEPOLIA_UNISWAP_V2_ROUTER');
@@ -73,8 +82,9 @@ export class PriceService {
       throw new Error('Invalid Sepolia config: SEPOLIA_UNISWAP_V2_ROUTER points to mainnet router 0x7a25...');
     }
 
-    if (quoterAddr) {
+    if (quoterAddr && this.v3Enabled) {
       this.quoterV3 = new Contract(quoterAddr, QUOTER_V2_ABI, provider);
+      void this.logQuoterCheck(quoterAddr);
     }
     if (routerAddr) {
       this.routerV2 = new Contract(routerAddr, V2_ROUTER_ABI, provider);
@@ -84,6 +94,7 @@ export class PriceService {
     console.log('[PRICE_SERVICE_INIT]', {
       v3Quoter: quoterAddr || 'MISSING',
       v2Router: routerAddr || 'MISSING',
+      v3Enabled: this.v3Enabled,
       mode: isSepolia ? 'sepolia' : 'generic',
     });
   }
@@ -151,6 +162,10 @@ export class PriceService {
         fee: quote.fee ?? 3000,
         timestamp: now,
       };
+    }
+
+    if (dex === 'UNISWAP_V3' && !this.v3Enabled) {
+      return null;
     }
 
     if (dex === 'UNISWAP_V2' && this.routerV2) {
@@ -258,5 +273,21 @@ export class PriceService {
       reason: dex === 'UNISWAP_V3' ? 'v3_quote_call_failed' : 'v2_getAmountsOut_failed',
       error: message,
     });
+  }
+
+  private async logQuoterCheck(quoterAddress: string): Promise<void> {
+    try {
+      const code = await this.provider.getCode(quoterAddress);
+      console.log('[V3_QUOTER_CHECK]', {
+        address: quoterAddress,
+        hasCode: code !== '0x',
+        codeLength: code.length,
+      });
+    } catch (error) {
+      console.log('[V3_QUOTER_CHECK_FAIL]', {
+        address: quoterAddress,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 }
