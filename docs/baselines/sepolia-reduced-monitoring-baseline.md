@@ -92,6 +92,8 @@ Optional flags:
 - `-IgnoreFirstTick`
 - `-Lines 200` (Railway mode only)
 
+In `-FromRailway` mode, startup signatures can be outside the sampled log window. The validator reports those as `[WARN]` soft checks and still enforces healthy `SCAN_TICK` pass criteria.
+
 ## Post-Deploy Wrapper
 Use `scripts/post-deploy-verify-sepolia.ps1` as a single-step deployment gate.
 
