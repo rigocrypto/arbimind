@@ -112,10 +112,9 @@ Local `.env` files containing credentials were present in the workspace.
 - Action required: set sensitive variables to runtime-only in Railway service Variables UI and disable build availability for those keys.
 
 ### Step 3: CI enforcement of secret scanning
-- Status: **PARTIAL PASS**
+- Status: **PASS**
 - Confirmed: workflow triggers on PR, and both SARIF + artifact upload steps complete successfully.
-- Gap: disposable negative-test commits with synthetic secret-like patterns did not trigger a Gitleaks finding in current default configuration, so empirical "fail on finding" proof is still pending.
-- Action required: add repo-specific Gitleaks rules (or supplementary regex gate) for high-priority patterns such as `PRIVATE_KEY=0x...` and rerun negative test.
+- Confirmed: disposable proof PR with synthetic `PRIVATE_KEY=0x...` pattern failed in Secret Scan using repo-specific rules (`.gitleaks.toml`) while still uploading SARIF/artifacts.
 
 ### Step 4: Execution posture confirmation
 - Status: **PASS (current runtime state)**
