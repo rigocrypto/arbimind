@@ -6,6 +6,7 @@
 import { ethers } from 'ethers';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { getPricesUsd } from './priceService';
+import { resolveRpcUrl } from '../utils/rpc';
 
 // --- Types ---
 export type PortfolioChain = 'evm' | 'solana';
@@ -53,6 +54,7 @@ function toMs(ts: number): number {
 const cache = new Map<string, { data: unknown; expires: number }>();
 const CACHE_TTL_MS = 30_000;
 const CACHE_TTL_NATIVE_MS = 90_000; // Longer for Alchemy-heavy EVM native scan
+const EVM_LOG_CHUNK_BLOCKS = Math.max(1, parseInt(process.env.EVM_LOG_CHUNK_BLOCKS || '900', 10) || 900);
 
 function getCached<T>(key: string): T | null {
   const entry = cache.get(key);
@@ -62,6 +64,26 @@ function getCached<T>(key: string): T | null {
 
 function setCache(key: string, data: unknown, ttlMs: number = CACHE_TTL_MS): void {
   cache.set(key, { data, expires: Date.now() + ttlMs });
+}
+
+async function queryFilterChunked(
+  contract: ethers.Contract,
+  filter: unknown,
+  fromBlock: number,
+  toBlock: number,
+  chunkSize: number = EVM_LOG_CHUNK_BLOCKS
+): Promise<ethers.EventLog[]> {
+  const events: ethers.EventLog[] = [];
+  let start = fromBlock;
+
+  while (start <= toBlock) {
+    const end = Math.min(start + chunkSize - 1, toBlock);
+    const chunk = (await contract.queryFilter(filter as never, start, end)) as ethers.EventLog[];
+    events.push(...chunk);
+    start = end + 1;
+  }
+
+  return events;
 }
 
 // --- EVM ---
@@ -74,16 +96,6 @@ const USDC_BY_CHAIN: Record<number, string> = {
   8453: USDC_BASE,
 };
 
-function resolveEvmRpc(): string {
-  const url = process.env.EVM_RPC_URL?.trim();
-  if (url) return url;
-  const key = process.env.ALCHEMY_API_KEY?.trim();
-  if (key) return `https://eth-mainnet.g.alchemy.com/v2/${key}`;
-  const infura = process.env.INFURA_PROJECT_ID?.trim();
-  if (infura) return `https://mainnet.infura.io/v3/${infura}`;
-  return 'https://eth.llamarpc.com';
-}
-
 export async function getEvmPortfolio(userAddress: string): Promise<PortfolioSummary | null> {
   const arbAddress = process.env.EVM_ARB_ACCOUNT?.trim();
   if (!arbAddress || !/^0x[a-fA-F0-9]{40}$/.test(arbAddress)) return null;
@@ -94,7 +106,17 @@ export async function getEvmPortfolio(userAddress: string): Promise<PortfolioSum
   if (cached) return cached;
 
   try {
-    const provider = new ethers.JsonRpcProvider(resolveEvmRpc());
+    const provider = new ethers.JsonRpcProvider(
+      resolveRpcUrl('evm', [
+        process.env.ALCHEMY_API_KEY?.trim()
+          ? `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY.trim()}`
+          : '',
+        process.env.INFURA_PROJECT_ID?.trim()
+          ? `https://mainnet.infura.io/v3/${process.env.INFURA_PROJECT_ID.trim()}`
+          : '',
+        'https://eth.llamarpc.com',
+      ]) ?? 'https://eth.llamarpc.com'
+    );
     const chainId = (await provider.getNetwork()).chainId;
 
     const deposits: PortfolioSummary['deposits'] = [];
@@ -112,7 +134,7 @@ export async function getEvmPortfolio(userAddress: string): Promise<PortfolioSum
     const usdc = new ethers.Contract(usdcAddress, ethAbi, provider);
     const usdcFilter = usdc.filters?.Transfer?.(userAddress, arbAddress) ?? null;
     const usdcEvents = usdcFilter
-      ? await usdc.queryFilter(usdcFilter, fromBlock, currentBlock)
+      ? await queryFilterChunked(usdc, usdcFilter, fromBlock, currentBlock)
       : [];
 
     for (const ev of usdcEvents) {
@@ -135,7 +157,16 @@ export async function getEvmPortfolio(userAddress: string): Promise<PortfolioSum
     const alchemyKey = process.env.ALCHEMY_API_KEY?.trim();
     if (scanNative && alchemyKey) {
       try {
-        const rpcUrl = resolveEvmRpc();
+        const rpcUrl =
+          resolveRpcUrl('evm', [
+            process.env.ALCHEMY_API_KEY?.trim()
+              ? `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY.trim()}`
+              : '',
+            process.env.INFURA_PROJECT_ID?.trim()
+              ? `https://mainnet.infura.io/v3/${process.env.INFURA_PROJECT_ID.trim()}`
+              : '',
+            'https://eth.llamarpc.com',
+          ]) ?? 'https://eth.llamarpc.com';
         const nativeLookbackBlocks = Math.min(lookbackBlocks, nativeLookbackDays * BLOCKS_PER_DAY);
         const fromBlockHex = `0x${Math.max(0, currentBlock - nativeLookbackBlocks).toString(16)}`;
         const body = {
@@ -271,15 +302,6 @@ export async function getEvmTimeseries(
 }
 
 // --- Solana ---
-function resolveSolanaRpc(): string {
-  const url = process.env.SOLANA_RPC_URL?.trim();
-  if (url) return url;
-  const cluster = process.env.SOLANA_CLUSTER || 'devnet';
-  if (cluster === 'mainnet-beta') return 'https://api.mainnet-beta.solana.com';
-  if (cluster === 'testnet') return 'https://api.testnet.solana.com';
-  return 'https://api.devnet.solana.com';
-}
-
 const LAMPORTS_PER_SOL = 1e9;
 
 export async function getSolanaPortfolio(userPubkey: string): Promise<PortfolioSummary | null> {
@@ -293,7 +315,15 @@ export async function getSolanaPortfolio(userPubkey: string): Promise<PortfolioS
   if (cached) return cached;
 
   try {
-    const connection = new Connection(resolveSolanaRpc());
+    const cluster = process.env.SOLANA_CLUSTER || 'devnet';
+    const solanaFallback =
+      cluster === 'mainnet-beta'
+        ? 'https://api.mainnet-beta.solana.com'
+        : cluster === 'testnet'
+          ? 'https://api.testnet.solana.com'
+          : 'https://api.devnet.solana.com';
+
+    const connection = new Connection(resolveRpcUrl('solana', [solanaFallback]) ?? solanaFallback);
     const arbPubkey = new PublicKey(arbAddress);
     const userKey = new PublicKey(userPubkey);
 
