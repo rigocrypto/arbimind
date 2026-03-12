@@ -9,7 +9,7 @@ tags = ["key", "evm"]
 [[rules]]
 id = "env-private-key"
 description = "PRIVATE_KEY assignment"
-regex = '''(?i)\bPRIVATE_KEY\b\s*[:=]\s*("?)(0x)?[a-fA-F0-9]{64}\1'''
+regex = '''(?i)\bPRIVATE_KEY\b\s*[:=]\s*"?(0x)?[a-fA-F0-9]{64}"?'''
 tags = ["env", "key"]
 
 [[rules]]
