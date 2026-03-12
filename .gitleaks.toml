@@ -1,0 +1,37 @@
+title = "ArbiMind gitleaks config"
+
+[[rules]]
+id = "evm-private-key"
+description = "EVM private key (0x + 64 hex)"
+regex = '''0x[a-fA-F0-9]{64}'''
+tags = ["key", "evm"]
+
+[[rules]]
+id = "env-private-key"
+description = "PRIVATE_KEY assignment"
+regex = '''(?i)\bPRIVATE_KEY\b\s*[:=]\s*"?(0x)?[a-fA-F0-9]{64}"?'''
+tags = ["env", "key"]
+
+[[rules]]
+id = "infura-project-id"
+description = "Infura v3 project id in URL"
+regex = '''infura\.io/v3/[a-fA-F0-9]{32}'''
+tags = ["rpc", "infura"]
+
+[[rules]]
+id = "discord-webhook"
+description = "Discord webhook URL"
+regex = '''discord\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]+'''
+tags = ["webhook", "discord"]
+
+[[rules]]
+id = "telegram-bot-token"
+description = "Telegram bot token"
+regex = '''[0-9]{8,10}:[A-Za-z0-9_-]{35}'''
+tags = ["token", "telegram"]
+
+[allowlist]
+description = "Allowlist common non-secret hex noise"
+regexes = [
+  '''0x[a-fA-F0-9]{40}'''
+]
