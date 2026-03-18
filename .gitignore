@@ -2,9 +2,14 @@ node_modules
 .next
 dist
 .vercel
+package-lock.json
 *.log
 logs/
 .env
+.env.*
+
+# Sensitive local credential dump files (never commit)
+packages/ui/src/app/settings/Bugcrowd Org (Set 4) httpsbugcrowd-.txt
 .env.local
 .env*.local
 *-credentials*.env
@@ -17,3 +22,5 @@ packages/contracts/lib/forge-std
 packages/contracts/lib/openzeppelin-contracts
 packages/contracts/lib/v3-core
 packages/contracts/lib/v3-periphery
+packages/backend/.env
+packages/ui/.env.local
