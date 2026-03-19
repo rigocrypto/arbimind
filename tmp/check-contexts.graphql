@@ -1,0 +1,15 @@
+query {
+  repository(owner: "rigocrypto", name: "arbimind") {
+    object(expression: "main") {
+      ... on Commit {
+        checkSuites(first: 50) {
+          nodes {
+            app { slug }
+            workflowRun { workflow { name } }
+            checkRuns(first: 20) { nodes { name conclusion status } }
+          }
+        }
+      }
+    }
+  }
+}
