@@ -52,7 +52,7 @@
     "@typescript-eslint/parser": "^6.13.1",
     "@vitest/coverage-v8": "^1.6.0",
     "eslint": "^8.54.0",
-    "happy-dom": "^15.7.4",
+    "happy-dom": "^20.8.4",
     "jsdom": "^24.1.1",
     "msw": "^2.0.20",
     "tsx": "^4.6.2",
