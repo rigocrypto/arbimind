@@ -20,6 +20,9 @@ const strategyRunners: Record<string, (opts?: { referrer?: string }) => Promise<
   'market-making': strategies.runMarketMaking,
 };
 
+// Allowlist derived from the runners map — validates user input before dynamic dispatch
+const VALID_STRATEGIES = new Set<string>(Object.keys(strategyRunners));
+
 function runLoop(): void {
   if (adminStore.isEnginePaused()) return;
   const run = strategyRunners[activeStrategy as keyof typeof strategyRunners];
@@ -70,6 +73,9 @@ function runLoop(): void {
 router.post('/start', (req: Request, res: Response) => {
   try {
     const { strategy = 'arbitrage', referrer, walletAddress, walletChain } = req.body || {};
+    if (!VALID_STRATEGIES.has(strategy)) {
+      return res.status(400).json({ status: 'error', message: `Invalid strategy. Must be one of: ${[...VALID_STRATEGIES].join(', ')}` });
+    }
     activeStrategy = strategy;
     currentReferrer = typeof referrer === 'string' && /^0x[a-fA-F0-9]{40}$/.test(referrer) ? referrer : null;
     const normalizedChain = walletChain === 'solana' || walletChain === 'evm' ? walletChain : null;
@@ -188,6 +194,9 @@ router.get('/logs', (req: Request, res: Response) => {
 router.post('/single-scan', async (req: Request, res: Response) => {
   try {
     const { strategy = activeStrategy || 'arbitrage' } = req.body || {};
+    if (!VALID_STRATEGIES.has(strategy)) {
+      return res.status(400).json({ status: 'error', message: `Invalid strategy. Must be one of: ${[...VALID_STRATEGIES].join(', ')}` });
+    }
     emitEngineEvent({
       level: 'info',
       type: 'engine.scan.requested',
