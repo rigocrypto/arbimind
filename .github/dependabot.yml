@@ -1,13 +1,13 @@
 version: 2
 updates:
   - package-ecosystem: npm
-    directory: /
+    directory: "/"
     schedule:
       interval: weekly
       day: monday
       time: "06:00"
       timezone: UTC
-    open-pull-requests-limit: 8
+    open-pull-requests-limit: 5
     labels:
       - dependencies
       - dependabot
@@ -15,16 +15,16 @@ updates:
       prefix: "deps"
       include: scope
     groups:
-      production-dependencies:
-        dependency-type: production
-        update-types:
-          - patch
-          - minor
+      typescript-eslint:
+        patterns:
+          - "@typescript-eslint/*"
+      sentry:
+        patterns:
+          - "@sentry/*"
+      next-framework:
+        patterns:
+          - "next"
+          - "react"
+          - "react-dom"
       dev-dependencies:
         dependency-type: development
-        update-types:
-          - patch
-          - minor
-      major-updates:
-        update-types:
-          - major
