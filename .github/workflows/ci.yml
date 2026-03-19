@@ -33,6 +33,11 @@ jobs:
         with:
           version: nightly
 
+      - name: Install Foundry libs
+        working-directory: packages/contracts
+        run: |
+          forge install
+
       # Note: --if-present must precede the script name to be treated as a pnpm
       # flag, not forwarded as a CLI argument to vitest/jest/forge.
       - run: pnpm --filter @arbimind/bot run test
