@@ -141,7 +141,7 @@ export class ArbitrageBot {
 
     // One-time token approvals for Sepolia routers (before scan loop)
     const isSepolia = this.botConfig.network === 'testnet' && this.botConfig.evmChain === 'ethereum';
-    if (isSepolia && this.executionService) {
+    if (isSepolia && this.executionService && !this.botConfig.logOnly) {
       try {
         await this.executionService.ensureSepoliaRouterApprovals();
       } catch (e) {
@@ -149,6 +149,8 @@ export class ArbitrageBot {
           error: e instanceof Error ? e.message : String(e),
         });
       }
+    } else if (isSepolia && this.botConfig.logOnly) {
+      this.logger.info('LOG_ONLY enabled: skipping router approval transactions');
     }
 
     // Start the main loop

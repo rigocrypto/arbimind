@@ -9,6 +9,10 @@ import type { TimeseriesPoint } from '../services/portfolioService';
 let pool: Pool | null = null;
 let schemaInitialized = false;
 
+const SCHEMA_INIT_MAX_RETRIES = 3;
+const SCHEMA_INIT_RETRY_DELAY_MS = 2000;
+const TRANSIENT_SCHEMA_INIT_CODES = new Set(['40P01', '55P03', '40001']);
+
 function getPool(): Pool | null {
   const url = process.env.DATABASE_URL?.trim();
   if (!url) return null;
@@ -109,12 +113,31 @@ on funnel_events (event_ts desc);
 export async function initSchema(): Promise<void> {
   const p = getPool();
   if (!p || schemaInitialized) return;
-  try {
-    await p.query(SCHEMA_SQL);
-    schemaInitialized = true;
-    console.log('[portfolioDb] Schema initialized');
-  } catch (err) {
-    console.error('[portfolioDb] Schema init failed:', err);
+  for (let attempt = 1; attempt <= SCHEMA_INIT_MAX_RETRIES; attempt++) {
+    try {
+      await p.query(SCHEMA_SQL);
+      schemaInitialized = true;
+      console.log('[portfolioDb] Schema initialized');
+      return;
+    } catch (err) {
+      const code =
+        typeof err === 'object' && err !== null && 'code' in err
+          ? String((err as { code?: string }).code ?? '')
+          : '';
+      const shouldRetry =
+        TRANSIENT_SCHEMA_INIT_CODES.has(code) && attempt < SCHEMA_INIT_MAX_RETRIES;
+
+      if (shouldRetry) {
+        console.warn(
+          `[portfolioDb] Schema init transient failure (code=${code}), retry ${attempt}/${SCHEMA_INIT_MAX_RETRIES} in ${SCHEMA_INIT_RETRY_DELAY_MS}ms`
+        );
+        await new Promise((resolve) => setTimeout(resolve, SCHEMA_INIT_RETRY_DELAY_MS));
+        continue;
+      }
+
+      console.error('[portfolioDb] Schema init failed:', err);
+      return;
+    }
   }
 }
 
