@@ -52,10 +52,5 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build backend and bot
-        run: |
-          pnpm --filter @arbimind/backend run --if-present build
-          pnpm --filter @arbimind/bot run --if-present build
-
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
