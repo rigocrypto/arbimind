@@ -28,3 +28,18 @@ updates:
           - "react-dom"
       dev-dependencies:
         dependency-type: development
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:15"
+      timezone: UTC
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - dependabot
+    commit-message:
+      prefix: "deps"
+      include: scope
