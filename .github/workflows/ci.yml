@@ -24,7 +24,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm -r --if-present lint
+      # Only lint packages that have a working ESLint config.
+      # packages/bot and packages/backend have lint scripts but no ESLint config.
+      # packages/contracts lint requires forge (not available on standard runners).
+      - run: pnpm --filter @arbimind/ui lint
 
       - run: pnpm -r test --if-present
       - run: pnpm build
