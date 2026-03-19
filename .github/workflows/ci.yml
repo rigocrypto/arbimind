@@ -38,5 +38,4 @@ jobs:
       - run: pnpm --filter @arbimind/bot run test
       # packages/backend has no test files yet; tracked in issue #15
       # packages/contracts test suite is broken on clean checkout; tracked in issue #17
-
       - run: pnpm build
