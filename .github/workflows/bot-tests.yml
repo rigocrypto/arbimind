@@ -26,5 +26,8 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
+      - name: Lint bot code
+        run: pnpm --filter @arbimind/bot lint
+
       - name: Run bot tests
         run: pnpm --filter @arbimind/bot test:coverage
