@@ -6,12 +6,14 @@ on:
     paths:
       - 'packages/backend/**'
       - 'packages/bot/**'
+      - 'packages/ui/**'
       - '.github/workflows/codeql-analysis.yml'
   pull_request:
     branches: [main]
     paths:
       - 'packages/backend/**'
       - 'packages/bot/**'
+      - 'packages/ui/**'
       - '.github/workflows/codeql-analysis.yml'
   schedule:
     - cron: '17 3 * * 1'
