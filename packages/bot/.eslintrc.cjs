@@ -40,9 +40,10 @@ module.exports = {
         format: ['camelCase'],
       },
       {
-        // Allow snake_case for object literal properties (AI features, data structures)
+        // Skip naming convention for object literal properties as they may be
+        // config keys, feature names, enum-like constants with various naming styles
         selector: 'objectLiteralProperty',
-        format: ['camelCase', 'snake_case'],
+        format: null,
       },
     ],
   },
