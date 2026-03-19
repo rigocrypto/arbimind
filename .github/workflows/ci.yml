@@ -35,6 +35,8 @@ jobs:
 
       # Note: --if-present must precede the script name to be treated as a pnpm
       # flag, not forwarded as a CLI argument to vitest/jest/forge.
-      - run: pnpm -r --if-present run test
+      - run: pnpm --filter @arbimind/bot run test
+      - run: pnpm --filter @arbimind/backend run test -- --passWithNoTests
+      - run: pnpm --filter @arbimind/contracts run test
 
       - run: pnpm build
