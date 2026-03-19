@@ -4,6 +4,10 @@
  */
 
 import { logger } from '../utils/logger';
+import { assertAllowedOutboundUrl, getEnvHostAllowlist } from '../security/ssrf';
+
+const TELEGRAM_API_HOSTS = ['api.telegram.org'] as const;
+const DISCORD_WEBHOOK_HOSTS = ['discord.com', 'discordapp.com', ...getEnvHostAllowlist('ALERT_WEBHOOK_ALLOWLIST')];
 
 export interface AlertWebhooks {
   telegram?: { token: string; chatId: string } | undefined;
@@ -62,8 +66,14 @@ async function sendTelegram(
   message: string
 ): Promise<boolean> {
   try {
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    const telegramUrl = assertAllowedOutboundUrl(
+      `https://api.telegram.org/bot${encodeURIComponent(token)}/sendMessage`,
+      TELEGRAM_API_HOSTS
+    );
+
+    const res = await fetch(telegramUrl, {
       method: 'POST',
+      redirect: 'error',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
@@ -91,8 +101,11 @@ async function sendTelegram(
  */
 async function sendDiscord(webhookUrl: string, message: string): Promise<boolean> {
   try {
-    const res = await fetch(webhookUrl, {
+    const validatedWebhookUrl = assertAllowedOutboundUrl(webhookUrl, DISCORD_WEBHOOK_HOSTS);
+
+    const res = await fetch(validatedWebhookUrl, {
       method: 'POST',
+      redirect: 'error',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         content: message,
