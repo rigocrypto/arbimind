@@ -33,6 +33,14 @@ jobs:
         with:
           version: nightly
 
+      - name: Install Foundry libraries
+        working-directory: packages/contracts
+        run: |
+          forge install --no-commit foundry-rs/forge-std@v1.15.0
+          forge install --no-commit OpenZeppelin/openzeppelin-contracts@v4.9.6
+          forge install --no-commit Uniswap/v3-core@v1.0.0
+          forge install --no-commit Uniswap/v3-periphery@v1.3.0
+
       # Note: --if-present must precede the script name to be treated as a pnpm
       # flag, not forwarded as a CLI argument to vitest/jest/forge.
       - run: pnpm --filter @arbimind/bot run test
