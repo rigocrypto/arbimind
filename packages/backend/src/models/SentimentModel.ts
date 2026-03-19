@@ -18,7 +18,7 @@ export class SentimentModel {
 
   public async analyzeSentiment(
     tokens: string[],
-    sources: string[] = ['twitter', 'reddit', 'news']
+    _sources: string[] = ['twitter', 'reddit', 'news']
   ): Promise<{
     overallSentiment: number;
     confidence: number;
