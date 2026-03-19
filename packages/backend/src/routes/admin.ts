@@ -659,7 +659,8 @@ router.post('/snapshots/run', async (req: Request, res: Response) => {
             if (ok) success++;
             else failed++;
           } catch (err) {
-            console.warn(`[snapshots] ${chain} ${userAddress}:`, err);
+            const chainId = chain === 'evm' ? 'evm' : 'solana'; // sanitize: prevent log injection from tainted req.query.chain
+            console.warn(`[snapshots] ${chainId} ${userAddress}:`, err);
             failed++;
           }
         }

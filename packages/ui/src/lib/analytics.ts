@@ -28,7 +28,7 @@ export function getPersistentCtaVariant(): CtaVariant {
     return existing;
   }
 
-  const assigned: CtaVariant = Math.random() < 0.5 ? 'A' : 'B';
+  const assigned: CtaVariant = (crypto.getRandomValues(new Uint8Array(1))[0] & 1) === 0 ? 'A' : 'B';
   window.localStorage.setItem(CTA_VARIANT_KEY, assigned);
   return assigned;
 }

@@ -125,11 +125,14 @@ async function auditPath(browser, path) {
     });
   });
 
+  const baseHostname = (() => { try { return new URL(baseUrl).hostname; } catch { return ''; } })();
   page.on('response', (res) => {
     const status = res.status();
     if (status < 400) return;
     const url = res.url();
-    if (!url.includes(baseUrl) && !url.includes('/api/')) return;
+    let resHost = '';
+    try { resHost = new URL(url).hostname; } catch { /* ignore unparseable URLs */ }
+    if (resHost !== baseHostname && !url.includes('/api/')) return;
     badResponses.push({ url: short(url), status });
   });
 
