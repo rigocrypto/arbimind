@@ -2,26 +2,24 @@
 pragma solidity ^0.8.20;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
+/// @notice Minimal adapter interface each strategy must implement
+interface IStrategyAdapter {
+    /// @param params ABI-encoded strategy-specific params
+    /// @return pnl Signed PnL in wei (positive = profit, negative = loss)
+    /// @return gasUsed Best-effort gas used reported by the adapter (optional, can be 0)
+    function execute(bytes calldata params) external payable returns (int256 pnl, uint256 gasUsed);
+}
 
 /// @title ArbiMindStrategyManager
 /// @notice Strategy manager that routes execution to pluggable strategy adapters and enforces risk limits
 /// @dev Adapters implement IStrategyAdapter and encapsulate specific strategy logic (arbitrage, trend, market-making)
 contract ArbiMindStrategyManager is Ownable, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
-
-    // ============ Interfaces ============
-
-    /// @notice Minimal adapter interface each strategy must implement
-    interface IStrategyAdapter {
-        /// @param params ABI-encoded strategy-specific params
-        /// @return pnl Signed PnL in wei (positive = profit, negative = loss)
-        /// @return gasUsed Best-effort gas used reported by the adapter (optional, can be 0)
-        function execute(bytes calldata params) external payable returns (int256 pnl, uint256 gasUsed);
-    }
 
     // ============ Errors ============
 
@@ -41,8 +39,6 @@ contract ArbiMindStrategyManager is Ownable, ReentrancyGuard, Pausable {
     event ExecutorUpdated(address indexed executor);
     event TreasuryUpdated(address indexed treasury);
     event MaxDailyLossUpdated(uint256 maxDailyLossWei);
-    event Paused(address indexed account);
-    event Unpaused(address indexed account);
 
     // ============ Storage ============
 
@@ -198,12 +194,10 @@ contract ArbiMindStrategyManager is Ownable, ReentrancyGuard, Pausable {
 
     function pause() external onlyOwner {
         _pause();
-        emit Paused(msg.sender);
     }
 
     function unpause() external onlyOwner {
         _unpause();
-        emit Unpaused(msg.sender);
     }
 
     // ============ Sweeps ============

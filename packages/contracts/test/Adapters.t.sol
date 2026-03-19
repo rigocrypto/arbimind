@@ -14,7 +14,9 @@ contract AdaptersTest is Test {
     address public positionManager = address(0x456);
     address public factory = address(0x789);
     address public weth = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-    address public usdc = address(0xA0b86a33E6441b8C4C8C8C8C8C8C8C8C8C8C8C8);
+    address public usdc = address(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
+
+    receive() external payable {}
     
     function setUp() public {
         trendAdapter = new TrendAdapter(oracle);
@@ -104,11 +106,13 @@ contract AdaptersTest is Test {
     }
 
     function testMarketMakerAdapterEmergencyWithdrawETH() public {
-        // Mock ETH balance
+        uint256 balanceBefore = address(this).balance;
         vm.deal(address(marketMakerAdapter), 1 ether);
-        
+
         vm.prank(address(this));
         marketMakerAdapter.emergencyWithdrawETH();
+
+        assertEq(address(this).balance - balanceBefore, 1 ether);
     }
 
     // Integration Tests
