@@ -2,6 +2,10 @@ name: Deploy UI to Vercel
 on:
   push:
     branches: [main]
+
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest

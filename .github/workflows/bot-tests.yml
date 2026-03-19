@@ -9,6 +9,9 @@ on:
     paths:
       - 'packages/bot/**'
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
