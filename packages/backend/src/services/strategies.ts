@@ -30,7 +30,7 @@ export async function runArbitrage(opts?: StrategyOpts): Promise<StrategyRunSumm
   };
 }
 
-export async function runTrend(opts?: StrategyOpts): Promise<StrategyRunSummary> {
+export async function runTrend(_opts?: StrategyOpts): Promise<StrategyRunSummary> {
   // TODO: Trend following, momentum signals
   const signal = Math.random() > 0.5 ? 'bullish' : 'bearish';
   console.log(`📈 Trend: WETH ${signal} momentum → Scanning entry`);
@@ -40,7 +40,7 @@ export async function runTrend(opts?: StrategyOpts): Promise<StrategyRunSummary>
   };
 }
 
-export async function runMarketMaking(opts?: StrategyOpts): Promise<StrategyRunSummary> {
+export async function runMarketMaking(_opts?: StrategyOpts): Promise<StrategyRunSummary> {
   // TODO: MM positions, Uniswap V3 liquidity
   const spread = (0.2 + Math.random() * 0.2).toFixed(2);
   console.log(`💧 MM: WETH/USDC ±${spread}% spread → Monitoring`);
