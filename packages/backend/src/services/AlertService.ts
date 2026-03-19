@@ -292,7 +292,7 @@ export async function dispatchAlert(pred: AlertPrediction, webhooks: AlertWebhoo
         webhooks.reddit.subreddit,
         process.env.ALERT_REDDIT_USER_AGENT || 'ArbiMind/1.0',
         title,
-        message.replace(/<[^>]*>/g, '') // Remove HTML tags for Reddit
+        message.replace(/<[^>]{0,200}>/g, '').replace(/[<>]/g, '') // Strip HTML tags (bounded, two-pass — no ReDoS, no residual angle brackets)
       );
       logger.info('Reddit alert dispatched', { success: results.reddit, pair: pred.pairAddress });
     }
