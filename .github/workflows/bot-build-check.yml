@@ -11,6 +11,9 @@ on:
       - 'packages/bot/**'
       - '.github/workflows/bot-build-check.yml'
 
+permissions:
+  contents: read
+
 jobs:
   bot-build-check:
     runs-on: ubuntu-latest
