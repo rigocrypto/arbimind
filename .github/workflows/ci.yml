@@ -26,8 +26,15 @@ jobs:
 
       # Only lint packages that have a working ESLint config.
       # packages/bot and packages/backend have lint scripts but no ESLint config.
-      # packages/contracts lint requires forge (not available on standard runners).
+      # packages/contracts lint requires forge (see step below).
       - run: pnpm --filter @arbimind/ui lint
 
-      - run: pnpm -r test --if-present
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      # Note: --if-present must precede the script name to be treated as a pnpm
+      # flag, not forwarded as a CLI argument to vitest/jest/forge.
+      - run: pnpm -r --if-present run test
+
       - run: pnpm build
