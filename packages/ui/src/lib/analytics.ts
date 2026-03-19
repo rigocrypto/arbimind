@@ -46,7 +46,7 @@ function getPersistentSessionId(): string {
   const generated =
     (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
       ? crypto.randomUUID()
-      : `sess_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
+      : `sess_${Date.now()}_${window.performance.now().toFixed(0)}`;
 
   window.sessionStorage.setItem(SESSION_ID_KEY, generated);
   return generated;
