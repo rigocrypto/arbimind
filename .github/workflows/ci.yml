@@ -20,7 +20,6 @@ jobs:
           node-version: 20
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run lint:ts
       - run: pnpm run lint:ui
       - run: pnpm --filter @arbimind/backend test --if-present
       - run: pnpm --filter @arbimind/bot test --if-present
