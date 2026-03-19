@@ -39,6 +39,11 @@ module.exports = {
         selector: 'memberLike',
         format: ['camelCase'],
       },
+      {
+        // Allow snake_case for object literal properties (AI features, data structures)
+        selector: 'objectLiteralProperty',
+        format: ['camelCase', 'snake_case'],
+      },
     ],
   },
   overrides: [
