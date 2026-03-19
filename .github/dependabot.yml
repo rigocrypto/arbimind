@@ -1,0 +1,30 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 8
+    labels:
+      - dependencies
+      - dependabot
+    commit-message:
+      prefix: "deps"
+      include: scope
+    groups:
+      production-dependencies:
+        dependency-type: production
+        update-types:
+          - patch
+          - minor
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - patch
+          - minor
+      major-updates:
+        update-types:
+          - major

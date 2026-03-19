@@ -6,14 +6,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Reject npm lockfiles changed in this PR
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '(^|/)package-lock\.json$' >/dev/null; then
+            echo 'package-lock.json changes are not allowed in this pnpm workspace.'
+            exit 1
+          fi
+
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'pnpm'
+
       - run: pnpm install --frozen-lockfile
-      - run: pnpm -r lint
+
+      - run: pnpm -r --if-present lint
+
       - run: pnpm -r test --if-present
       - run: pnpm build
