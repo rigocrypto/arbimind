@@ -20,7 +20,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run lint:ts
       - run: pnpm run lint:ui
-      - run: pnpm --filter @arbimind/backend run --if-present test -- --passWithNoTests
+      - run: pnpm --filter @arbimind/backend run --if-present test --passWithNoTests
       - run: pnpm --filter @arbimind/bot run --if-present test
       - run: pnpm --filter @arbimind/ui run --if-present test
       - run: pnpm build
