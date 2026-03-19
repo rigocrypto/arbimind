@@ -53,7 +53,7 @@ contract TrendAdapter is Ownable, ReentrancyGuard {
         uint24 fee; // Uniswap V3 fee tier
     }
 
-    constructor(address _oracle) Ownable(msg.sender) {
+    constructor(address _oracle) {
         oracle = _oracle;
         minConfidence = 7000; // 70% default
         maxSlippage = 500; // 5% default

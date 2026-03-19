@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Script} from "forge-std/Script.sol";
+import {console2} from "forge-std/console2.sol";
 import {ArbExecutor} from "../src/ArbExecutor.sol";
 
 /**
@@ -21,7 +22,7 @@ contract Deploy is Script {
 
     // Mainnet token addresses
     address public constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-    address public constant USDC = 0xA0b86a33E6441b8C4C8C8C8C8C8C8C8C8C8C8C8;
+    address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address public constant USDT = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
     address public constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
 
@@ -51,11 +52,11 @@ contract Deploy is Script {
         vm.stopBroadcast();
 
         // Log deployment information
-        console.log("=== ArbiMind Deployment ===");
-        console.log("ArbExecutor deployed at:", address(arbExecutor));
-        console.log("Executor address:", EXECUTOR);
-        console.log("Treasury address:", TREASURY);
-        console.log("Min profit threshold:", MIN_PROFIT_THRESHOLD);
-        console.log("==========================");
+        console2.log("=== ArbiMind Deployment ===");
+        console2.log("ArbExecutor deployed at:", address(arbExecutor));
+        console2.log("Executor address:", EXECUTOR);
+        console2.log("Treasury address:", TREASURY);
+        console2.log("Min profit threshold:", MIN_PROFIT_THRESHOLD);
+        console2.log("==========================");
     }
 }
