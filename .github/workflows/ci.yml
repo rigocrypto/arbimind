@@ -8,8 +8,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Reject npm lockfiles
         run: |
-          if git ls-files | grep -E '(^|/)package-lock\.json$' >/dev/null; then
-            echo 'package-lock.json is not allowed in this pnpm workspace.'
+          changed_files=$(git diff-tree --no-commit-id --name-status -r HEAD)
+          if echo "$changed_files" | grep -E '^[AMR].*(^|/)package-lock\.json$' >/dev/null; then
+            echo 'package-lock.json additions/modifications are not allowed in this pnpm workspace.'
+            echo "$changed_files" | grep -E 'package-lock\.json$' || true
             exit 1
           fi
       - uses: pnpm/action-setup@v4
