@@ -10,8 +10,10 @@ import {
   updatePredictionResult,
   getPredictionAccuracy,
 } from '../db/portfolioDb';
+import { assertAllowedOutboundUrl } from '../security/ssrf';
 
 const router = express.Router();
+const DEXSCREENER_API_HOSTS = ['api.dexscreener.com'] as const;
 
 type DexSnapshot = {
   ts: number;
@@ -121,8 +123,11 @@ function recordDexSnapshot(chain: string, pair: string, p: any): DexSnapshot[] {
 }
 
 async function fetchDexPair(chain: string, pair: string): Promise<any | null> {
-  const url = `https://api.dexscreener.com/latest/dex/pairs/${chain}/${pair}`;
-  const r = await fetch(url);
+  const url = assertAllowedOutboundUrl(
+    `https://api.dexscreener.com/latest/dex/pairs/${encodeURIComponent(chain)}/${encodeURIComponent(pair)}`,
+    DEXSCREENER_API_HOSTS
+  );
+  const r = await fetch(url, { redirect: 'error' });
   if (!r.ok) return null;
   const data = (await r.json()) as { pairs?: Array<any> };
   return data.pairs?.[0] ?? null;
