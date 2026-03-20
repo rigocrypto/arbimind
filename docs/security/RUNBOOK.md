@@ -1,4 +1,4 @@
-﻿# Security Runbook
+# Security Runbook
 
 This runbook defines the minimum security operations process for ArbiMind.
 
