@@ -27,7 +27,7 @@
     ]
   },
   "dependencies": {
-    "@sentry/node": "^10.25.0",
+    "@sentry/node": "^10.45.0",
     "@solana/web3.js": "^1.98.4",
     "@tensorflow/tfjs": "^4.22.0",
     "@tensorflow/tfjs-node": "^4.22.0",
