@@ -70,7 +70,7 @@ function runLoop(): void {
     });
 }
 
-router.post('/start', (req: Request, res: Response) => {
+router.post('/start', (req: Request, res: Response): Response => {
   try {
     const { strategy = 'arbitrage', referrer, walletAddress, walletChain } = req.body || {};
     if (!VALID_STRATEGIES.has(strategy)) {
@@ -122,7 +122,7 @@ router.post('/start', (req: Request, res: Response) => {
         currentReferrer ? ` (ref: ${currentReferrer.slice(0, 10)}...)` : ''
       }${activeWalletChain && activeWalletAddress ? ` (wallet: ${activeWalletChain}:${activeWalletAddress.slice(0, 10)}...)` : ''}`
     );
-    res.json({
+    return res.json({
       status: 'success',
       strategy,
       active: true,
@@ -133,7 +133,7 @@ router.post('/start', (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Engine start error:', error);
-    res.status(500).json({ success: false, message: 'Failed to start engine' });
+    return res.status(500).json({ success: false, message: 'Failed to start engine' });
   }
 });
 
@@ -191,7 +191,7 @@ router.get('/logs', (req: Request, res: Response) => {
   });
 });
 
-router.post('/single-scan', async (req: Request, res: Response) => {
+router.post('/single-scan', async (req: Request, res: Response): Promise<Response> => {
   try {
     const { strategy = activeStrategy || 'arbitrage' } = req.body || {};
     if (!VALID_STRATEGIES.has(strategy)) {
@@ -227,7 +227,7 @@ router.post('/single-scan', async (req: Request, res: Response) => {
       });
     }
     console.log(`🔍 Single scan: ${strategy}`);
-    res.json({ status: 'scan-started', strategy, timestamp: Date.now() });
+    return res.json({ status: 'scan-started', strategy, timestamp: Date.now() });
   } catch (error) {
     console.error('Single scan error:', error);
     const failedStrategyId =
@@ -240,7 +240,7 @@ router.post('/single-scan', async (req: Request, res: Response) => {
       msg: error instanceof Error ? error.message : 'Single scan failed',
       ...(failedStrategyId ? { strategyId: failedStrategyId } : {}),
     });
-    res.status(500).json({ success: false, message: 'Single scan failed' });
+    return res.status(500).json({ success: false, message: 'Single scan failed' });
   }
 });
 
