@@ -61,16 +61,17 @@ module.exports = {
         leadingUnderscore: 'allow',
       },
     ],
-    // Relax 'any' enforcement for backend where type information may not be available
-    // (dynamic external data, third-party APIs, legacy integrations)
     '@typescript-eslint/no-explicit-any': [
-      'warn',
+      'error',
       { ignoreRestArgs: true },
     ],
   },
   overrides: [
     {
       files: ['src/**/*.test.ts', 'tests/**/*.ts'],
+      parserOptions: {
+        project: null,
+      },
       env: {
         jest: true,
       },

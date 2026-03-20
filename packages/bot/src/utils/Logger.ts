@@ -7,6 +7,13 @@ export class Logger {
   private logger: winston.Logger;
   private context: string;
 
+  private withContext(meta?: unknown): Record<string, unknown> {
+    if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
+      return { ...(meta as Record<string, unknown>), context: this.context };
+    }
+    return { context: this.context, meta };
+  }
+
   constructor(context: string) {
     this.context = context;
 
@@ -47,23 +54,23 @@ export class Logger {
     });
   }
 
-  public error(message: string, meta?: any): void {
-    this.logger.error(message, { ...meta, context: this.context });
+  public error(message: string, meta?: unknown): void {
+    this.logger.error(message, this.withContext(meta));
   }
 
-  public warn(message: string, meta?: any): void {
-    this.logger.warn(message, { ...meta, context: this.context });
+  public warn(message: string, meta?: unknown): void {
+    this.logger.warn(message, this.withContext(meta));
   }
 
-  public info(message: string, meta?: any): void {
-    this.logger.info(message, { ...meta, context: this.context });
+  public info(message: string, meta?: unknown): void {
+    this.logger.info(message, this.withContext(meta));
   }
 
-  public debug(message: string, meta?: any): void {
-    this.logger.debug(message, { ...meta, context: this.context });
+  public debug(message: string, meta?: unknown): void {
+    this.logger.debug(message, this.withContext(meta));
   }
 
-  public log(level: LogLevel, message: string, meta?: any): void {
-    this.logger.log(level, message, { ...meta, context: this.context });
+  public log(level: LogLevel, message: string, meta?: unknown): void {
+    this.logger.log(level, message, this.withContext(meta));
   }
 }
