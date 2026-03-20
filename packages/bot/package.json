@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@tensorflow/tfjs-node": "^4.22.0",
-    "axios": "^1.6.2",
+    "axios": "^1.13.5",
     "big.js": "^6.2.1",
     "decimal.js": "^10.4.3",
     "dotenv": "^16.3.1",
