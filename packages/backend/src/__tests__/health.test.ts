@@ -5,6 +5,8 @@ import healthRoutes from '../routes/health';
 
 describe('GET /healthz', () => {
   it('returns 200 and a healthy status payload', async () => {
+    // Construct an isolated app instance — does NOT import index.ts,
+    // so no DB/WS/env initialization occurs during test runs.
     const app = express();
     app.use('/healthz', healthRoutes);
 
