@@ -25,10 +25,19 @@ type DexSnapshot = {
 };
 
 type DexPair = {
+  chainId?: string;
+  dexId?: string;
+  pairAddress?: string;
+  baseToken?: { address?: string; name?: string; symbol?: string };
+  quoteToken?: { address?: string; name?: string; symbol?: string };
   priceUsd?: string | number;
+  priceChange?: Record<string, number>;
   liquidity?: { usd?: string | number };
-  volume?: { h24?: string | number };
-  txns?: { h1?: { buys?: string | number; sells?: string | number } };
+  volume?: { h1?: string | number; h24?: string | number };
+  txns?: {
+    h1?: { buys?: string | number; sells?: string | number };
+    h24?: { buys?: string | number; sells?: string | number };
+  };
 };
 
 type WatchItem = {
