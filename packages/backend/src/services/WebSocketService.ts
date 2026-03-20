@@ -56,14 +56,19 @@ export class WebSocketService {
     }
   }
 
-  private handleMessage(ws: WebSocket, message: any): void {
+  private handleMessage(ws: WebSocket, message: unknown): void {
+    const msgType =
+      typeof message === 'object' && message !== null && 'type' in message
+        ? (message as { type?: unknown }).type
+        : undefined;
+
     // Handle different message types
-    switch (message.type) {
+    switch (msgType) {
       case 'ping':
         ws.send(JSON.stringify({ type: 'pong', timestamp: new Date().toISOString() }));
         break;
       default:
-        logger.debug('Unknown message type', { type: message.type });
+        logger.debug('Unknown message type', { type: msgType });
     }
   }
 
@@ -81,7 +86,7 @@ export class WebSocketService {
     }, interval);
   }
 
-  public broadcast(message: any): void {
+  public broadcast(message: unknown): void {
     const data = JSON.stringify(message);
     this.connections.forEach((ws) => {
       if (ws.readyState === WebSocket.OPEN) {

@@ -76,7 +76,10 @@ export class AIService {
     return this.arbModel.predict(input);
   }
 
-  public async analyzeSentiment(tokens: string[], sources?: string[]): Promise<any> {
+  public async analyzeSentiment(
+    tokens: string[],
+    sources?: string[]
+  ): Promise<Awaited<ReturnType<SentimentModel['analyzeSentiment']>>> {
     await this.initialize();
     return this.sentimentModel.analyzeSentiment(tokens, sources);
   }
@@ -94,7 +97,11 @@ export class AIService {
     }
   }
 
-  public async getModelsStatus(): Promise<any> {
+  public async getModelsStatus(): Promise<{
+    arb: { loaded: boolean };
+    sentiment: Awaited<ReturnType<SentimentModel['getStatus']>>;
+    risk: Awaited<ReturnType<RiskModel['getStatus']>>;
+  }> {
     await this.initialize();
     return {
       arb: {

@@ -24,6 +24,22 @@ type DexSnapshot = {
   sellsH1?: number;
 };
 
+type DexPair = {
+  chainId?: string;
+  dexId?: string;
+  pairAddress?: string;
+  baseToken?: { address?: string; name?: string; symbol?: string };
+  quoteToken?: { address?: string; name?: string; symbol?: string };
+  priceUsd?: string | number;
+  priceChange?: Record<string, number>;
+  liquidity?: { usd?: string | number };
+  volume?: { h1?: string | number; h24?: string | number };
+  txns?: {
+    h1?: { buys?: string | number; sells?: string | number };
+    h24?: { buys?: string | number; sells?: string | number };
+  };
+};
+
 type WatchItem = {
   chain: string;
   pairAddress: string;
@@ -97,7 +113,7 @@ function pruneWatchlist(): void {
   }
 }
 
-function recordDexSnapshot(chain: string, pair: string, p: any): DexSnapshot[] {
+function recordDexSnapshot(chain: string, pair: string, p: DexPair): DexSnapshot[] {
   const now = Date.now();
   const key = `dex:history:${chain}:${pair}`;
   const existing = dexHistory.get(key) ?? [];
@@ -122,14 +138,14 @@ function recordDexSnapshot(chain: string, pair: string, p: any): DexSnapshot[] {
   return trimmed;
 }
 
-async function fetchDexPair(chain: string, pair: string): Promise<any | null> {
+async function fetchDexPair(chain: string, pair: string): Promise<DexPair | null> {
   const url = assertAllowedOutboundUrl(
     `https://api.dexscreener.com/latest/dex/pairs/${encodeURIComponent(chain)}/${encodeURIComponent(pair)}`,
     DEXSCREENER_API_HOSTS
   );
   const r = await fetch(url, { redirect: 'error' });
   if (!r.ok) return null;
-  const data = (await r.json()) as { pairs?: Array<any> };
+  const data = (await r.json()) as { pairs?: DexPair[] };
   return data.pairs?.[0] ?? null;
 }
 

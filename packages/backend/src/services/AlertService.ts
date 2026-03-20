@@ -48,7 +48,7 @@ async function getRedditToken(clientId: string, secret: string, userAgent: strin
       return null;
     }
 
-    const data = (await res.json()) as any;
+    const data = (await res.json()) as { access_token?: string };
     return data.access_token ?? null;
   } catch (error) {
     logger.debug('Reddit token error', {

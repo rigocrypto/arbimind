@@ -55,7 +55,7 @@ export interface TrainingData {
     gasUsed: number;
   };
   timestamp: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ModelFeedback {
@@ -66,7 +66,7 @@ export interface ModelFeedback {
     gasUsed: number;
   };
   feedback: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface PerformanceMetrics {
@@ -105,7 +105,7 @@ export interface MarketData {
 
 export interface WebSocketMessage {
   type: 'prediction' | 'opportunity' | 'sentiment' | 'performance';
-  data: any;
+  data: unknown;
   timestamp: string;
 }
 
