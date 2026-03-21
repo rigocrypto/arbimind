@@ -81,7 +81,7 @@ export function useBalanceGuard() {
     // Defer past hydration + modal close so we don't trigger "setState during render" in RainbowKit
     const t = setTimeout(() => checkBalance(), 2000);
     return () => clearTimeout(t);
-  }, [isConnected, checkBalance]);
+  }, [isConnected, address, checkBalance]);
 
   return { checkBalance, ethBalance, usdcBalance, minEth: MIN_ETH, minUsdc: MIN_USDC };
 }
