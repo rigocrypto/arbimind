@@ -95,3 +95,9 @@ gh pr checks <PR_NUMBER> --repo rigocrypto/arbimind
 
 - Repo owner/maintainer: accountable for policy and emergency actions
 - Contributors: accountable for fixing alerts introduced by their changes
+
+## Dependency PR Policy
+
+- Major framework upgrades (for example Next/React major versions) must be handled as dedicated migration PRs and not bundled into routine dependency bumps.
+- Large dev-dependency lockfile churn (roughly more than 500 lines of lockfile diff) must be split into smaller PRs that each go green independently.
+
