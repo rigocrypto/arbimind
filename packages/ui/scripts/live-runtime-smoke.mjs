@@ -18,11 +18,6 @@ const fatalConsolePatterns = [
   /Text content does not match server-rendered HTML/i,
 ];
 
-const softConsolePatterns = [
-  /ChunkLoadError/i,
-  /Loading chunk .* failed/i,
-];
-
 function short(text, max = 220) {
   if (!text) return '';
   return text.length > max ? `${text.slice(0, max)}…` : text;
@@ -30,10 +25,6 @@ function short(text, max = 220) {
 
 function isBenignAbort(url, reason) {
   return reason.includes('ERR_ABORTED') && url.includes('_rsc=');
-}
-
-function isSoftConsoleError(message) {
-  return softConsolePatterns.some((pattern) => pattern.test(message));
 }
 
 function isHardConsoleError(message) {

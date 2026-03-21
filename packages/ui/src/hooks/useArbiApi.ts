@@ -211,7 +211,7 @@ async function fetchWithFallback<T>(
       return { data: mockData, shouldRetry: false };
     }
     return { data: mockData, shouldRetry: true };
-  } catch (error) {
+  } catch {
     // Network errors - use mock data, but don't spam retries
     return { data: mockData, shouldRetry: false };
   }
