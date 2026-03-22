@@ -12,6 +12,12 @@ const config = [
       'react-hooks/preserve-manual-memoization': 'off',
       'react-hooks/incompatible-library': 'off',
       'react-hooks/purity': 'off',
+      '@typescript-eslint/no-require-imports': 'error'
+    }
+  },
+  {
+    files: ['next.config.js'],
+    rules: {
       '@typescript-eslint/no-require-imports': 'off'
     }
   }
