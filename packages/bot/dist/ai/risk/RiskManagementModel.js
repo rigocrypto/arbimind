@@ -97,7 +97,7 @@ class RiskManagementModel {
      * Calculate recommended slippage based on market conditions
      */
     calculateRecommendedSlippage(marketData) {
-        let baseSlippage = 0.5; // 0.5% base slippage
+        const baseSlippage = 0.5; // 0.5% base slippage
         // Adjust for volatility
         const volatilityAdjustment = marketData.volatility * 2;
         // Adjust for liquidity
@@ -114,7 +114,7 @@ class RiskManagementModel {
      * Calculate gas price recommendation
      */
     calculateGasPriceRecommendation(marketData) {
-        let baseGasPrice = 20; // 20 gwei base
+        const baseGasPrice = 20; // 20 gwei base
         // Adjust for competition
         const competitionAdjustment = marketData.competitionLevel * 2;
         // Adjust for volatility (higher volatility = higher gas for faster execution)
