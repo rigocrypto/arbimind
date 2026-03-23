@@ -25,7 +25,6 @@ export function ProfitTicker({
   useEffect(() => {
     const previous = previousRef.current;
     const nextDirection = value > previous ? 'up' : value < previous ? 'down' : 'flat';
-    setDeltaDirection(nextDirection);
 
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
@@ -35,8 +34,14 @@ export function ProfitTicker({
     const startMs = performance.now();
 
     const easeOutCubic = (x: number) => 1 - Math.pow(1 - x, 3);
+    let hasSetDirection = false;
 
     const tick = (nowMs: number) => {
+      if (!hasSetDirection) {
+        hasSetDirection = true;
+        setDeltaDirection(nextDirection);
+      }
+
       const elapsed = nowMs - startMs;
       const progress = Math.min(1, elapsed / durationMs);
       const eased = easeOutCubic(progress);
