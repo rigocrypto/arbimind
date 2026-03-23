@@ -131,7 +131,7 @@ class SentimentAnalyzer {
             // Simulate sentiment based on time of day (market hours)
             const hour = new Date().getHours();
             const isMarketHours = hour >= 9 && hour <= 17;
-            let baseSentiment = isMarketHours ? 0.2 : 0.1;
+            const baseSentiment = isMarketHours ? 0.2 : 0.1;
             const randomFactor = (Math.random() - 0.5) * 0.4;
             return Math.max(-1, Math.min(1, baseSentiment + randomFactor));
         }

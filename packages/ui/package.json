@@ -42,14 +42,14 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
-    "@playwright/test": "^1.58.1",
+    "@playwright/test": "^1.58.2",
     "@types/node": "^20.10.0",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
-    "autoprefixer": "^10.4.16",
+    "autoprefixer": "^10.4.27",
     "eslint": "^9.39.1",
-    "eslint-config-next": "16.2.0",
-    "postcss": "^8.4.32",
+    "eslint-config-next": "16.2.1",
+    "postcss": "^8.5.8",
     "tailwindcss": "^3.3.6",
     "tsx": "^4.19.2",
     "typescript": "5.3.3"

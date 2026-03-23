@@ -1,6 +1,6 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, Router } from 'express';
 
-const router = express.Router();
+const router: Router = express.Router();
 
 // In-memory stub – replace with real scanner/DB when wired
 const MOCK_OPPORTUNITIES = [

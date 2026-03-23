@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, Router } from 'express';
 import {
   Connection,
   Keypair,
@@ -53,7 +53,7 @@ function parseTreasuryKeypair(): Keypair {
   }
 }
 
-const router = express.Router();
+const router: Router = express.Router();
 const connection = new Connection(resolveSolanaRpc(), 'confirmed');
 
 /**

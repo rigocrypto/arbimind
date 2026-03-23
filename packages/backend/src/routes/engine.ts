@@ -1,9 +1,9 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, Router } from 'express';
 import * as strategies from '../services/strategies';
 import { adminStore } from '../store/adminStore';
 import { emitEngineEvent, getEngineEvents } from '../services/engineActivity';
 
-const router = express.Router();
+const router: Router = express.Router();
 
 let activeStrategy = '';
 let currentReferrer: string | null = null;

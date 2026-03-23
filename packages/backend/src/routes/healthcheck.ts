@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { logger } from '../utils/logger';
 
-export const router = Router();
+export const router: Router = Router();
 
 /**
  * Health check endpoint with system metrics

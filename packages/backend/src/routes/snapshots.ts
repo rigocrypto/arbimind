@@ -1,7 +1,7 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, Router } from 'express';
 import { getLastSnapshotRun, isDbAvailable } from '../db/portfolioDb';
 
-const router = express.Router();
+const router: Router = express.Router();
 const STALE_THRESHOLD_MS = 36 * 60 * 60 * 1000; // 36 hours
 
 /**
