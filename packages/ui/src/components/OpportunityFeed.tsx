@@ -14,6 +14,7 @@ import toast from 'react-hot-toast';
 interface OpportunityFeedProps {
   opportunities: Opportunity[];
   onExecute?: (id: string) => void;
+  onSelectOpportunity?: (opportunity: Opportunity) => void;
 }
 
 // Component to display relative time (avoids hydration errors)
@@ -22,7 +23,7 @@ function RelativeTime({ timestamp }: { timestamp: number | string | Date }) {
   return <span className="text-xs text-dark-400">{relativeTime}</span>;
 }
 
-export function OpportunityFeed({ opportunities, onExecute }: OpportunityFeedProps) {
+export function OpportunityFeed({ opportunities, onExecute, onSelectOpportunity }: OpportunityFeedProps) {
   const { execute } = useExecute();
   const { isConnected } = useAccount();
   const { checkBalance } = useBalanceGuard();
@@ -127,7 +128,8 @@ export function OpportunityFeed({ opportunities, onExecute }: OpportunityFeedPro
                 return (
                   <tr
                     key={opp.id}
-                    className="hover:bg-cyan-500/5 transition-colors duration-200"
+                    className="hover:bg-cyan-500/5 transition-colors duration-200 cursor-pointer"
+                    onClick={() => onSelectOpportunity?.(opp)}
                   >
                     <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
                       <span className="text-xs sm:text-sm font-medium text-white">{opp.pair}</span>
@@ -171,7 +173,10 @@ export function OpportunityFeed({ opportunities, onExecute }: OpportunityFeedPro
                         <div className="flex gap-2">
                           <button
                             type="button"
-                            onClick={() => handleExecute(opp.id)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleExecute(opp.id);
+                            }}
                             disabled={isExecuting}
                             className="px-3 py-1.5 rounded-lg bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 text-green-400 text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer focus:outline-none focus:ring-2 focus:ring-green-500/50"
                           >
@@ -179,7 +184,10 @@ export function OpportunityFeed({ opportunities, onExecute }: OpportunityFeedPro
                           </button>
                           <button
                             type="button"
-                            onClick={() => setShowConfirm(null)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setShowConfirm(null);
+                            }}
                             className="px-3 py-1.5 rounded-lg bg-dark-700/50 hover:bg-dark-600 border border-dark-600 text-dark-300 text-xs font-medium transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-dark-500/50"
                           >
                             Cancel
@@ -188,7 +196,8 @@ export function OpportunityFeed({ opportunities, onExecute }: OpportunityFeedPro
                       ) : (
                         <button
                           type="button"
-                          onClick={() => {
+                            onClick={(event) => {
+                              event.stopPropagation();
                             if (!isConnected) {
                               toast.error('Connect wallet to execute!');
                               return;
