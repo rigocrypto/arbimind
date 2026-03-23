@@ -57,6 +57,11 @@ const nextConfig = {
     };
     return config;
   },
+  turbopack: {
+    resolveAlias: {
+      'pino-pretty': './pino-pretty-stub.js'
+    }
+  },
   output: process.env['NEXT_OUTPUT'] === 'standalone' ? 'standalone' : undefined
 };
 
