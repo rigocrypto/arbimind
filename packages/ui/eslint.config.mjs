@@ -14,12 +14,6 @@ const config = [
       'react-hooks/purity': 'off',
       '@typescript-eslint/no-require-imports': 'error'
     }
-  },
-  {
-    files: ['next.config.js'],
-    rules: {
-      '@typescript-eslint/no-require-imports': 'off'
-    }
   }
 ];
 
