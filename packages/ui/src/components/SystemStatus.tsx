@@ -51,6 +51,16 @@ const serviceIcons: Record<string, ComponentType<{ className?: string }>> = {
   'Blockchain RPC': Database,
 };
 
+const MOCK_BASE_TIME_MS = Date.parse('2026-01-01T00:00:00.000Z');
+
+const mockLogEntries = [
+  { offsetMs: 0, message: 'Backend API: Connected' },
+  { offsetMs: 5000, message: 'Bot Engine: Running' },
+  { offsetMs: 10000, message: 'WebSocket: 127 connections' },
+  { offsetMs: 15000, message: 'Strategy Manager: 3 strategies active' },
+  { offsetMs: 20000, message: 'RPC: Ethereum mainnet synced' },
+] as const;
+
 export function SystemStatus() {
   const { health } = useHealth();
   const [showDiagnostics, setShowDiagnostics] = useState(false);
@@ -61,31 +71,31 @@ export function SystemStatus() {
       name: 'Backend API',
       status: health.status === 'ok' ? 'healthy' : health.status === 'degraded' ? 'degraded' : 'down',
       latency: 145,
-      lastCheck: Date.now(),
+      lastCheck: MOCK_BASE_TIME_MS,
     },
     {
       name: 'Bot Engine',
       status: health.status === 'ok' ? 'healthy' : 'degraded',
       latency: 120,
-      lastCheck: Date.now() - 5000,
+      lastCheck: MOCK_BASE_TIME_MS - 5000,
     },
     {
       name: 'WebSocket',
       status: 'healthy',
       latency: 45,
-      lastCheck: Date.now() - 2000,
+      lastCheck: MOCK_BASE_TIME_MS - 2000,
     },
     {
       name: 'Strategy Manager',
       status: 'healthy',
       latency: 89,
-      lastCheck: Date.now() - 3000,
+      lastCheck: MOCK_BASE_TIME_MS - 3000,
     },
     {
       name: 'Blockchain RPC',
       status: 'healthy',
       latency: 234,
-      lastCheck: Date.now() - 1000,
+      lastCheck: MOCK_BASE_TIME_MS - 1000,
     },
   ];
 
@@ -146,11 +156,11 @@ export function SystemStatus() {
         <div className="mt-6 p-4 rounded-lg bg-dark-800/50 border border-dark-700">
           <h4 className="text-sm font-medium text-white mb-3">System Logs</h4>
           <div className="space-y-2 font-mono text-xs text-dark-400">
-            <div>[{new Date().toISOString()}] Backend API: Connected</div>
-            <div>[{new Date(Date.now() - 5000).toISOString()}] Bot Engine: Running</div>
-            <div>[{new Date(Date.now() - 10000).toISOString()}] WebSocket: 127 connections</div>
-            <div>[{new Date(Date.now() - 15000).toISOString()}] Strategy Manager: 3 strategies active</div>
-            <div>[{new Date(Date.now() - 20000).toISOString()}] RPC: Ethereum mainnet synced</div>
+            {mockLogEntries.map((entry) => (
+              <div key={entry.message}>
+                [{new Date(MOCK_BASE_TIME_MS - entry.offsetMs).toISOString()}] {entry.message}
+              </div>
+            ))}
           </div>
         </div>
       )}

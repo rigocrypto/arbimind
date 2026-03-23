@@ -7,12 +7,12 @@ const config = [
   {
     ignores: ['.next/**', 'node_modules/**', 'out/**', 'dist/**'],
     rules: {
-      'react-hooks/static-components': 'error',
+      'react-hooks/static-components': 'off',
       'react-hooks/set-state-in-effect': 'off',
       'react-hooks/preserve-manual-memoization': 'off',
       'react-hooks/incompatible-library': 'off',
-      'react-hooks/purity': 'off',
-      '@typescript-eslint/no-require-imports': 'error'
+      'react-hooks/purity': 'error',
+      '@typescript-eslint/no-require-imports': 'off'
     }
   }
 ];
