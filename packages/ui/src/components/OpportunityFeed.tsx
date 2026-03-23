@@ -57,7 +57,7 @@ export function OpportunityFeed({ opportunities, onExecute }: OpportunityFeedPro
       } else {
         toast.error(result.error ?? 'Execution failed');
       }
-    } catch (error) {
+    } catch {
       toast.error('Execution failed');
     } finally {
       setExecutingId(null);
