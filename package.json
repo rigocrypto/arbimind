@@ -29,7 +29,7 @@
     "smoke:ui:runtime": "pnpm --filter @arbimind/ui smoke:runtime:live"
   },
   "devDependencies": {
-    "next": "15.5.14",
+    "next": "16.2.1",
     "typescript": "5.3.3"
   },
   "engines": {
