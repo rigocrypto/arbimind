@@ -1,9 +1,9 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, Router } from 'express';
 import solanaTxRouter from './solanaTx';
 import solanaJupiterRouter from './solanaJupiter';
 import { adminStore } from '../store/adminStore';
 
-const router = express.Router();
+const router: Router = express.Router();
 router.use('/tx', solanaTxRouter);
 router.use('/jupiter', solanaJupiterRouter);
 

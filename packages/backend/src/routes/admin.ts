@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { adminAuth } from '../middleware/adminAuth';
 import { adminStore } from '../store/adminStore';
@@ -12,7 +12,7 @@ import {
 } from '../db/portfolioDb';
 import { assertAllowedOutboundUrl } from '../security/ssrf';
 
-const router = express.Router();
+const router: Router = express.Router();
 const DEXSCREENER_API_HOSTS = ['api.dexscreener.com'] as const;
 
 type DexSnapshot = {

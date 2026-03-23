@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, Router } from 'express';
 import {
   getEvmPortfolio,
   getEvmTimeseries,
@@ -8,7 +8,7 @@ import {
 import { touchUser, getSnapshots, isDbAvailable } from '../db/portfolioDb';
 import type { TimeseriesPoint } from '../services/portfolioService';
 
-const router = express.Router();
+const router: Router = express.Router();
 
 type PortfolioEnvDiag = {
   error: string;
