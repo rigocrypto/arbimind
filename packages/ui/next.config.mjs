@@ -1,5 +1,8 @@
-/** @type {import('next').NextConfig} */
-const path = require('path');
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const nextConfig = {
   // Force all pages to render dynamically (SSR, not static)
@@ -65,4 +68,4 @@ const nextConfig = {
   output: process.env['NEXT_OUTPUT'] === 'standalone' ? 'standalone' : undefined
 };
 
-module.exports = nextConfig;
+export default nextConfig;
