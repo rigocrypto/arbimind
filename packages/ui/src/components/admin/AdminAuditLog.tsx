@@ -29,8 +29,11 @@ export function AdminAuditLog({ failuresOnly = false, limit = 100 }: AdminAuditL
   }, [limit]);
 
   useEffect(() => {
-    fetchAudit();
-    const interval = setInterval(fetchAudit, 30000);
+    const runFetch = () => {
+      void fetchAudit();
+    };
+    runFetch();
+    const interval = setInterval(runFetch, 30000);
     return () => clearInterval(interval);
   }, [fetchAudit]);
 

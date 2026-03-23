@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useHydrated } from './useHydrated';
 
 /**
  * Hook to format relative time that avoids hydration errors
@@ -8,11 +9,9 @@ import { useState, useEffect } from 'react';
  */
 export function useRelativeTime(timestamp: number | string | Date): string {
   const [relativeTime, setRelativeTime] = useState('Just now');
-  const [mounted, setMounted] = useState(false);
+  const mounted = useHydrated();
 
   useEffect(() => {
-    setMounted(true);
-    
     const updateTime = () => {
       const date = typeof timestamp === 'string' || typeof timestamp === 'number'
         ? new Date(timestamp)

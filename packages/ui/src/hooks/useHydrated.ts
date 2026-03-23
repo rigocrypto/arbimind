@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useSyncExternalStore } from 'react';
 
 /**
  * Returns true only after the first client mount. Use to defer rendering of
@@ -8,7 +8,9 @@ import { useState, useEffect } from 'react';
  * (e.g. RainbowKit ConnectModal + React Query Hydrate).
  */
 export function useHydrated(): boolean {
-  const [hydrated, setHydrated] = useState(false);
-  useEffect(() => setHydrated(true), []);
-  return hydrated;
+  return useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 }
