@@ -1,11 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
 import { MetricCard } from '@/components/MetricCard';
 import { StrategyCard } from '@/components/StrategyCard';
 import { SystemStatus } from '@/components/SystemStatus';
+import { StrategyToggleBar, type StrategyMode } from '@/components/StrategyToggleBar';
+import { AutoModePanel } from '@/components/AutoModePanel';
+import { ExecutionTimeline, type ExecutionTimelineStep, type ExecutionTimelineStatus } from '@/components/ExecutionTimeline';
+import { ProfitTicker } from '@/components/ProfitTicker';
 import { useMetrics, useStrategies, useOpportunities } from '@/hooks/useArbiApi';
 import { useAccount } from 'wagmi';
 import { useEngineContext } from '@/contexts/EngineContext';
@@ -29,6 +33,12 @@ const OpportunityFeed = dynamic(
   { ssr: false, loading: () => <div className="py-8 text-center text-dark-400 animate-pulse">Loading feed...</div> }
 );
 
+function delay(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
 export default function HomePage() {
   const { isConnected } = useAccount();
   const ctaVariant = useMemo(() => getPersistentCtaVariant(), []);
@@ -37,6 +47,13 @@ export default function HomePage() {
   const { strategies, loading: strategiesLoading } = useStrategies();
   const { opportunities, loading: opportunitiesLoading } = useOpportunities();
   const { start, stop, singleScan, reloadPrices, activeStrategy, isRunning, checkBalance } = useEngineContext();
+  const [strategyMode, setStrategyMode] = useState<StrategyMode>('dex');
+  const [autoModeEnabled, setAutoModeEnabled] = useState(false);
+  const [maxRiskPct, setMaxRiskPct] = useState(2);
+  const [maxTradeSizeEth, setMaxTradeSizeEth] = useState(0.35);
+  const [timelineStep, setTimelineStep] = useState<ExecutionTimelineStep>(0);
+  const [timelineStatus, setTimelineStatus] = useState<ExecutionTimelineStatus>('idle');
+  const [singleScanAnimating, setSingleScanAnimating] = useState(false);
 
   useEffect(() => {
     if (landingTrackedRef.current) {
@@ -57,6 +74,101 @@ export default function HomePage() {
     }
     if (!checkBalance()) return;
     void action();
+  };
+
+  const strategyForMode = useMemo(() => {
+    if (strategies.length === 0) return undefined;
+
+    const candidateTerms: Record<StrategyMode, string[]> = {
+      dex: ['arb', 'arbitrage', 'dex', 'uni', 'sushi'],
+      cex: ['cex', 'exchange', 'binance', 'kraken', 'coinbase'],
+      'cross-chain': ['cross', 'bridge', 'multi'],
+      triangular: ['triangular', 'triangle'],
+    };
+
+    const terms = candidateTerms[strategyMode];
+
+    const matched = strategies.find((strategy) => {
+      const candidate = `${strategy.id} ${strategy.name}`.toLowerCase();
+      return terms.some((term) => candidate.includes(term));
+    });
+
+    return matched?.id ?? activeStrategy ?? strategies[0]?.id;
+  }, [activeStrategy, strategies, strategyMode]);
+
+  useEffect(() => {
+    if (singleScanAnimating) {
+      return;
+    }
+
+    if (autoModeEnabled || isRunning) {
+      setTimelineStatus('running');
+      setTimelineStep(opportunities.length > 0 ? 1 : 0);
+      return;
+    }
+
+    setTimelineStatus('idle');
+    setTimelineStep(0);
+  }, [autoModeEnabled, isRunning, opportunities.length, singleScanAnimating]);
+
+  const handleAutoModeToggle = async (next: boolean) => {
+    if (next) {
+      if (!isConnected) {
+        toast.error('Connect wallet first!');
+        return;
+      }
+      if (!checkBalance()) return;
+
+      await start(strategyForMode);
+      setAutoModeEnabled(true);
+      setTimelineStatus('running');
+      setTimelineStep(0);
+      toast.success('Auto mode enabled');
+      return;
+    }
+
+    await stop();
+    setAutoModeEnabled(false);
+    setTimelineStatus('idle');
+    setTimelineStep(0);
+    toast.success('Auto mode disabled');
+  };
+
+  const runSingleTradeScan = async () => {
+    if (!checkBalance()) return;
+
+    setSingleScanAnimating(true);
+    setTimelineStatus('running');
+    setTimelineStep(0);
+    await delay(150);
+    setTimelineStep(1);
+    await delay(180);
+    setTimelineStep(2);
+    await delay(180);
+    setTimelineStep(3);
+
+    const ok = await singleScan();
+
+    if (ok) {
+      setTimelineStep(4);
+      setTimelineStatus('complete');
+      toast.success('Single scan started');
+      window.setTimeout(() => {
+        setTimelineStatus(autoModeEnabled || isRunning ? 'running' : 'idle');
+        setTimelineStep(autoModeEnabled || isRunning ? 1 : 0);
+      }, 900);
+    } else {
+      setTimelineStatus('error');
+      toast.error('Scan failed');
+      window.setTimeout(() => {
+        setTimelineStatus(autoModeEnabled || isRunning ? 'running' : 'idle');
+        setTimelineStep(autoModeEnabled || isRunning ? 1 : 0);
+      }, 900);
+    }
+
+    window.setTimeout(() => {
+      setSingleScanAnimating(false);
+    }, 950);
   };
 
   const handleRunStrategy = (id: string) => {
@@ -128,10 +240,28 @@ export default function HomePage() {
               <div className="text-right">
                 <div className="text-xs sm:text-sm text-dark-400 mb-1">Total Profit (24h)</div>
                 <div className="text-2xl sm:text-3xl font-bold text-white">{formatETH(safeMetrics.profitEth)}</div>
-                <div className="text-xs sm:text-sm text-dark-400">{formatUSD(safeMetrics.profitUsd)}</div>
+                <div className="text-xs sm:text-sm text-dark-400">
+                  <ProfitTicker value={safeMetrics.profitUsd} prefix="$" className="font-mono" />
+                </div>
               </div>
             </div>
           </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-3">
+          <div className="space-y-3 sm:space-y-4 xl:col-span-2">
+            <StrategyToggleBar value={strategyMode} onChange={setStrategyMode} />
+            <ExecutionTimeline currentStep={timelineStep} status={timelineStatus} />
+          </div>
+          <AutoModePanel
+            isEnabled={autoModeEnabled}
+            maxRiskPct={maxRiskPct}
+            maxTradeSizeEth={maxTradeSizeEth}
+            onRiskChange={setMaxRiskPct}
+            onTradeSizeChange={setMaxTradeSizeEth}
+            onToggle={handleAutoModeToggle}
+            disabled={!isConnected}
+          />
         </div>
 
         {/* Metrics Grid */}
@@ -214,12 +344,7 @@ export default function HomePage() {
                       trackEvent('canary_start_clicked', {
                         source: 'quick_action_single_trade',
                       });
-                      const ok = await singleScan();
-                      if (ok) {
-                        toast.success('Single scan started');
-                      } else {
-                        toast.error('Scan failed');
-                      }
+                      await runSingleTradeScan();
                     })
                   }
                   disabled={!isConnected}

@@ -145,8 +145,8 @@
   /* Glassmorphism */
   .glass {
     background: rgba(17, 24, 39, 0.5);
-    backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
     border: 1px solid rgba(0, 246, 255, 0.2);
   }
 
@@ -215,4 +215,88 @@
 
 .animate-pulse-live {
   animation: pulse-live 2s ease-in-out infinite;
+}
+
+.timeline-active-step {
+  color: #7ce7ff;
+}
+
+.timeline-connector-active {
+  box-shadow: 0 0 10px rgba(0, 229, 204, 0.45);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .scan-pulse {
+    animation: scanPulse 1.8s ease-in-out infinite;
+  }
+
+  .timeline-active-step {
+    animation: timelinePulse 1.4s ease-in-out infinite;
+  }
+
+  .timeline-connector-active {
+    animation: connectorPulse 1.2s ease-in-out infinite;
+  }
+
+  .profit-flash-positive {
+    animation: profitFlashPositive 0.6s ease-out;
+  }
+
+  .profit-flash-negative {
+    animation: profitFlashNegative 0.6s ease-out;
+  }
+}
+
+@keyframes scanPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 rgba(0, 230, 118, 0);
+  }
+  50% {
+    box-shadow: 0 0 22px rgba(0, 230, 118, 0.35);
+  }
+}
+
+@keyframes timelinePulse {
+  0%,
+  100% {
+    text-shadow: 0 0 0 rgba(0, 229, 204, 0);
+  }
+  50% {
+    text-shadow: 0 0 12px rgba(0, 229, 204, 0.45);
+  }
+}
+
+@keyframes connectorPulse {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes profitFlashPositive {
+  0% {
+    color: #ffffff;
+  }
+  50% {
+    color: #9dffcc;
+  }
+  100% {
+    color: #ffffff;
+  }
+}
+
+@keyframes profitFlashNegative {
+  0% {
+    color: #ffffff;
+  }
+  50% {
+    color: #ff9aa7;
+  }
+  100% {
+    color: #ffffff;
+  }
 }
