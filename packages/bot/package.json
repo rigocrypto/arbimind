@@ -44,20 +44,20 @@
     "ws": "^8.14.2"
   },
   "devDependencies": {
-    "@types/lodash": "^4.14.202",
-    "@types/node": "^20.10.0",
+    "@types/lodash": "^4.17.24",
+    "@types/node": "^25.5.0",
     "@types/node-cron": "^3.0.11",
     "@types/ws": "^8.5.10",
-    "@typescript-eslint/eslint-plugin": "^6.13.1",
-    "@typescript-eslint/parser": "^6.13.1",
-    "@vitest/coverage-v8": "^1.6.0",
-    "eslint": "^8.54.0",
+    "@typescript-eslint/eslint-plugin": "^8.57.1",
+    "@typescript-eslint/parser": "^8.57.1",
+    "@vitest/coverage-v8": "^4.1.0",
+    "eslint": "^10.1.0",
     "happy-dom": "^20.8.4",
-    "jsdom": "^24.1.1",
-    "msw": "^2.0.20",
+    "jsdom": "^29.0.1",
+    "msw": "^2.12.14",
     "tsx": "^4.6.2",
-    "typescript": "^5.3.3",
-    "vitest": "^1.6.0"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
   },
   "keywords": [
     "arbitrage",
