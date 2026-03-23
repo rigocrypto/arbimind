@@ -1,17 +1,24 @@
 'use client';
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
 import { MetricCard } from '@/components/MetricCard';
 import { StrategyCard } from '@/components/StrategyCard';
 import { SystemStatus } from '@/components/SystemStatus';
-import { useMetrics, useStrategies, useOpportunities } from '@/hooks/useArbiApi';
+import { StrategyToggleBar, type StrategyMode } from '@/components/StrategyToggleBar';
+import { AutoModePanel } from '@/components/AutoModePanel';
+import { ExecutionTimeline, type ExecutionTimelineStep, type ExecutionTimelineStatus } from '@/components/ExecutionTimeline';
+import { ProfitTicker } from '@/components/ProfitTicker';
+import { AIExplainPanel, type ExplainabilityMetrics } from '@/components/AIExplainPanel';
+import { AIConfidenceRadar } from '@/components/AIConfidenceRadar';
+import { NotificationsPanel, type NotificationItem } from '@/components/NotificationsPanel';
+import { useMetrics, useStrategies, useOpportunities, type Opportunity } from '@/hooks/useArbiApi';
 import { useAccount } from 'wagmi';
 import { useEngineContext } from '@/contexts/EngineContext';
 import { formatETH, formatUSD, formatPercent } from '@/utils/format';
 import { getPersistentCtaVariant, trackEvent } from '@/lib/analytics';
-import { DollarSign, TrendingUp, Activity, Zap, Gauge } from 'lucide-react';
+import { DollarSign, TrendingUp, Activity, Zap, Gauge, Bell } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const PNLChart = dynamic(
@@ -29,6 +36,45 @@ const OpportunityFeed = dynamic(
   { ssr: false, loading: () => <div className="py-8 text-center text-dark-400 animate-pulse">Loading feed...</div> }
 );
 
+function delay(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function explainMetricsForOpportunity(opportunity: Opportunity | null): ExplainabilityMetrics | null {
+  if (!opportunity) return null;
+
+  const profitSignal = clamp(opportunity.profitPct * 120, 15, 95);
+  const gasPenalty = clamp(opportunity.gasEst * 120000, 0, 40);
+  const volatility = clamp(45 + opportunity.profitPct * 90, 5, 98);
+  const liquidity = clamp(82 - gasPenalty, 20, 96);
+  const risk = clamp(62 - opportunity.profitPct * 80 + gasPenalty / 1.8, 8, 92);
+  const slippagePct = clamp(0.18 + opportunity.gasEst * 9, 0.05, 1.8);
+
+  return {
+    volatility,
+    liquidity,
+    risk,
+    slippagePct,
+    rationale: `AI prioritized ${opportunity.pair} because spread quality (${profitSignal.toFixed(0)} score) and route depth are favorable. ${opportunity.fromDex} -> ${opportunity.toDex} shows positive net edge after estimated gas and projected slippage.`
+  };
+}
+
+function makeNotification(type: NotificationItem['type'], message: string): NotificationItem {
+  return {
+    id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    type,
+    message,
+    timestamp: Date.now(),
+    ttlMs: 8000,
+  };
+}
+
 export default function HomePage() {
   const { isConnected } = useAccount();
   const ctaVariant = useMemo(() => getPersistentCtaVariant(), []);
@@ -37,6 +83,22 @@ export default function HomePage() {
   const { strategies, loading: strategiesLoading } = useStrategies();
   const { opportunities, loading: opportunitiesLoading } = useOpportunities();
   const { start, stop, singleScan, reloadPrices, activeStrategy, isRunning, checkBalance } = useEngineContext();
+  const [strategyMode, setStrategyMode] = useState<StrategyMode>('dex');
+  const [autoModeEnabled, setAutoModeEnabled] = useState(false);
+  const [maxRiskPct, setMaxRiskPct] = useState(2);
+  const [maxTradeSizeEth, setMaxTradeSizeEth] = useState(0.35);
+  const [timelineStep, setTimelineStep] = useState<ExecutionTimelineStep>(0);
+  const [timelineStatus, setTimelineStatus] = useState<ExecutionTimelineStatus>('idle');
+  const [singleScanAnimating, setSingleScanAnimating] = useState(false);
+  const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const previousOpportunitiesCountRef = useRef(0);
+
+  const selectedExplainMetrics = useMemo(
+    () => explainMetricsForOpportunity(selectedOpportunity),
+    [selectedOpportunity]
+  );
 
   useEffect(() => {
     if (landingTrackedRef.current) {
@@ -59,6 +121,145 @@ export default function HomePage() {
     void action();
   };
 
+  const strategyForMode = useMemo(() => {
+    if (strategies.length === 0) return undefined;
+
+    const candidateTerms: Record<StrategyMode, string[]> = {
+      dex: ['arb', 'arbitrage', 'dex', 'uni', 'sushi'],
+      cex: ['cex', 'exchange', 'binance', 'kraken', 'coinbase'],
+      'cross-chain': ['cross', 'bridge', 'multi'],
+      triangular: ['triangular', 'triangle'],
+    };
+
+    const terms = candidateTerms[strategyMode];
+
+    const matched = strategies.find((strategy) => {
+      const candidate = `${strategy.id} ${strategy.name}`.toLowerCase();
+      return terms.some((term) => candidate.includes(term));
+    });
+
+    return matched?.id ?? activeStrategy ?? strategies[0]?.id;
+  }, [activeStrategy, strategies, strategyMode]);
+
+  useEffect(() => {
+    if (singleScanAnimating) {
+      return;
+    }
+
+    let frameId: number | undefined;
+
+    if (autoModeEnabled || isRunning) {
+      frameId = window.requestAnimationFrame(() => {
+        setTimelineStatus('running');
+        setTimelineStep(opportunities.length > 0 ? 1 : 0);
+      });
+      return;
+    }
+
+    frameId = window.requestAnimationFrame(() => {
+      setTimelineStatus('idle');
+      setTimelineStep(0);
+    });
+
+    return () => {
+      if (frameId !== undefined) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
+  }, [autoModeEnabled, isRunning, opportunities.length, singleScanAnimating]);
+
+  useEffect(() => {
+    const previousCount = previousOpportunitiesCountRef.current;
+    let frameId: number | undefined;
+
+    if (opportunities.length > previousCount) {
+      const latest = opportunities[0];
+      if (latest) {
+        frameId = window.requestAnimationFrame(() => {
+          setNotifications((current) => [
+            makeNotification(
+              'opportunity_found',
+              `${latest.pair} opportunity found (${latest.profitPct.toFixed(2)}% spread)`
+            ),
+            ...current,
+          ].slice(0, 10));
+        });
+      }
+    }
+
+    previousOpportunitiesCountRef.current = opportunities.length;
+
+    return () => {
+      if (frameId !== undefined) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
+  }, [opportunities]);
+
+  const handleAutoModeToggle = async (next: boolean) => {
+    if (next) {
+      if (!isConnected) {
+        toast.error('Connect wallet first!');
+        return;
+      }
+      if (!checkBalance()) return;
+
+      await start(strategyForMode);
+      setAutoModeEnabled(true);
+      setTimelineStatus('running');
+      setTimelineStep(0);
+      toast.success('Auto mode enabled');
+      setNotifications((current) => [
+        makeNotification('trade_executed', 'Auto mode enabled. Engine can execute opportunities automatically.'),
+        ...current,
+      ].slice(0, 10));
+      return;
+    }
+
+    await stop();
+    setAutoModeEnabled(false);
+    setTimelineStatus('idle');
+    setTimelineStep(0);
+    toast.success('Auto mode disabled');
+  };
+
+  const runSingleTradeScan = async () => {
+    if (!checkBalance()) return;
+
+    setSingleScanAnimating(true);
+    setTimelineStatus('running');
+    setTimelineStep(0);
+    await delay(150);
+    setTimelineStep(1);
+    await delay(180);
+    setTimelineStep(2);
+    await delay(180);
+    setTimelineStep(3);
+
+    const ok = await singleScan();
+
+    if (ok) {
+      setTimelineStep(4);
+      setTimelineStatus('complete');
+      toast.success('Single scan started');
+      window.setTimeout(() => {
+        setTimelineStatus(autoModeEnabled || isRunning ? 'running' : 'idle');
+        setTimelineStep(autoModeEnabled || isRunning ? 1 : 0);
+      }, 900);
+    } else {
+      setTimelineStatus('error');
+      toast.error('Scan failed');
+      window.setTimeout(() => {
+        setTimelineStatus(autoModeEnabled || isRunning ? 'running' : 'idle');
+        setTimelineStep(autoModeEnabled || isRunning ? 1 : 0);
+      }, 900);
+    }
+
+    window.setTimeout(() => {
+      setSingleScanAnimating(false);
+    }, 950);
+  };
+
   const handleRunStrategy = (id: string) => {
     if (!checkBalance()) return;
     trackEvent('canary_start_clicked', {
@@ -66,6 +267,19 @@ export default function HomePage() {
       strategyId: id,
     });
     start(id);
+  };
+
+  const handleOpportunityExecuted = (id: string) => {
+    const matched = opportunities.find((item) => item.id === id);
+    const message = matched
+      ? `${matched.pair} executed successfully with projected net gain ${formatETH(matched.netGain)}.`
+      : `Opportunity ${id} executed successfully.`;
+
+    setNotifications((current) => [makeNotification('trade_executed', message), ...current].slice(0, 10));
+  };
+
+  const handleDismissNotification = (id: string) => {
+    setNotifications((current) => current.filter((item) => item.id !== id));
   };
   const handleToggleAuto = (id: string, enabled: boolean) => {
     if (enabled) {
@@ -110,9 +324,28 @@ export default function HomePage() {
       ? Array.from({ length: 12 }, (_, i) => safeMetrics.gasUsed * (0.2 + 0.8 * (i + 1) / 12))
       : [0.005, 0.01, 0.012, 0.015, 0.018, 0.02, 0.021, 0.022, 0.023, 0.0232, 0.0233, 0.0234];
 
+  const radarData = {
+    confidence: clamp(safeMetrics.successRate, 0, 100),
+    liquidity: clamp(72 + safeMetrics.totalTrades / 60, 20, 100),
+    risk: clamp(55 - safeMetrics.successRate / 3 + safeMetrics.gasUsed * 700, 5, 95),
+    speed: clamp(100 - safeMetrics.latencyMs / 3, 5, 100),
+  };
+
   return (
     <DashboardLayout currentPath="/">
       <div className="space-y-4 sm:space-y-6">
+        <div className="fixed right-4 bottom-20 md:right-5 md:bottom-6 z-40">
+          <button
+            type="button"
+            onClick={() => setNotificationsOpen((open) => !open)}
+            className="inline-flex items-center gap-2 rounded-full border border-cyan-400/30 bg-dark-900/80 px-3 py-2 text-xs text-cyan-200 shadow-lg shadow-cyan-900/40 hover:bg-dark-800"
+            aria-label="Toggle notifications"
+          >
+            <Bell className="h-4 w-4" />
+            <span>{notifications.length}</span>
+          </button>
+        </div>
+
         {/* Hero Section */}
         <div className="glass-card p-4 sm:p-6 lg:p-8">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 sm:gap-6">
@@ -128,10 +361,34 @@ export default function HomePage() {
               <div className="text-right">
                 <div className="text-xs sm:text-sm text-dark-400 mb-1">Total Profit (24h)</div>
                 <div className="text-2xl sm:text-3xl font-bold text-white">{formatETH(safeMetrics.profitEth)}</div>
-                <div className="text-xs sm:text-sm text-dark-400">{formatUSD(safeMetrics.profitUsd)}</div>
+                <div className="text-xs sm:text-sm text-dark-400">
+                  <ProfitTicker value={safeMetrics.profitUsd} prefix="$" className="font-mono" />
+                </div>
               </div>
             </div>
           </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-3">
+          <div className="space-y-3 sm:space-y-4 xl:col-span-2">
+            <StrategyToggleBar value={strategyMode} onChange={setStrategyMode} />
+            <ExecutionTimeline currentStep={timelineStep} status={timelineStatus} />
+            <AIExplainPanel
+              opportunity={selectedOpportunity}
+              metrics={selectedExplainMetrics}
+              open={selectedOpportunity !== null}
+              onClose={() => setSelectedOpportunity(null)}
+            />
+          </div>
+          <AutoModePanel
+            isEnabled={autoModeEnabled}
+            maxRiskPct={maxRiskPct}
+            maxTradeSizeEth={maxTradeSizeEth}
+            onRiskChange={setMaxRiskPct}
+            onTradeSizeChange={setMaxTradeSizeEth}
+            onToggle={handleAutoModeToggle}
+            disabled={!isConnected}
+          />
         </div>
 
         {/* Metrics Grid */}
@@ -200,6 +457,7 @@ export default function HomePage() {
           {/* System Status & Quick Actions */}
           <div className="space-y-4 sm:space-y-6">
             <SystemStatus />
+            <AIConfidenceRadar data={radarData} />
             
             <div className="glass-card p-4 sm:p-6">
               <div className="flex items-center justify-between mb-3 sm:mb-4">
@@ -214,12 +472,7 @@ export default function HomePage() {
                       trackEvent('canary_start_clicked', {
                         source: 'quick_action_single_trade',
                       });
-                      const ok = await singleScan();
-                      if (ok) {
-                        toast.success('Single scan started');
-                      } else {
-                        toast.error('Scan failed');
-                      }
+                      await runSingleTradeScan();
                     })
                   }
                   disabled={!isConnected}
@@ -311,11 +564,22 @@ export default function HomePage() {
               {opportunitiesLoading && opportunities.length === 0 ? (
                 <div className="py-12 text-center text-dark-400 animate-pulse">Loading opportunities...</div>
               ) : (
-                <OpportunityFeed opportunities={opportunities} />
+                <OpportunityFeed
+                  opportunities={opportunities}
+                  onExecute={handleOpportunityExecuted}
+                  onSelectOpportunity={setSelectedOpportunity}
+                />
               )}
             </div>
           </div>
         </div>
+
+        <NotificationsPanel
+          open={notificationsOpen}
+          items={notifications}
+          onClose={() => setNotificationsOpen(false)}
+          onDismiss={handleDismissNotification}
+        />
       </div>
     </DashboardLayout>
   );
