@@ -159,7 +159,7 @@ export default function StrategiesPage() {
                     value={searchPairs}
                     onChange={(e) => setSearchPairs(e.target.value)}
                     autoComplete="off"
-                    className="w-full bg-dark-800 border border-dark-600 rounded-lg pl-10 pr-4 py-2.5 text-sm text-white placeholder-dark-500 focus:outline-none focus:border-cyan-500 transition"
+                    className="w-full bg-dark-800 border border-dark-600 rounded-lg pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-dark-500 focus:outline-none focus:border-cyan-500 transition"
                   />
                 </div>
                 <button
