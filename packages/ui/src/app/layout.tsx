@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   keywords: ['arbitrage', 'mev', 'defi', 'ethereum', 'dex', 'trading'],
   authors: [{ name: 'ArbiMind Team' }],
   icons: {
-    icon: '/favicon.svg',
+    icon: '/ArbiMind-Logo-1.svg',
     apple: '/apple-touch-icon.png',
   },
 }
