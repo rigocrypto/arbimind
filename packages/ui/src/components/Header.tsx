@@ -116,7 +116,7 @@ export function Header() {
               />
               {!prefersReducedMotion && (
                 <video
-                  src="/Arbimind-logo1.mp4"
+                  src="/favicon.mp4"
                   autoPlay
                   loop
                   muted
