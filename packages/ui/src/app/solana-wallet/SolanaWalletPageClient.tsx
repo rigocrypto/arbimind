@@ -86,6 +86,7 @@ export default function SolanaWalletPageClient() {
   const [withdrawLifecycle, setWithdrawLifecycle] = useState<TransferLifecycle>('idle');
   const [withdrawSignature, setWithdrawSignature] = useState('');
   const [hasTreasuryKey, setHasTreasuryKey] = useState<boolean | null>(null);
+  const [backendTreasuryAddress, setBackendTreasuryAddress] = useState<string | null>(null);
   const withdrawStatusPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const withdrawStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const address = publicKey?.toBase58();
@@ -118,13 +119,18 @@ export default function SolanaWalletPageClient() {
   const [engineActivity, setEngineActivity] = useState<EngineActivityEvent[]>([]);
   const lastEngineActivityTsRef = useRef(0);
 
+  const effectiveTreasuryAddress = backendTreasuryAddress || SOLANA_TREASURY_ADDRESS;
+  const treasuryAddressMismatch = Boolean(
+    backendTreasuryAddress && backendTreasuryAddress !== SOLANA_TREASURY_ADDRESS
+  );
+
   const treasuryPubkey = useMemo(() => {
     try {
-      return new PublicKey(SOLANA_TREASURY_ADDRESS);
+      return new PublicKey(effectiveTreasuryAddress);
     } catch {
       return null;
     }
-  }, []);
+  }, [effectiveTreasuryAddress]);
 
   const usdcMintPubkey = useMemo(() => {
     try {
@@ -638,12 +644,18 @@ export default function SolanaWalletPageClient() {
           if (!cancelled) setHasTreasuryKey(false);
           return;
         }
-        const body = (await response.json()) as { hasTreasuryKey?: boolean };
+        const body = (await response.json()) as { hasTreasuryKey?: boolean; treasuryPubkey?: string };
         if (!cancelled) {
           setHasTreasuryKey(Boolean(body.hasTreasuryKey));
+          setBackendTreasuryAddress(
+            body.treasuryPubkey && isValidSolanaAddress(body.treasuryPubkey) ? body.treasuryPubkey : null
+          );
         }
       } catch {
-        if (!cancelled) setHasTreasuryKey(false);
+        if (!cancelled) {
+          setHasTreasuryKey(false);
+          setBackendTreasuryAddress(null);
+        }
       }
     };
 
@@ -846,7 +858,6 @@ export default function SolanaWalletPageClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amountSol: amount,
-          fromPubkey: SOLANA_TREASURY_ADDRESS,
           toPubkey: publicKey.toBase58(),
         }),
       });
@@ -1190,7 +1201,7 @@ export default function SolanaWalletPageClient() {
               <div className="glass-card p-4 sm:p-5 opacity-90">
                 <h2 className="text-sm font-medium text-dark-300 mb-2">Bot Treasury Balance</h2>
                 <p className="text-2xl font-bold text-cyan-300">{treasurySolBalance.toFixed(4)} SOL</p>
-                <p className="text-xs text-dark-500 mt-1 break-all">{SOLANA_TREASURY_ADDRESS}</p>
+                <p className="text-xs text-dark-500 mt-1 break-all">{effectiveTreasuryAddress}</p>
               </div>
             </motion.div>
 
@@ -1267,9 +1278,14 @@ export default function SolanaWalletPageClient() {
               <div className="flex items-center gap-2 text-green-300">
                 <Shield className="h-5 w-5 text-green-400" />
                 <span className="text-sm font-medium">
-                  ✅ Verified Treasury: {`${SOLANA_TREASURY_ADDRESS.slice(0, 4)}...${SOLANA_TREASURY_ADDRESS.slice(-4)}`} | Funds secure
+                  ✅ Verified Treasury: {`${effectiveTreasuryAddress.slice(0, 4)}...${effectiveTreasuryAddress.slice(-4)}`} | Funds secure
                 </span>
               </div>
+              {treasuryAddressMismatch && (
+                <p className="mt-2 text-xs text-amber-300">
+                  Frontend treasury env does not match backend signer. Using backend signer address for withdraws and balance display.
+                </p>
+              )}
             </motion.div>
 
             {/* User + Treasury Balances */}
@@ -1285,7 +1301,7 @@ export default function SolanaWalletPageClient() {
               <div className="glass-card p-4 sm:p-5">
                 <h2 className="text-sm font-medium text-dark-300 mb-2">Bot Treasury Balance</h2>
                 <p className="text-2xl font-bold text-cyan-300">{treasurySolBalance.toFixed(4)} SOL</p>
-                <p className="text-xs text-dark-500 mt-1 break-all">{SOLANA_TREASURY_ADDRESS}</p>
+                <p className="text-xs text-dark-500 mt-1 break-all">{effectiveTreasuryAddress}</p>
               </div>
             </motion.div>
 
