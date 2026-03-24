@@ -61,7 +61,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
   return (
     <MotionWrapper className="glass-card p-4" key={id}>
       <div className="flex items-start gap-4">
-        <div className={clsx('p-2 rounded-md bg-opacity-10', gradientMap[gradient])} style={{ background: undefined }}>
+        <div className={clsx('p-2 rounded-md bg-gradient-to-br', gradientMap[gradient])}>
           {Icon ? <Icon className="w-6 h-6 text-white/90" /> : <div className="w-6 h-6 bg-white/10 rounded" />}
         </div>
 

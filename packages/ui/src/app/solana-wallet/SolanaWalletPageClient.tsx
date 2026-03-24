@@ -1428,7 +1428,7 @@ export default function SolanaWalletPageClient() {
                       value={transferToPubkey}
                       onChange={(e) => setTransferToPubkey(e.target.value)}
                       placeholder="e.g. 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
-                      className="w-full px-4 py-2.5 rounded-lg bg-dark-800 border border-dark-600 text-white text-sm font-mono placeholder-dark-500 focus:outline-none focus:border-cyan-500"
+                      className="w-full px-4 py-2.5 rounded-lg bg-dark-800 border border-dark-600 text-white text-sm font-mono placeholder:text-dark-500 focus:outline-none focus:border-cyan-500"
                     />
                   </div>
                 )}
