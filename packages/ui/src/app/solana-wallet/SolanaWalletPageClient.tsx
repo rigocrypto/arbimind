@@ -26,7 +26,7 @@ const SOLANA_TREASURY_ADDRESS =
   process.env.NEXT_PUBLIC_SOLANA_ARB_ACCOUNT || '6wmAm8uoPQTx9jEnGx4aDKwVFRSfdhKJfL2LJzwCmE6s';
 // Override only the states that display the CTA text so it never regresses to "Select Wallet".
 const SOLANA_WALLET_BUTTON_LABELS = {
-  'has-wallet': 'Connect Solana',
+  'has-wallet': 'Manage Solana',
   'no-wallet': 'Connect Solana',
   connecting: 'Connecting...',
   'copy-address': 'Copy address',
@@ -1002,10 +1002,12 @@ export default function SolanaWalletPageClient() {
                   <Send className="w-4 h-4" /> Fast Transfers
                 </span>
               </div>
-              <BaseWalletMultiButton
-                className="mt-4 !bg-gradient-to-r !from-cyan-500 !via-purple-500 !to-pink-500 !text-white !font-semibold !px-6 !py-2.5 !rounded-xl !shadow-lg !border-none !hover:from-cyan-400 !hover:to-purple-500"
-                labels={SOLANA_WALLET_BUTTON_LABELS}
-              />
+              {isSolanaConnected && (
+                <BaseWalletMultiButton
+                  className="mt-4 !bg-gradient-to-r !from-cyan-500 !via-purple-500 !to-pink-500 !text-white !font-semibold !px-6 !py-2.5 !rounded-xl !shadow-lg !border-none !hover:from-cyan-400 !hover:to-purple-500"
+                  labels={SOLANA_WALLET_BUTTON_LABELS}
+                />
+              )}
               {!isSolanaConnected && (
                 <div className="mt-3 flex flex-wrap gap-2 justify-center lg:justify-start">
                   <button
@@ -1032,7 +1034,7 @@ export default function SolanaWalletPageClient() {
               )}
               {!isSolanaConnected && (
                 <p className="text-xs text-dark-400 mt-2 max-w-md text-center lg:text-left">
-                  The top-right <span className="font-mono">0x...</span> wallet is EVM. Use Connect Solana, Phantom, or Solflare here, or switch back to the EVM wallet page.
+                  The top-right <span className="font-mono">0x...</span> wallet is EVM. Use Phantom or Solflare here, or switch back to the EVM wallet page.
                 </p>
               )}
               <p className="text-xs text-dark-400/90 mt-2 max-w-md text-center lg:text-left">
