@@ -53,7 +53,7 @@ export function Header() {
           {!isConnected && (
             <span className="hidden md:block text-xs text-cyan-300/90">{ctaLabel}</span>
           )}
-          <div
+          <div className="hidden sm:block"
             onClickCapture={() => {
               if (!isConnected) {
                 trackEvent('wallet_connect_click', {
@@ -65,6 +65,41 @@ export function Header() {
             }}
           >
             <ConnectButton accountStatus="address" chainStatus="icon" showBalance={false} />
+          </div>
+          <div className="flex items-center gap-2 sm:hidden">
+            <ConnectButton.Custom>
+              {({ account, mounted, openAccountModal, openConnectModal }) => {
+                const ready = mounted;
+                const connected = ready && !!account;
+
+                return (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!connected) {
+                        trackEvent('wallet_connect_click', {
+                          source: 'header_mobile_evm_button',
+                          ctaVariant,
+                          pathname,
+                        });
+                        openConnectModal?.();
+                        return;
+                      }
+                      openAccountModal?.();
+                    }}
+                    className="rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-200 transition hover:bg-cyan-400/20"
+                  >
+                    {connected ? 'EVM Wallet' : 'Connect EVM'}
+                  </button>
+                );
+              }}
+            </ConnectButton.Custom>
+            <Link
+              href="/solana-wallet"
+              className="rounded-lg border border-purple-400/30 bg-purple-400/10 px-3 py-2 text-xs font-semibold text-purple-200 transition hover:bg-purple-400/20"
+            >
+              Solana
+            </Link>
           </div>
         </div>
       </div>
