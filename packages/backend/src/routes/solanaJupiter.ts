@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, Router } from 'express';
 import {
   AddressLookupTableAccount,
   Connection,
@@ -57,7 +57,7 @@ async function fetchAltAccounts(
   return alts;
 }
 
-const router = express.Router();
+const router: Router = express.Router();
 const rpcConnections = SOLANA_RPC_ENDPOINTS.map((endpoint) => new Connection(endpoint, 'confirmed'));
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

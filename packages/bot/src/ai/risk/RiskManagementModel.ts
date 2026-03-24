@@ -137,7 +137,7 @@ export class RiskManagementModel {
     competitionLevel: number;
     historicalSuccessRate: number;
   }): number {
-    let baseSlippage = 0.5; // 0.5% base slippage
+    const baseSlippage = 0.5; // 0.5% base slippage
 
     // Adjust for volatility
     const volatilityAdjustment = marketData.volatility * 2;
@@ -169,7 +169,7 @@ export class RiskManagementModel {
     competitionLevel: number;
     historicalSuccessRate: number;
   }): number {
-    let baseGasPrice = 20; // 20 gwei base
+    const baseGasPrice = 20; // 20 gwei base
 
     // Adjust for competition
     const competitionAdjustment = marketData.competitionLevel * 2;

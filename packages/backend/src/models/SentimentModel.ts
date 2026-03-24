@@ -56,7 +56,7 @@ export class SentimentModel {
     // In a real implementation, this would train the model
   }
 
-  public async getStatus(): Promise<any> {
+  public async getStatus(): Promise<{ isInitialized: boolean; version: string; lastTrained: string }> {
     return {
       isInitialized: this.isInitialized,
       version: '1.0.0',

@@ -58,6 +58,15 @@ export class ExecutionService {
     this.logger = new Logger('ExecutionService');
   }
 
+  private getReceiptGasPrice(receipt: ethers.TransactionReceipt | null): string {
+    if (!receipt) return '0';
+    const withGas = receipt as ethers.TransactionReceipt & {
+      effectiveGasPrice?: bigint;
+      gasPrice?: bigint;
+    };
+    return withGas.effectiveGasPrice?.toString() ?? withGas.gasPrice?.toString() ?? '0';
+  }
+
   /**
    * One-time approval for Sepolia routers so swaps can spend ERC20s.
    * Call at startup before the scan loop.
@@ -111,10 +120,7 @@ export class ExecutionService {
         throw new Error('Sanity transfer transaction failed');
       }
 
-      const gasPrice =
-        (receipt as any).effectiveGasPrice
-          ? (receipt as any).effectiveGasPrice.toString()
-          : ((receipt as any).gasPrice ? (receipt as any).gasPrice.toString() : '0');
+      const gasPrice = this.getReceiptGasPrice(receipt);
 
       return {
         hash: tx.hash,
@@ -191,14 +197,14 @@ export class ExecutionService {
         this.logger.info('Arbitrage executed successfully', {
           hash: tx.hash,
           gasUsed: receipt.gasUsed.toString(),
-          effectiveGasPrice: (receipt as any).effectiveGasPrice ? (receipt as any).effectiveGasPrice.toString() : ((receipt as any).gasPrice ? (receipt as any).gasPrice.toString() : '0')
+          effectiveGasPrice: this.getReceiptGasPrice(receipt)
         });
 
         return {
           hash: tx.hash,
           success: true,
           gasUsed: receipt.gasUsed.toString(),
-          gasPrice: (receipt as any).effectiveGasPrice ? (receipt as any).effectiveGasPrice.toString() : ((receipt as any).gasPrice ? (receipt as any).gasPrice.toString() : '0'),
+          gasPrice: this.getReceiptGasPrice(receipt),
           profit: opportunity.profit,
           timestamp: Date.now()
         };
@@ -293,14 +299,15 @@ export class ExecutionService {
         });
       }
       const receipt = await tx.wait();
-      const gasPrice = (receipt as any).effectiveGasPrice
-        ? (receipt as any).effectiveGasPrice.toString()
-        : ((receipt as any).gasPrice ? (receipt as any).gasPrice.toString() : '0');
+      if (!receipt) {
+        throw new Error('Swap transaction receipt was null');
+      }
+      const gasPrice = this.getReceiptGasPrice(receipt);
       console.log('[EXEC_OK]', { hash: receipt!.hash, gasUsed: receipt!.gasUsed.toString() });
       return {
-        hash: receipt!.hash,
+        hash: receipt.hash,
         success: true,
-        gasUsed: receipt!.gasUsed.toString(),
+        gasUsed: receipt.gasUsed.toString(),
         gasPrice,
         profit: opportunity.profit,
         timestamp: Date.now(),

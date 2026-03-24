@@ -3,26 +3,37 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 import {ArbiMindStrategyManager} from "../src/ArbiMindStrategyManager.sol";
-import {ArbitrageAdapter} from "../src/adapters/ArbitrageAdapter.sol";
-import {TrendAdapter} from "../src/adapters/TrendAdapter.sol";
-import {MarketMakerAdapter} from "../src/adapters/MarketMakerAdapter.sol";
+
+contract MockStrategyAdapter {
+    int256 public pnl;
+    uint256 public gasUsed;
+
+    constructor(int256 _pnl, uint256 _gasUsed) {
+        pnl = _pnl;
+        gasUsed = _gasUsed;
+    }
+
+    function execute(bytes calldata) external payable returns (int256, uint256) {
+        return (pnl, gasUsed);
+    }
+}
 
 contract StrategyManagerTest is Test {
     ArbiMindStrategyManager mgr;
-    ArbitrageAdapter arb;
-    TrendAdapter trend;
-    MarketMakerAdapter mm;
+    MockStrategyAdapter arb;
+    MockStrategyAdapter trend;
+    MockStrategyAdapter mm;
 
-    address deployer = address(0xDepl0y);
-    address executor = address(0xExec01);
-    address treasury = address(0xTres01);
+    address deployer = address(0x1234567890123456789012345678901234567890);
+    address executor = address(0x1234567890123456789012345678901234567891);
+    address treasury = address(0x1234567890123456789012345678901234567892);
 
     function setUp() public {
         vm.startPrank(deployer);
-        arb = new ArbitrageAdapter(address(0), address(0));
-        trend = new TrendAdapter();
-        mm = new MarketMakerAdapter();
-        mgr = new ArbiMindStrategyManager(executor, treasury, 1 ether); // max daily loss = 1 ETH
+        arb = new MockStrategyAdapter(100, 120_000);
+        trend = new MockStrategyAdapter(-50, 110_000);
+        mm = new MockStrategyAdapter(25, 100_000);
+        mgr = new ArbiMindStrategyManager(executor, treasury, 1 ether);
         vm.stopPrank();
 
         vm.prank(deployer);
@@ -42,7 +53,6 @@ contract StrategyManagerTest is Test {
     }
 
     function testAllocationCap() public {
-        // try to over-allocate by increasing ARB to 5000 (would total 11000)
         vm.prank(deployer);
         vm.expectRevert();
         mgr.updateStrategy(keccak256("ARBITRAGE"), address(0), true, 5000);
@@ -51,24 +61,25 @@ contract StrategyManagerTest is Test {
     function testPausePreventsExecution() public {
         vm.prank(deployer);
         mgr.pause();
+
         vm.prank(executor);
         vm.expectRevert();
         mgr.executeStrategy(keccak256("ARBITRAGE"), bytes(""));
 
         vm.prank(deployer);
         mgr.unpause();
+
         vm.prank(executor);
         mgr.executeStrategy(keccak256("ARBITRAGE"), bytes(""));
     }
 
     function testDailyLossLimit() public {
-        // set low daily loss: 60 wei
         vm.prank(deployer);
         mgr.setMaxDailyLossWei(60);
-        // trend with empty params produces -50
+
         vm.prank(executor);
         mgr.executeStrategy(keccak256("TREND"), bytes(""));
-        // another -50 would exceed 60 -> revert
+
         vm.prank(executor);
         vm.expectRevert();
         mgr.executeStrategy(keccak256("TREND"), bytes(""));
@@ -79,5 +90,3 @@ contract StrategyManagerTest is Test {
         mgr.executeStrategy(keccak256("ARBITRAGE"), bytes(""));
     }
 }
-
-

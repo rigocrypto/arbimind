@@ -443,7 +443,7 @@ export async function getSolanaPortfolio(userPubkey: string): Promise<PortfolioS
       balances: [
         { symbol: 'SOL', amount: arbBalanceSol.toFixed(6), usd: balanceUsd },
       ],
-      deposits: deposits.slice(0, 20).sort((a, b) => b.ts - a.ts),
+      deposits: deposits.sort((a, b) => b.ts - a.ts).slice(0, 20),
       withdrawals: [],
       updatedAt: Date.now(),
     };

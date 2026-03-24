@@ -64,8 +64,11 @@ export function AdminDashboard() {
   }, [range]);
 
   useEffect(() => {
-    fetchAll();
-    const interval = setInterval(fetchAll, 30000);
+    const runFetch = () => {
+      void fetchAll();
+    };
+    runFetch();
+    const interval = setInterval(runFetch, 30000);
     return () => clearInterval(interval);
   }, [fetchAll]);
 

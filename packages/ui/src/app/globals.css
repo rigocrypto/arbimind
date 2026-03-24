@@ -1,7 +1,135 @@
 /* Fonts loaded via next/font in layout.tsx to avoid @import order issues */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  /* Breakpoints */
+  --breakpoint-xs: 475px;
+
+  /* Flat named colors */
+  --color-neon-cyan: #00f6ff;
+  --color-neon-purple: #7645ff;
+  --color-neon-green: #0af29b;
+  --color-brand-cyan: #00f6ff;
+  --color-brand-purple: #7645ff;
+  --color-brand-green: #0af29b;
+
+  /* Primary (Electric Blue) */
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-primary-800: #1e40af;
+  --color-primary-900: #1e3a8a;
+
+  /* Success (Neon Green) */
+  --color-success-50: #f0fdf4;
+  --color-success-100: #dcfce7;
+  --color-success-200: #bbf7d0;
+  --color-success-300: #86efac;
+  --color-success-400: #4ade80;
+  --color-success-500: #22c55e;
+  --color-success-600: #16a34a;
+  --color-success-700: #15803d;
+  --color-success-800: #166534;
+  --color-success-900: #14532d;
+
+  /* Warning (Gold) */
+  --color-warning-50: #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-200: #fde68a;
+  --color-warning-300: #fcd34d;
+  --color-warning-400: #facc15;
+  --color-warning-500: #eab308;
+  --color-warning-600: #ca8a04;
+  --color-warning-700: #a16207;
+  --color-warning-800: #854d0e;
+  --color-warning-900: #713f12;
+
+  /* Dark (slate) */
+  --color-dark-50: #f8fafc;
+  --color-dark-100: #f1f5f9;
+  --color-dark-200: #e2e8f0;
+  --color-dark-300: #cbd5e1;
+  --color-dark-400: #94a3b8;
+  --color-dark-500: #64748b;
+  --color-dark-600: #475569;
+  --color-dark-700: #334155;
+  --color-dark-800: #1e293b;
+  --color-dark-900: #0f172a;
+
+  /* Purple */
+  --color-purple-50: #faf5ff;
+  --color-purple-100: #f3e8ff;
+  --color-purple-200: #e9d5ff;
+  --color-purple-300: #d8b4fe;
+  --color-purple-400: #c084fc;
+  --color-purple-500: #8b5cf6;
+  --color-purple-600: #7c3aed;
+  --color-purple-700: #6d28d9;
+  --color-purple-800: #5b21b6;
+  --color-purple-900: #4c1d95;
+
+  /* Cyan */
+  --color-cyan-50: #ecfeff;
+  --color-cyan-100: #cffafe;
+  --color-cyan-200: #a5f3fc;
+  --color-cyan-300: #67e8f9;
+  --color-cyan-400: #22d3ee;
+  --color-cyan-500: #06b6d4;
+  --color-cyan-600: #0891b2;
+  --color-cyan-700: #0e7490;
+  --color-cyan-800: #155e75;
+  --color-cyan-900: #164e63;
+
+  /* Pink */
+  --color-pink-50: #fdf2f8;
+  --color-pink-100: #fce7f3;
+  --color-pink-200: #fbcfe8;
+  --color-pink-300: #f9a8d4;
+  --color-pink-400: #f472b6;
+  --color-pink-500: #ec4899;
+  --color-pink-600: #db2777;
+  --color-pink-700: #be185d;
+  --color-pink-800: #9f1239;
+  --color-pink-900: #831843;
+
+  /* Orange */
+  --color-orange-50: #fff7ed;
+  --color-orange-100: #ffedd5;
+  --color-orange-200: #fed7aa;
+  --color-orange-300: #fdba74;
+  --color-orange-400: #fb923c;
+  --color-orange-500: #f97316;
+  --color-orange-600: #ea580c;
+  --color-orange-700: #c2410c;
+  --color-orange-800: #9a3412;
+  --color-orange-900: #7c2d12;
+
+  /* Emerald */
+  --color-emerald-50: #ecfdf5;
+  --color-emerald-100: #d1fae5;
+  --color-emerald-200: #a7f3d0;
+  --color-emerald-300: #6ee7b7;
+  --color-emerald-400: #34d399;
+  --color-emerald-500: #10b981;
+  --color-emerald-600: #059669;
+  --color-emerald-700: #047857;
+  --color-emerald-800: #065f46;
+  --color-emerald-900: #064e3b;
+
+  /* Font families */
+  --font-sans: var(--font-inter), Inter, system-ui, sans-serif;
+  --font-mono: var(--font-space-grotesk), 'Space Grotesk', monospace;
+
+  /* Animations */
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-bounce-slow: bounce 2s infinite;
+  --animate-glow: glow 2s ease-in-out infinite alternate;
+}
 
 @layer base {
   body {
@@ -49,11 +177,11 @@
   }
   
   .card-hover {
-    @apply card hover:border-primary-500 transition-colors duration-200;
+    @apply bg-black/20 backdrop-blur-md border border-white/10 rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all hover:border-primary-500 transition-colors duration-200;
   }
   
   .input-field {
-    @apply bg-dark-700 border border-dark-600 text-white placeholder-dark-400 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+    @apply bg-dark-700 border border-dark-600 text-white placeholder:text-dark-400 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
   }
   
   .status-indicator {
@@ -61,15 +189,15 @@
   }
   
   .status-running {
-    @apply status-indicator bg-success-100 text-success-800;
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-success-100 text-success-800;
   }
   
   .status-stopped {
-    @apply status-indicator bg-dark-100 text-dark-800;
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-dark-100 text-dark-800;
   }
   
   .status-error {
-    @apply status-indicator bg-red-100 text-red-800;
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800;
   }
   
   .profit-positive {
@@ -145,8 +273,8 @@
   /* Glassmorphism */
   .glass {
     background: rgba(17, 24, 39, 0.5);
-    backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
     border: 1px solid rgba(0, 246, 255, 0.2);
   }
 
@@ -215,4 +343,88 @@
 
 .animate-pulse-live {
   animation: pulse-live 2s ease-in-out infinite;
+}
+
+.timeline-active-step {
+  color: #7ce7ff;
+}
+
+.timeline-connector-active {
+  box-shadow: 0 0 10px rgba(0, 229, 204, 0.45);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .scan-pulse {
+    animation: scanPulse 1.8s ease-in-out infinite;
+  }
+
+  .timeline-active-step {
+    animation: timelinePulse 1.4s ease-in-out infinite;
+  }
+
+  .timeline-connector-active {
+    animation: connectorPulse 1.2s ease-in-out infinite;
+  }
+
+  .profit-flash-positive {
+    animation: profitFlashPositive 0.6s ease-out;
+  }
+
+  .profit-flash-negative {
+    animation: profitFlashNegative 0.6s ease-out;
+  }
+}
+
+@keyframes scanPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 rgba(0, 230, 118, 0);
+  }
+  50% {
+    box-shadow: 0 0 22px rgba(0, 230, 118, 0.35);
+  }
+}
+
+@keyframes timelinePulse {
+  0%,
+  100% {
+    text-shadow: 0 0 0 rgba(0, 229, 204, 0);
+  }
+  50% {
+    text-shadow: 0 0 12px rgba(0, 229, 204, 0.45);
+  }
+}
+
+@keyframes connectorPulse {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes profitFlashPositive {
+  0% {
+    color: #ffffff;
+  }
+  50% {
+    color: #9dffcc;
+  }
+  100% {
+    color: #ffffff;
+  }
+}
+
+@keyframes profitFlashNegative {
+  0% {
+    color: #ffffff;
+  }
+  50% {
+    color: #ff9aa7;
+  }
+  100% {
+    color: #ffffff;
+  }
 }
