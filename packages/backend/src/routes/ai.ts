@@ -1,5 +1,4 @@
-import express from 'express';
-import { Request, Response } from 'express';
+import express, { Request, Response, Router } from 'express';
 import { logger } from '../utils/logger';
 import { AIService } from '../services/AIService';
 import { validateRequest } from '../middleware/validation';
@@ -10,7 +9,7 @@ import {
   arbPredictionSchema
 } from '../schemas/aiSchemas';
 
-const router = express.Router();
+const router: Router = express.Router();
 
 // Get aiService from the exported instance
 let aiService: AIService;

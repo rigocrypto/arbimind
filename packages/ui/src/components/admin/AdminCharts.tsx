@@ -20,6 +20,16 @@ import { format } from 'date-fns';
 
 const COLORS = ['#22c55e', '#06b6d4', '#8b5cf6'];
 
+function AdminChartTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) {
+  if (!active || !payload?.length || !label) return null;
+  return (
+    <div className="rounded-lg border border-dark-600 bg-dark-800/95 px-3 py-2 shadow-xl">
+      <div className="text-xs text-dark-400">{label}</div>
+      <div className="text-sm font-bold text-white">{payload[0]?.value?.toFixed(4) ?? 0} ETH</div>
+    </div>
+  );
+}
+
 interface AdminChartsProps {
   pnlSeries: { time: number; netProfit: number; gasCost: number }[];
   txsByStrategy: { strategy: string; profit: number }[];
@@ -45,16 +55,6 @@ export function AdminCharts({ pnlSeries, txsByStrategy, range }: AdminChartsProp
       .slice(-20);
   }, [pnlSeries, range]);
 
-  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) => {
-    if (!active || !payload?.length || !label) return null;
-    return (
-      <div className="rounded-lg border border-dark-600 bg-dark-800/95 px-3 py-2 shadow-xl">
-        <div className="text-xs text-dark-400">{label}</div>
-        <div className="text-sm font-bold text-white">{payload[0]?.value?.toFixed(4) ?? 0} ETH</div>
-      </div>
-    );
-  };
-
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <div className="card">
@@ -71,7 +71,7 @@ export function AdminCharts({ pnlSeries, txsByStrategy, range }: AdminChartsProp
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
               <XAxis dataKey="timeStr" tick={{ fill: '#94a3b8', fontSize: 11 }} />
               <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={(v) => v.toFixed(3)} />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<AdminChartTooltip />} />
               <Area type="monotone" dataKey="netProfit" stroke="#22c55e" fill="url(#adminPnlGrad)" strokeWidth={2} />
             </AreaChart>
           </ResponsiveContainer>
@@ -85,7 +85,7 @@ export function AdminCharts({ pnlSeries, txsByStrategy, range }: AdminChartsProp
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
               <XAxis dataKey="time" tick={{ fill: '#94a3b8', fontSize: 11 }} />
               <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={(v) => v.toFixed(4)} />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<AdminChartTooltip />} />
               <Bar dataKey="gas" fill="#f97316" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>

@@ -1,20 +1,22 @@
 module.exports = {
+  root: true,
   parser: '@typescript-eslint/parser',
   parserOptions: {
-    project: './tsconfig.json',
-    ecmaVersion: 2020,
+    ecmaVersion: 2022,
     sourceType: 'module',
+    project: ['./tsconfig.json'],
   },
+  plugins: ['@typescript-eslint'],
   extends: [
     'eslint:recommended',
     'plugin:@typescript-eslint/recommended',
   ],
-  plugins: ['@typescript-eslint'],
   env: {
     node: true,
-    es2020: true,
+    es2022: true,
   },
   rules: {
+    '@typescript-eslint/no-explicit-any': 'error',
     '@typescript-eslint/no-unused-vars': [
       'error',
       { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
@@ -28,7 +30,6 @@ module.exports = {
       {
         selector: 'variable',
         format: ['camelCase', 'UPPER_CASE'],
-        leadingUnderscore: 'allow',
       },
       {
         selector: 'typeLike',
@@ -39,23 +40,12 @@ module.exports = {
         format: ['camelCase'],
       },
       {
-        // Skip naming convention for object literal properties (AI feature data, config keys)
+        // Skip naming convention for object literal properties as they may be
+        // config keys, feature names, enum-like constants with various naming styles
         selector: 'objectLiteralProperty',
         format: null,
       },
-      {
-        // Allow PascalCase imports (ethers, etc.)
-        selector: 'import',
-        format: ['camelCase', 'PascalCase'],
-      },
-      {
-        // Allow underscore-prefixed parameters and UPPER_CASE
-        selector: 'parameter',
-        format: ['camelCase', 'UPPER_CASE'],
-        leadingUnderscore: 'allow',
-      },
     ],
-    '@typescript-eslint/no-explicit-any': 'warn',
   },
   overrides: [
     {

@@ -100,7 +100,7 @@ export interface LogEntry {
   level: LogLevel;
   message: string;
   timestamp: number;
-  data?: any;
+  data?: unknown;
 }
 
 export interface MarketData {

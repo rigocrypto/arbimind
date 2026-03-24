@@ -23,7 +23,7 @@ contract ArbExecutor is ReentrancyGuard, Ownable {
         uint256 amountOut,
         uint256 profit,
         address indexed dex1,
-        address indexed dex2
+        address dex2
     );
 
     event ProfitWithdrawn(

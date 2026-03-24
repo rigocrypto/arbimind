@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
+type RequestWithUser = Request & { user?: string | jwt.JwtPayload };
+
 export const authMiddleware = (
   req: Request,
   res: Response,
@@ -20,7 +22,7 @@ export const authMiddleware = (
   if (token) {
     try {
   const decoded = jwt.verify(token, process.env['JWT_SECRET'] || 'dev-secret');
-      (req as any).user = decoded;
+      (req as RequestWithUser).user = decoded;
     } catch (error) {
       // In development, continue without auth
       if (process.env['NODE_ENV'] === 'production') {

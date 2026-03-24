@@ -7,8 +7,8 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
-import "@uniswap/v3-periphery/contracts/interfaces/INonfungiblePositionManager.sol";
 import "@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol";
+import "../interfaces/INonfungiblePositionManagerMinimal.sol";
 
 /// @title MarketMakerAdapter
 /// @notice Provides liquidity to Uniswap V3 pools and manages positions
@@ -54,7 +54,7 @@ contract MarketMakerAdapter is Ownable, ReentrancyGuard {
     );
 
     // State variables
-    INonfungiblePositionManager public immutable positionManager;
+    INonfungiblePositionManagerMinimal public immutable positionManager;
     IUniswapV3Factory public immutable factory;
     mapping(uint256 => PositionInfo) public positions;
     uint256 public totalPositions;
@@ -89,8 +89,8 @@ contract MarketMakerAdapter is Ownable, ReentrancyGuard {
         uint256 amount1Min;
     }
 
-    constructor(address _positionManager, address _factory) Ownable(msg.sender) {
-        positionManager = INonfungiblePositionManager(_positionManager);
+    constructor(address _positionManager, address _factory) {
+        positionManager = INonfungiblePositionManagerMinimal(_positionManager);
         factory = IUniswapV3Factory(_factory);
     }
 
@@ -119,7 +119,7 @@ contract MarketMakerAdapter is Ownable, ReentrancyGuard {
         TransferHelper.safeApprove(params.token1, address(positionManager), params.amount1Desired);
 
         // Create position
-        INonfungiblePositionManager.MintParams memory mintParams = INonfungiblePositionManager.MintParams({
+        INonfungiblePositionManagerMinimal.MintParams memory mintParams = INonfungiblePositionManagerMinimal.MintParams({
             token0: params.token0,
             token1: params.token1,
             fee: params.fee,
@@ -183,7 +183,7 @@ contract MarketMakerAdapter is Ownable, ReentrancyGuard {
         positionManager.approve(address(this), tokenId);
 
         // Remove liquidity
-        INonfungiblePositionManager.DecreaseLiquidityParams memory decreaseParams = INonfungiblePositionManager.DecreaseLiquidityParams({
+        INonfungiblePositionManagerMinimal.DecreaseLiquidityParams memory decreaseParams = INonfungiblePositionManagerMinimal.DecreaseLiquidityParams({
             tokenId: tokenId,
             liquidity: liquidity,
             amount0Min: amount0Min,
@@ -194,7 +194,7 @@ contract MarketMakerAdapter is Ownable, ReentrancyGuard {
         (amount0, amount1) = positionManager.decreaseLiquidity(decreaseParams);
 
         // Collect fees
-        INonfungiblePositionManager.CollectParams memory collectParams = INonfungiblePositionManager.CollectParams({
+        INonfungiblePositionManagerMinimal.CollectParams memory collectParams = INonfungiblePositionManagerMinimal.CollectParams({
             tokenId: tokenId,
             recipient: address(this),
             amount0Max: type(uint128).max,
@@ -232,7 +232,7 @@ contract MarketMakerAdapter is Ownable, ReentrancyGuard {
         positionManager.approve(address(this), tokenId);
 
         // Collect fees
-        INonfungiblePositionManager.CollectParams memory collectParams = INonfungiblePositionManager.CollectParams({
+        INonfungiblePositionManagerMinimal.CollectParams memory collectParams = INonfungiblePositionManagerMinimal.CollectParams({
             tokenId: tokenId,
             recipient: address(this),
             amount0Max: type(uint128).max,

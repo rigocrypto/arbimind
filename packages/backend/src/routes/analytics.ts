@@ -1,10 +1,9 @@
-import express from 'express';
-import { Request, Response } from 'express';
+import express, { Request, Response, Router } from 'express';
 import { validateRequest } from '../middleware/validation';
 import { funnelEventSchema } from '../schemas/analyticsSchemas';
 import { getCtaAbReport, insertFunnelEvent, isDbAvailable, listFunnelEvents, type CtaWindow } from '../db/portfolioDb';
 
-const router = express.Router();
+const router: Router = express.Router();
 
 router.post('/events', validateRequest(funnelEventSchema), async (req: Request, res: Response) => {
   const {
