@@ -44,10 +44,14 @@ export function middleware(req: NextRequest) {
       toOrigin(process.env.NEXT_PUBLIC_AMOY_RPC_URL),
       toOrigin(process.env.NEXT_PUBLIC_POLYGON_AMOY_RPC_URL),
       toOrigin(process.env.NEXT_PUBLIC_POLYGON_AMOY_RPC),
+      toOrigin(process.env.NEXT_PUBLIC_SOLANA_RPC_URL),
       'https://polygon-rpc.com',
       'https://rpc-amoy.polygon.technology',
       'https://polygon-amoy.publicnode.com',
       'https://polygon-bor-rpc.publicnode.com',
+      'https://api.devnet.solana.com',
+      'https://api.mainnet-beta.solana.com',
+      'https://api.testnet.solana.com',
       'https://*.alchemy.com',
     ].filter(Boolean);
 

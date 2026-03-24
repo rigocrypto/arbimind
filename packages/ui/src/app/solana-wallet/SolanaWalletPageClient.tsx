@@ -26,8 +26,13 @@ const SOLANA_TREASURY_ADDRESS =
   process.env.NEXT_PUBLIC_SOLANA_ARB_ACCOUNT || '6wmAm8uoPQTx9jEnGx4aDKwVFRSfdhKJfL2LJzwCmE6s';
 // Override only the states that display the CTA text so it never regresses to "Select Wallet".
 const SOLANA_WALLET_BUTTON_LABELS = {
-  'has-wallet': 'Connect Wallet',
-  'no-wallet': 'Connect Wallet',
+  'has-wallet': 'Connect Solana',
+  'no-wallet': 'Connect Solana',
+  connecting: 'Connecting...',
+  'copy-address': 'Copy address',
+  copied: 'Copied',
+  'change-wallet': 'Change wallet',
+  disconnect: 'Disconnect',
 } as const;
 
 type BotTrade = {
@@ -385,7 +390,7 @@ export default function SolanaWalletPageClient() {
           }>;
         };
 
-        const normalized = (payload.trades ?? [])
+        const normalized: BotTrade[] = (payload.trades ?? [])
           .filter((trade) => !!trade.id)
           .map((trade) => ({
             id: trade.id as string,
@@ -988,7 +993,7 @@ export default function SolanaWalletPageClient() {
               </p>
               <div className="flex flex-wrap gap-2 mt-2 justify-center lg:justify-start">
                 <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-gradient-to-r from-purple-600/80 to-pink-500/80 text-xs font-semibold text-white shadow-sm">
-                  <Wallet className="w-4 h-4" /> Wallet Connect
+                  <Wallet className="w-4 h-4" /> Solana Wallet
                 </span>
                 <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-gradient-to-r from-cyan-500/80 to-blue-400/80 text-xs font-semibold text-white shadow-sm">
                   <ArrowRightLeft className="w-4 h-4" /> Instant Swaps
@@ -1017,11 +1022,17 @@ export default function SolanaWalletPageClient() {
                   >
                     Connect Solflare
                   </button>
+                  <Link
+                    href="/wallet"
+                    className="px-4 py-2 rounded-lg bg-dark-800/80 hover:bg-dark-700 border border-dark-600 text-white text-sm font-semibold transition"
+                  >
+                    Open EVM Wallet
+                  </Link>
                 </div>
               )}
               {!isSolanaConnected && (
                 <p className="text-xs text-dark-400 mt-2 max-w-md text-center lg:text-left">
-                  The top-right <span className="font-mono">0x...</span> wallet is EVM. For this page, connect Phantom/Solflare using the button above.
+                  The top-right <span className="font-mono">0x...</span> wallet is EVM. Use Connect Solana, Phantom, or Solflare here, or switch back to the EVM wallet page.
                 </p>
               )}
               <p className="text-xs text-dark-400/90 mt-2 max-w-md text-center lg:text-left">
@@ -1160,7 +1171,9 @@ export default function SolanaWalletPageClient() {
                   </div>
                 </div>
               )}
-              {/* Connect using the hero button above */}
+              <p className="text-sm text-dark-400">
+                Use the primary wallet controls above to connect Phantom or Solflare, or return to the EVM wallet page.
+              </p>
             </motion.div>
 
             <motion.div
@@ -1170,7 +1183,7 @@ export default function SolanaWalletPageClient() {
             >
               <div className="glass-card p-4 sm:p-5 opacity-90">
                 <h2 className="text-sm font-medium text-dark-300 mb-2">Your SOL Balance</h2>
-                <p className="text-2xl font-bold text-white">Connect wallet</p>
+                <p className="text-2xl font-bold text-white">Connect Solana</p>
               </div>
               <div className="glass-card p-4 sm:p-5 opacity-90">
                 <h2 className="text-sm font-medium text-dark-300 mb-2">Bot Treasury Balance</h2>
