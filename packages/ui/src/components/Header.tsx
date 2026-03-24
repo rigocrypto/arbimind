@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAccount } from 'wagmi';
@@ -56,6 +57,8 @@ export function Header() {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [solanaAddress, setSolanaAddress] = useState<string | null>(() => readSolanaWalletAddress());
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [logoVideoReady, setLogoVideoReady] = useState(false);
 
   useEffect(() => {
     const sync = () => setSolanaAddress(readSolanaWalletAddress());
@@ -67,6 +70,17 @@ export function Header() {
       window.removeEventListener(WALLET_STATE_UPDATED_EVENT, sync);
       window.removeEventListener('storage', sync);
       window.removeEventListener('focus', sync);
+    };
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () => setPrefersReducedMotion(mediaQuery.matches);
+    sync();
+    mediaQuery.addEventListener('change', sync);
+
+    return () => {
+      mediaQuery.removeEventListener('change', sync);
     };
   }, []);
 
@@ -91,7 +105,32 @@ export function Header() {
       <div className="h-full max-w-[1440px] mx-auto px-4 flex items-center justify-between">
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-purple-500 flex items-center justify-center text-white font-bold">A</div>
+            <div className="relative h-8 w-8 overflow-hidden rounded-lg ring-1 ring-white/15">
+              <Image
+                src="/favicon.svg"
+                alt="ArbiMind logo"
+                fill
+                sizes="32px"
+                className="object-cover"
+                priority
+              />
+              {!prefersReducedMotion && (
+                <video
+                  src="/Arbimind-logo1.mp4"
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  preload="metadata"
+                  onLoadedData={() => setLogoVideoReady(true)}
+                  onError={() => setLogoVideoReady(false)}
+                  className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-200 ${
+                    logoVideoReady ? 'opacity-100' : 'opacity-0'
+                  }`}
+                  aria-label="Animated ArbiMind logo"
+                />
+              )}
+            </div>
             <span className="text-white font-semibold text-lg hidden sm:block">ArbiMind</span>
           </Link>
           <nav className="hidden md:flex items-center gap-1">
