@@ -317,6 +317,14 @@ if ($UiBase) {
         throw 'pnpm is required for UI runtime smoke and could not be activated via corepack'
       }
 
+      $uiNodeModules = Join-Path $repoRoot 'packages/ui/node_modules'
+      if (-not (Test-Path $uiNodeModules)) {
+        & pnpm install --frozen-lockfile
+        if ($LASTEXITCODE -ne 0) {
+          throw "pnpm install failed with exit code $LASTEXITCODE"
+        }
+      }
+
       & pnpm --filter @arbimind/ui smoke:runtime:live
       if ($LASTEXITCODE -ne 0) {
         throw "UI runtime smoke failed with exit code $LASTEXITCODE"
