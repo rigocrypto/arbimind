@@ -347,12 +347,13 @@ if ($UiBase) {
       }
 
       if (-not $hasPlaywrightBrowser) {
+        Write-Host 'Playwright browser not found, installing...' -ForegroundColor Yellow
         & pnpm --filter @arbimind/ui exec playwright install chromium
         if ($LASTEXITCODE -ne 0) {
           throw "playwright install failed with exit code $LASTEXITCODE"
         }
+        Write-Host 'Playwright browser installed.' -ForegroundColor Green
       }
-
       & pnpm --filter @arbimind/ui smoke:runtime:live
       if ($LASTEXITCODE -ne 0) {
         throw "UI runtime smoke failed with exit code $LASTEXITCODE"

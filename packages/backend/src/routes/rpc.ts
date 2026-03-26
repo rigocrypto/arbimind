@@ -1,7 +1,7 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, Router } from 'express';
 import { checkRpcHealth } from '../utils/rpc';
 
-const router = express.Router();
+const router: Router = express.Router();
 
 /**
  * GET /api/rpc/health?chain=evm|solana|worldchain_sepolia (comma-separated allowed)

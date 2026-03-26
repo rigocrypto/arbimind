@@ -6,16 +6,46 @@
 import { solanaConfig } from './config';
 import { config } from '../config';
 import { Logger } from '../utils/Logger';
-import { AiScoringService } from '../services/AiScoringService';
+import { AiScoringService, AiScoringConfig } from '../services/AiScoringService';
 
 const logger = new Logger('SolanaScanner');
+
+type DexPairData = {
+  volumeH24?: number;
+  liquidityUsd?: number;
+  priceUsd?: number;
+};
+
+type DexScreenerResponse = {
+  pair?: {
+    volume?: { h24?: number };
+    liquidity?: { usd?: number };
+    priceUsd?: number;
+  };
+};
+
+type AlertPredictionPayload = {
+  pairAddress: string;
+  chain: 'solana';
+  horizonSec: number;
+  model: string;
+  signal: 'LONG' | 'SHORT' | 'NEUTRAL';
+  confidence: number;
+  entryPriceUsd?: number;
+  features: {
+    volumeH24: number;
+    liquidityUsd: number;
+  };
+  reason: 'solana_scan';
+  alertContext: { source: 'solana_bot' };
+};
 
 export class SolanaScanner {
   private aiScoringService: AiScoringService;
   private isRunning = false;
 
   constructor() {
-    const aiConfig: any = {
+    const aiConfig: AiScoringConfig = {
       horizonSec: config.aiPredictionHorizonSec,
     };
     if (config.aiPredictUrl) aiConfig.predictUrl = config.aiPredictUrl;
@@ -150,7 +180,7 @@ export class SolanaScanner {
         return null;
       }
 
-      const body = (await resp.json()) as any;
+      const body = (await resp.json()) as DexScreenerResponse;
       const pair = body?.pair;
 
       if (!pair) {
@@ -177,7 +207,7 @@ export class SolanaScanner {
     poolAddress: string,
     signal: 'LONG' | 'SHORT' | 'NEUTRAL',
     confidence: number,
-    pairData: any
+    pairData: DexPairData
   ): Promise<void> {
     if (!config.aiLogUrl || !config.aiServiceKey) {
       logger.debug('AI logging disabled (missing URL or key)');
@@ -185,7 +215,7 @@ export class SolanaScanner {
     }
 
     try {
-      const payload = {
+      const payload: AlertPredictionPayload = {
         pairAddress: poolAddress,
         chain: 'solana',
         horizonSec: config.aiPredictionHorizonSec,
@@ -228,7 +258,7 @@ export class SolanaScanner {
   /**
    * Dispatch alert for a high-confidence prediction
    */
-  private async dispatchAlert(prediction: any): Promise<void> {
+  private async dispatchAlert(prediction: AlertPredictionPayload): Promise<void> {
     if (!config.aiLogUrl) {
       logger.debug('Backend URL not configured; skipping alert dispatch');
       return;
@@ -250,7 +280,7 @@ export class SolanaScanner {
         return;
       }
 
-      const result = await resp.json() as any;
+      const result = (await resp.json()) as { dispatched?: string[] };
       logger.info('✉️ Alert dispatched', {
         pair: prediction.pairAddress,
         channels: result.dispatched,

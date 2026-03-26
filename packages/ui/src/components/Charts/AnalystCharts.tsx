@@ -35,11 +35,12 @@ export function AnalystCharts({ strategies, timestamps, totalTrades }: AnalystCh
 
   const activityData = useMemo(() => {
     const buckets = 6;
-    const now = Date.now();
     const span = 24 * 60 * 60 * 1000;
+    const latestTimestamp = timestamps.length > 0 ? Math.max(...timestamps) : span;
+    const windowEnd = latestTimestamp;
     const bucketMs = span / buckets;
     const result = Array.from({ length: buckets }, (_, i) => {
-      const start = now - span + i * bucketMs;
+      const start = windowEnd - span + i * bucketMs;
       const end = start + bucketMs;
       const count = timestamps.filter((t) => t >= start && t < end).length;
       const label = new Date(start).toLocaleTimeString('en-US', {

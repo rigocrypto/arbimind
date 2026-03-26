@@ -4,6 +4,11 @@
  */
 
 import { logger } from '../utils/logger';
+import { assertAllowedOutboundUrl, getEnvHostAllowlist } from '../security/ssrf';
+
+const TELEGRAM_API_HOSTS = ['api.telegram.org'] as const;
+const DISCORD_WEBHOOK_HOSTS = ['discord.com', 'discordapp.com', ...getEnvHostAllowlist('ALERT_WEBHOOK_ALLOWLIST')];
+const DISCORD_WEBHOOK_PATH_RE = /^\/api\/webhooks\/[A-Za-z0-9_-]+\/[A-Za-z0-9._-]+$/;
 
 export interface AlertWebhooks {
   telegram?: { token: string; chatId: string } | undefined;
@@ -43,7 +48,7 @@ async function getRedditToken(clientId: string, secret: string, userAgent: strin
       return null;
     }
 
-    const data = (await res.json()) as any;
+    const data = (await res.json()) as { access_token?: string };
     return data.access_token ?? null;
   } catch (error) {
     logger.debug('Reddit token error', {
@@ -62,8 +67,14 @@ async function sendTelegram(
   message: string
 ): Promise<boolean> {
   try {
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    const telegramUrl = assertAllowedOutboundUrl(
+      `https://api.telegram.org/bot${encodeURIComponent(token)}/sendMessage`,
+      TELEGRAM_API_HOSTS
+    );
+
+    const res = await fetch(telegramUrl, {
       method: 'POST',
+      redirect: 'error',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
@@ -91,8 +102,17 @@ async function sendTelegram(
  */
 async function sendDiscord(webhookUrl: string, message: string): Promise<boolean> {
   try {
-    const res = await fetch(webhookUrl, {
+    const validatedWebhookUrl = assertAllowedOutboundUrl(webhookUrl, DISCORD_WEBHOOK_HOSTS);
+    if (!DISCORD_WEBHOOK_PATH_RE.test(validatedWebhookUrl.pathname)) {
+      throw new Error('Discord webhook path is invalid');
+    }
+
+    // Rebuild against a fixed trusted origin so destination host cannot be influenced.
+    const safeWebhookUrl = new URL(`${validatedWebhookUrl.pathname}${validatedWebhookUrl.search}`, 'https://discord.com');
+
+    const res = await fetch(safeWebhookUrl, {
       method: 'POST',
+      redirect: 'error',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         content: message,
@@ -272,7 +292,7 @@ export async function dispatchAlert(pred: AlertPrediction, webhooks: AlertWebhoo
         webhooks.reddit.subreddit,
         process.env.ALERT_REDDIT_USER_AGENT || 'ArbiMind/1.0',
         title,
-        message.replace(/<[^>]*>/g, '') // Remove HTML tags for Reddit
+        message.replace(/<[^>]{0,200}>/g, '').replace(/[<>]/g, '') // Strip HTML tags (bounded, two-pass — no ReDoS, no residual angle brackets)
       );
       logger.info('Reddit alert dispatched', { success: results.reddit, pair: pred.pairAddress });
     }

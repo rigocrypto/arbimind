@@ -28,7 +28,7 @@ export function getPersistentCtaVariant(): CtaVariant {
     return existing;
   }
 
-  const assigned: CtaVariant = Math.random() < 0.5 ? 'A' : 'B';
+  const assigned: CtaVariant = (crypto.getRandomValues(new Uint8Array(1))[0] & 1) === 0 ? 'A' : 'B';
   window.localStorage.setItem(CTA_VARIANT_KEY, assigned);
   return assigned;
 }
@@ -46,7 +46,7 @@ function getPersistentSessionId(): string {
   const generated =
     (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
       ? crypto.randomUUID()
-      : `sess_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
+      : `sess_${Date.now()}_${window.performance.now().toFixed(0)}`;
 
   window.sessionStorage.setItem(SESSION_ID_KEY, generated);
   return generated;

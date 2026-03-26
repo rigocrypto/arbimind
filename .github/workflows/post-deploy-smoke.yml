@@ -19,6 +19,13 @@ on:
         required: false
         default: "false"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: post-deploy-smoke-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   smoke:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
@@ -26,14 +33,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
         with:
-          node-version: 20
-          cache: pnpm
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.27.0
+          path: ~\AppData\Local\ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
 
       - name: Resolve endpoints
         id: resolve

@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { adminAuth } from '../middleware/adminAuth';
 import { adminStore } from '../store/adminStore';
@@ -10,8 +10,10 @@ import {
   updatePredictionResult,
   getPredictionAccuracy,
 } from '../db/portfolioDb';
+import { assertAllowedOutboundUrl } from '../security/ssrf';
 
-const router = express.Router();
+const router: Router = express.Router();
+const DEXSCREENER_API_HOSTS = ['api.dexscreener.com'] as const;
 
 type DexSnapshot = {
   ts: number;
@@ -20,6 +22,22 @@ type DexSnapshot = {
   volumeH24?: number;
   buysH1?: number;
   sellsH1?: number;
+};
+
+type DexPair = {
+  chainId?: string;
+  dexId?: string;
+  pairAddress?: string;
+  baseToken?: { address?: string; name?: string; symbol?: string };
+  quoteToken?: { address?: string; name?: string; symbol?: string };
+  priceUsd?: string | number;
+  priceChange?: Record<string, number>;
+  liquidity?: { usd?: string | number };
+  volume?: { h1?: string | number; h24?: string | number };
+  txns?: {
+    h1?: { buys?: string | number; sells?: string | number };
+    h24?: { buys?: string | number; sells?: string | number };
+  };
 };
 
 type WatchItem = {
@@ -33,7 +51,7 @@ type WatchItem = {
 const HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MIN_SAMPLE_GAP_MS = 30 * 1000;
 const DEDUPE_GAP_MS = 20 * 1000;
-const WATCH_TTL_MS = 24 * 60 * 60 * 1000;
+const _WATCH_TTL_MS = 24 * 60 * 60 * 1000;
 const WATCH_POLL_MS = 30 * 1000;
 const dexHistory = new Map<string, DexSnapshot[]>();
 const watchlist = new Map<string, WatchItem>();
@@ -95,7 +113,7 @@ function pruneWatchlist(): void {
   }
 }
 
-function recordDexSnapshot(chain: string, pair: string, p: any): DexSnapshot[] {
+function recordDexSnapshot(chain: string, pair: string, p: DexPair): DexSnapshot[] {
   const now = Date.now();
   const key = `dex:history:${chain}:${pair}`;
   const existing = dexHistory.get(key) ?? [];
@@ -120,11 +138,14 @@ function recordDexSnapshot(chain: string, pair: string, p: any): DexSnapshot[] {
   return trimmed;
 }
 
-async function fetchDexPair(chain: string, pair: string): Promise<any | null> {
-  const url = `https://api.dexscreener.com/latest/dex/pairs/${chain}/${pair}`;
-  const r = await fetch(url);
+async function fetchDexPair(chain: string, pair: string): Promise<DexPair | null> {
+  const url = assertAllowedOutboundUrl(
+    `https://api.dexscreener.com/latest/dex/pairs/${encodeURIComponent(chain)}/${encodeURIComponent(pair)}`,
+    DEXSCREENER_API_HOSTS
+  );
+  const r = await fetch(url, { redirect: 'error' });
   if (!r.ok) return null;
-  const data = (await r.json()) as { pairs?: Array<any> };
+  const data = (await r.json()) as { pairs?: DexPair[] };
   return data.pairs?.[0] ?? null;
 }
 
@@ -654,7 +675,8 @@ router.post('/snapshots/run', async (req: Request, res: Response) => {
             if (ok) success++;
             else failed++;
           } catch (err) {
-            console.warn(`[snapshots] ${chain} ${userAddress}:`, err);
+            const chainId = chain === 'evm' ? 'evm' : 'solana'; // sanitize: prevent log injection from tainted req.query.chain
+            console.warn(`[snapshots] ${chainId} ${userAddress}:`, err);
             failed++;
           }
         }
