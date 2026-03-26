@@ -6,8 +6,10 @@
 [![Bot Canary Sanity](https://github.com/rigocrypto/arbimind/actions/workflows/bot-canary-sanity.yml/badge.svg)](https://github.com/rigocrypto/arbimind/actions/workflows/bot-canary-sanity.yml)
 [![Bot Heartbeat Monitor](https://github.com/rigocrypto/arbimind/actions/workflows/bot-heartbeat-monitor.yml/badge.svg)](https://github.com/rigocrypto/arbimind/actions/workflows/bot-heartbeat-monitor.yml)
 [![Bot Typecheck / Build](https://github.com/rigocrypto/arbimind/actions/workflows/bot-build-check.yml/badge.svg)](https://github.com/rigocrypto/arbimind/actions/workflows/bot-build-check.yml)
+[![Backend Build Check](https://github.com/rigocrypto/arbimind/actions/workflows/backend-build-check.yml/badge.svg)](https://github.com/rigocrypto/arbimind/actions/workflows/backend-build-check.yml)
+[![UI Build Check](https://github.com/rigocrypto/arbimind/actions/workflows/ui-build-check.yml/badge.svg)](https://github.com/rigocrypto/arbimind/actions/workflows/ui-build-check.yml)
 
-_Workflow roles: **PR gating** → Bot Typecheck / Build. **Release/Ops gating** → Post-Deploy Smoke, Nightly Smoke, Bot Canary Sanity._
+_Workflow roles: **PR gating** → Bot Typecheck / Build, Backend Build Check, UI Build Check. **Release/Ops gating** → Post-Deploy Smoke, Nightly Smoke, Bot Canary Sanity._
 
 ## 📋 Ops Dashboard
 
@@ -17,6 +19,8 @@ _Workflow roles: **PR gating** → Bot Typecheck / Build. **Release/Ops gating**
 - [Bot Canary Sanity Runs](https://github.com/rigocrypto/arbimind/actions/workflows/bot-canary-sanity.yml)
 - [Bot Heartbeat Monitor Runs](https://github.com/rigocrypto/arbimind/actions/workflows/bot-heartbeat-monitor.yml)
 - [Bot Typecheck / Build Runs](https://github.com/rigocrypto/arbimind/actions/workflows/bot-build-check.yml)
+- [Backend Build Check Runs](https://github.com/rigocrypto/arbimind/actions/workflows/backend-build-check.yml)
+- [UI Build Check Runs](https://github.com/rigocrypto/arbimind/actions/workflows/ui-build-check.yml)
 
 Manual Run Shortcuts (opens workflow page with manual-dispatch context):
 

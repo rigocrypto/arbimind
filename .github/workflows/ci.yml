@@ -4,12 +4,15 @@ on: [push, pull_request]
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-
       - name: Reject npm lockfiles changed in this PR
         if: github.event_name == 'pull_request'
         run: |
@@ -25,11 +28,9 @@ jobs:
           node-version: 20
           cache: 'pnpm'
 
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --prefer-offline
 
-      # Only lint packages that have a working ESLint config.
-      # packages/bot and packages/backend have lint scripts but no ESLint config.
-      # packages/contracts lint requires forge (see step below).
+      # Keep the existing lint gate shape: only UI lint is currently clean on main.
       - run: pnpm --filter @arbimind/ui lint
 
       - uses: foundry-rs/foundry-toolchain@v1
@@ -44,9 +45,14 @@ jobs:
           forge install Uniswap/v3-core@v1.0.0
           forge install Uniswap/v3-periphery@v1.3.0
 
-      # Note: --if-present must precede the script name to be treated as a pnpm
-      # flag, not forwarded as a CLI argument to vitest/jest/forge.
-      - run: pnpm --filter @arbimind/bot run test
-      - run: pnpm --filter @arbimind/backend run test
-      # packages/contracts test suite is broken on clean checkout; tracked in issue #17
+      - name: Test (parallel)
+        run: |
+          set -euo pipefail
+          pnpm --filter @arbimind/bot run test &
+          bot_test_pid=$!
+          pnpm --filter @arbimind/backend run test &
+          backend_test_pid=$!
+          wait $backend_test_pid
+          wait $bot_test_pid
+
       - run: pnpm build

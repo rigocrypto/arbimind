@@ -5,6 +5,10 @@ on:
     - cron: '0 3 * * *'
   workflow_dispatch:
 
+concurrency:
+  group: nightly-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   nightly-smoke:
     runs-on: windows-latest
@@ -13,16 +17,15 @@ jobs:
       issues: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v6
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
         with:
-          node-version: 20
-          cache: pnpm
-
-      - uses: pnpm/action-setup@v5
-        with:
-          version: 10.27.0
+          path: ~\AppData\Local\ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
 
       - name: Validate required secrets
         shell: pwsh
@@ -80,7 +83,7 @@ jobs:
 
       - name: Open failure issue
         if: steps.smoke.outcome == 'failure'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v7
         env:
           BACKEND_BASE: ${{ secrets.BACKEND_BASE }}
           UI_BASE: ${{ secrets.UI_BASE }}
@@ -137,7 +140,7 @@ jobs:
 
       - name: Comment green and close old failure issues
         if: steps.smoke.outcome == 'success'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v7
         with:
           script: |
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;

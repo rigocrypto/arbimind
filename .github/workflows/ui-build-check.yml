@@ -1,25 +1,29 @@
-name: Bot Typecheck / Build
+name: UI Build Check
 
 on:
   pull_request:
     paths:
-      - 'packages/bot/**'
-      - '.github/workflows/bot-build-check.yml'
+      - 'packages/ui/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/ui-build-check.yml'
   push:
     branches: [main]
     paths:
-      - 'packages/bot/**'
-      - '.github/workflows/bot-build-check.yml'
+      - 'packages/ui/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/ui-build-check.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: bot-build-check-${{ github.ref }}
+  group: ui-build-check-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  bot-build-check:
+  ui-build-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -34,8 +38,5 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile --prefer-offline
 
-      - name: Build bot
-        run: pnpm --dir packages/bot build
-
-      - name: Unit tests (identity)
-        run: pnpm -C packages/bot exec vitest run tests/unit/identity.test.ts
+      - name: Build UI
+        run: pnpm --filter @arbimind/ui build

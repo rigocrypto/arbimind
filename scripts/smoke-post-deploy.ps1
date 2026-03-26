@@ -319,7 +319,7 @@ if ($UiBase) {
 
       $uiNodeModules = Join-Path $repoRoot 'packages/ui/node_modules'
       if (-not (Test-Path $uiNodeModules)) {
-        & pnpm install --frozen-lockfile
+        & pnpm install --frozen-lockfile --prefer-offline
         if ($LASTEXITCODE -ne 0) {
           throw "pnpm install failed with exit code $LASTEXITCODE"
         }
