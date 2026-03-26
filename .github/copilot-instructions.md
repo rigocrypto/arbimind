@@ -186,5 +186,94 @@ forge script script/Deploy.s.sol --rpc-url $env:ETHEREUM_RPC_URL --private-key $
 
 ---
 
+## CI/CD Workflows (GitHub Actions)
+
+Note: this section reflects the workflow shape introduced by PR #123 once merged.
+
+### Workflow Optimization Patterns (2026-03-25)
+
+- Concurrency groups cancel superseded runs where appropriate.
+  - `ci.yml`: `${{ github.workflow }}-${{ github.ref }}` with `cancel-in-progress: true`
+  - `bot-build-check.yml`, `backend-build-check.yml`, `ui-build-check.yml`: package-specific branch concurrency with `cancel-in-progress: true`
+  - `post-deploy-smoke.yml`: per-ref concurrency with `cancel-in-progress: true`
+  - `nightly-smoke.yml`: `cancel-in-progress: false` so scheduled nightly runs are preserved
+- Install optimization: package-install workflows use `pnpm install --frozen-lockfile --prefer-offline`.
+- Playwright cache: smoke workflows cache browsers at `~\AppData\Local\ms-playwright` on Windows with a lockfile-derived cache key.
+- Path filtering: `bot-build-check.yml`, `backend-build-check.yml`, and `ui-build-check.yml` only trigger on package-specific paths plus their workflow file and shared dependency files.
+- Parallel execution: `ci.yml` parallelizes backend and bot tests. It does not currently parallelize lint because only UI lint is part of the stable main gate.
+- Least privilege: workflows should define explicit `permissions` blocks. For read-only build workflows, use `contents: read`.
+
+### Key Workflows
+
+| Workflow | Trigger | Purpose |
+| --- | --- | --- |
+| `ci.yml` | push, PR | Main CI gate: install, UI lint, contracts setup, backend+bot tests, full build |
+| `bot-build-check.yml` | `packages/bot/**` | Fast bot-only build/test gate |
+| `backend-build-check.yml` | `packages/backend/**` | Fast backend-only build/typecheck gate |
+| `ui-build-check.yml` | `packages/ui/**` | Fast UI-only build gate |
+| `post-deploy-smoke.yml` | deploy success, manual | Production smoke checks after UI deploy |
+| `nightly-smoke.yml` | schedule, manual | Nightly production health check with issue creation on failure |
+
+### Adding a New Workflow
+
+1. Add an explicit `permissions` block.
+   ```yaml
+   permissions:
+     contents: read
+   ```
+2. Add a `concurrency` block with the right cancellation behavior.
+   ```yaml
+   concurrency:
+     group: ${{ github.workflow }}-${{ github.ref }}
+     cancel-in-progress: true
+   ```
+3. If the workflow installs deps, prefer:
+   ```yaml
+   - run: pnpm install --frozen-lockfile --prefer-offline
+   ```
+4. If the workflow is package-specific, add `paths` filters for:
+   - the package directory
+   - `package.json`
+   - `pnpm-lock.yaml`
+   - the workflow file itself
+5. If the workflow uses Playwright, add the browser cache step from `post-deploy-smoke.yml`.
+6. If you parallelize commands, keep the gate shape aligned with what is already enforced on `main` so perf PRs do not accidentally tighten policy.
+
+### Troubleshooting CI Issues
+
+- Concurrency cancellations:
+  - confirm the `group` key is scoped correctly
+  - use `cancel-in-progress: false` for scheduled or critical serialized workflows
+- Path filtering surprises:
+  - root-only changes may not trigger package-scoped workflows
+  - include the workflow file itself in `paths` so workflow edits run their own check
+- `--prefer-offline` install failures:
+  - verify `pnpm-lock.yaml` is current
+  - retry without `--prefer-offline` only when diagnosing a registry/cache issue
+- Playwright cache misses:
+  - first run will miss
+  - check the lockfile hash-based key
+- Parallel step failures:
+  - `wait` will surface the failing background process
+  - if needed, temporarily run the commands serially to isolate the fault
+
+### Common Workflow Commands
+
+```bash
+gh run list --workflow=ci.yml
+gh run watch
+gh run download <run-id>
+gh run cancel <run-id>
+gh workflow run nightly-smoke.yml
+```
+
+### Future Optimization Ideas (Deferred)
+
+- Matrix-based parallelization if job durations become a real bottleneck
+- Turbo remote cache if build/test reuse becomes worth the setup cost
+- Artifact sharing between jobs if duplicate builds start dominating runtime
+
+---
+
 If you'd like, I can commit these exact examples now and then generate the Production CSP, Docker + PM2 config, and CI/CD (GitHub Actions) artifacts you mentioned.
 
