@@ -1,0 +1,45 @@
+name: Backend Build Check
+
+on:
+  pull_request:
+    paths:
+      - 'packages/backend/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/backend-build-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/backend/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/backend-build-check.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-build-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Build backend
+        run: pnpm --filter @arbimind/backend build
+
+      - name: Typecheck backend
+        run: pnpm --filter @arbimind/backend typecheck
