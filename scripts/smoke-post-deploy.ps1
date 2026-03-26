@@ -325,6 +325,35 @@ if ($UiBase) {
         }
       }
 
+      $playwrightRoots = @()
+      if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        $playwrightRoots += (Join-Path $env:LOCALAPPDATA 'ms-playwright')
+      }
+      if (-not [string]::IsNullOrWhiteSpace($env:HOME)) {
+        $playwrightRoots += (Join-Path $env:HOME '.cache/ms-playwright')
+      }
+
+      $hasPlaywrightBrowser = $false
+      foreach ($root in $playwrightRoots) {
+        if (-not (Test-Path $root)) {
+          continue
+        }
+
+        $browserBinary = Get-ChildItem -Path $root -Recurse -Filter 'chrome-headless-shell*' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($browserBinary) {
+          $hasPlaywrightBrowser = $true
+          break
+        }
+      }
+
+      if (-not $hasPlaywrightBrowser) {
+        Write-Host 'Playwright browser not found, installing...' -ForegroundColor Yellow
+        & pnpm --filter @arbimind/ui exec playwright install chromium
+        if ($LASTEXITCODE -ne 0) {
+          throw "playwright install failed with exit code $LASTEXITCODE"
+        }
+        Write-Host 'Playwright browser installed.' -ForegroundColor Green
+      }
       & pnpm --filter @arbimind/ui smoke:runtime:live
       if ($LASTEXITCODE -ne 0) {
         throw "UI runtime smoke failed with exit code $LASTEXITCODE"
