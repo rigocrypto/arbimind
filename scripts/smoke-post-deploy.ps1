@@ -302,6 +302,57 @@ if ($UiBase) {
     try {
       $env:SMOKE_BASE_URL = $UiBase
       Push-Location $repoRoot
+
+      $pnpmCmd = Get-Command pnpm -ErrorAction SilentlyContinue
+      if (-not $pnpmCmd) {
+        $corepackCmd = Get-Command corepack -ErrorAction SilentlyContinue
+        if ($corepackCmd) {
+          & corepack enable
+          & corepack prepare pnpm@10.27.0 --activate
+          $pnpmCmd = Get-Command pnpm -ErrorAction SilentlyContinue
+        }
+      }
+
+      if (-not $pnpmCmd) {
+        throw 'pnpm is required for UI runtime smoke and could not be activated via corepack'
+      }
+
+      $uiNodeModules = Join-Path $repoRoot 'packages/ui/node_modules'
+      if (-not (Test-Path $uiNodeModules)) {
+        & pnpm install --frozen-lockfile --prefer-offline
+        if ($LASTEXITCODE -ne 0) {
+          throw "pnpm install failed with exit code $LASTEXITCODE"
+        }
+      }
+
+      $playwrightRoots = @()
+      if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        $playwrightRoots += (Join-Path $env:LOCALAPPDATA 'ms-playwright')
+      }
+      if (-not [string]::IsNullOrWhiteSpace($env:HOME)) {
+        $playwrightRoots += (Join-Path $env:HOME '.cache/ms-playwright')
+      }
+
+      $hasPlaywrightBrowser = $false
+      foreach ($root in $playwrightRoots) {
+        if (-not (Test-Path $root)) {
+          continue
+        }
+
+        $browserBinary = Get-ChildItem -Path $root -Recurse -Filter 'chrome-headless-shell*' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($browserBinary) {
+          $hasPlaywrightBrowser = $true
+          break
+        }
+      }
+
+      if (-not $hasPlaywrightBrowser) {
+        & pnpm --filter @arbimind/ui exec playwright install chromium
+        if ($LASTEXITCODE -ne 0) {
+          throw "playwright install failed with exit code $LASTEXITCODE"
+        }
+      }
+
       & pnpm --filter @arbimind/ui smoke:runtime:live
       if ($LASTEXITCODE -ne 0) {
         throw "UI runtime smoke failed with exit code $LASTEXITCODE"
