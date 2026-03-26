@@ -239,7 +239,29 @@ export async function getEvmPortfolio(userAddress: string): Promise<PortfolioSum
     return summary;
   } catch (err) {
     console.error('EVM portfolio error:', err);
-    return null;
+
+    // Keep portfolio endpoints available when upstream RPC log queries fail.
+    // This avoids surfacing a hard 503 to the UI for transient provider issues.
+    const fallback: PortfolioSummary = {
+      chain: 'evm',
+      userAddress,
+      arbAddress,
+      totals: {
+        depositedUsd: 0,
+        withdrawnUsd: 0,
+        feesUsd: 0,
+        pnlUsd: 0,
+        equityUsd: 0,
+        roiPct: 0,
+      },
+      balances: [],
+      deposits: [],
+      withdrawals: [],
+      updatedAt: Date.now(),
+    };
+
+    setCache(cacheKey, fallback, 10_000);
+    return fallback;
   }
 }
 
@@ -306,7 +328,7 @@ const LAMPORTS_PER_SOL = 1e9;
 
 export async function getSolanaPortfolio(userPubkey: string): Promise<PortfolioSummary | null> {
   const arbAddress = process.env.SOLANA_ARB_ACCOUNT?.trim();
-  const feeWallet = process.env.SOLANA_FEE_WALLET?.trim();
+  const _feeWallet = process.env.SOLANA_FEE_WALLET?.trim();
   if (!arbAddress || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(arbAddress)) return null;
   if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(userPubkey)) return null;
 
@@ -325,7 +347,7 @@ export async function getSolanaPortfolio(userPubkey: string): Promise<PortfolioS
 
     const connection = new Connection(resolveRpcUrl('solana', [solanaFallback]) ?? solanaFallback);
     const arbPubkey = new PublicKey(arbAddress);
-    const userKey = new PublicKey(userPubkey);
+    const _userKey = new PublicKey(userPubkey);
 
     const deposits: PortfolioSummary['deposits'] = [];
     let totalDepositedSol = 0;
@@ -337,7 +359,7 @@ export async function getSolanaPortfolio(userPubkey: string): Promise<PortfolioS
       let idx = 0;
       const main = (tx.transaction?.message?.instructions ?? []).map((ix) => ({ ix, instructionIndex: idx++, innerIndex: -1 }));
       const inner =
-        (tx.meta as { innerInstructions?: { instructions: unknown[] }[] } | null)?.innerInstructions?.flatMap((outer, outerIdx) =>
+        (tx.meta as { innerInstructions?: { instructions: unknown[] }[] } | null)?.innerInstructions?.flatMap((outer, _outerIdx) =>
           (outer.instructions ?? []).map((ix, innerIdx) => ({ ix, instructionIndex: idx++, innerIndex: innerIdx }))
         ) ?? [];
       return [...main, ...inner];

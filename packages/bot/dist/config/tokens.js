@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getAllTokenAddresses = exports.getTokenConfig = exports.getTokenAddress = exports.TOKEN_PAIRS = exports.ALLOWLISTED_TOKENS = void 0;
-exports.ALLOWLISTED_TOKENS = {
+exports.getAllTokenAddresses = exports.getTokenConfig = exports.getTokenAddress = exports.getEffectiveTokenPairs = exports.getSepoliaPairs = exports.TOKEN_PAIRS = exports.ALLOWLISTED_TOKENS = void 0;
+const DEFAULT_ALLOWLISTED_TOKENS = {
     WETH: {
         address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
         symbol: "WETH",
@@ -59,7 +59,7 @@ exports.ALLOWLISTED_TOKENS = {
         logoURI: "https://assets.coingecko.com/coins/images/12645/thumb/AAVE.png"
     }
 };
-exports.TOKEN_PAIRS = [
+const DEFAULT_TOKEN_PAIRS = [
     { tokenA: "WETH", tokenB: "USDC" },
     { tokenA: "WETH", tokenB: "USDT" },
     { tokenA: "WETH", tokenB: "DAI" },
@@ -71,6 +71,103 @@ exports.TOKEN_PAIRS = [
     { tokenA: "WETH", tokenB: "UNI" },
     { tokenA: "WETH", tokenB: "AAVE" }
 ];
+function normalizeEnvValue(value) {
+    if (!value)
+        return '';
+    const trimmed = value.trim();
+    if ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+        (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+        return trimmed.slice(1, -1).trim();
+    }
+    return trimmed;
+}
+function isEthereumSepoliaProfile() {
+    const network = normalizeEnvValue(process.env['NETWORK'] || 'mainnet').toLowerCase();
+    const evmChain = normalizeEnvValue(process.env['EVM_CHAIN'] || 'arbitrum').toLowerCase();
+    return network === 'testnet' && evmChain === 'ethereum';
+}
+function buildSepoliaTokens() {
+    const sepoliaTokens = {};
+    const weth = normalizeEnvValue(process.env['SEPOLIA_WETH_ADDRESS']) || '0x7b79995e5f793a07bc00c21412e50ecae098e7f9';
+    if (weth) {
+        sepoliaTokens['WETH'] = {
+            address: weth,
+            symbol: 'WETH',
+            name: 'Wrapped Ether (Sepolia)',
+            decimals: 18,
+            logoURI: DEFAULT_ALLOWLISTED_TOKENS['WETH']?.logoURI,
+        };
+    }
+    const usdc = normalizeEnvValue(process.env['SEPOLIA_USDC_ADDRESS']);
+    if (usdc) {
+        sepoliaTokens['USDC'] = {
+            address: usdc,
+            symbol: 'USDC',
+            name: 'USD Coin (Sepolia)',
+            decimals: 6,
+            logoURI: DEFAULT_ALLOWLISTED_TOKENS['USDC']?.logoURI,
+        };
+    }
+    const dai = normalizeEnvValue(process.env['SEPOLIA_DAI_ADDRESS']);
+    if (dai) {
+        sepoliaTokens['DAI'] = {
+            address: dai,
+            symbol: 'DAI',
+            name: 'Dai (Sepolia)',
+            decimals: 18,
+            logoURI: DEFAULT_ALLOWLISTED_TOKENS['DAI']?.logoURI,
+        };
+    }
+    return sepoliaTokens;
+}
+function buildTokenPairs(tokens) {
+    if (!isEthereumSepoliaProfile()) {
+        return DEFAULT_TOKEN_PAIRS;
+    }
+    const pairs = [];
+    if (tokens['WETH'] && tokens['USDC'])
+        pairs.push({ tokenA: 'WETH', tokenB: 'USDC' });
+    if (tokens['WETH'] && tokens['DAI'])
+        pairs.push({ tokenA: 'WETH', tokenB: 'DAI' });
+    if (tokens['USDC'] && tokens['DAI'])
+        pairs.push({ tokenA: 'USDC', tokenB: 'DAI' });
+    return pairs;
+}
+exports.ALLOWLISTED_TOKENS = isEthereumSepoliaProfile() ? buildSepoliaTokens() : DEFAULT_ALLOWLISTED_TOKENS;
+exports.TOKEN_PAIRS = buildTokenPairs(exports.ALLOWLISTED_TOKENS);
+/** Sepolia pairs (symbols only). Use at runtime so scan never gets 0 pairs when env is set. */
+function getSepoliaPairs() {
+    return [
+        { tokenA: 'WETH', tokenB: 'USDC' },
+        { tokenA: 'WETH', tokenB: 'DAI' },
+        { tokenA: 'USDC', tokenB: 'DAI' },
+    ];
+}
+exports.getSepoliaPairs = getSepoliaPairs;
+/** Pairs to use for scanning. On Sepolia, prefer explicit 3 pairs if TOKEN_PAIRS is empty. */
+function getEffectiveTokenPairs() {
+    const basePairs = isEthereumSepoliaProfile() && exports.TOKEN_PAIRS.length === 0
+        ? getSepoliaPairs()
+        : exports.TOKEN_PAIRS;
+    const scanPairsEnv = normalizeEnvValue(process.env['SCAN_PAIRS']);
+    const requestedPairs = new Set(scanPairsEnv
+        .split(',')
+        .map((p) => p.trim().toUpperCase())
+        .filter(Boolean));
+    const pairs = requestedPairs.size > 0
+        ? basePairs.filter((p) => requestedPairs.has(`${p.tokenA}/${p.tokenB}`) || requestedPairs.has(`${p.tokenB}/${p.tokenA}`))
+        : basePairs;
+    console.log('[EFFECTIVE_PAIRS]', {
+        count: pairs.length,
+        pairs: pairs.map((p) => `${p.tokenA}/${p.tokenB}`),
+        scanPairsEnv: scanPairsEnv || 'ALL',
+        WETH: process.env['SEPOLIA_WETH_ADDRESS']?.trim() || 'MISSING',
+        USDC: process.env['SEPOLIA_USDC_ADDRESS']?.trim() || 'MISSING',
+        DAI: process.env['SEPOLIA_DAI_ADDRESS']?.trim() || 'MISSING',
+    });
+    return pairs;
+}
+exports.getEffectiveTokenPairs = getEffectiveTokenPairs;
 function getTokenAddress(symbol) {
     const token = exports.ALLOWLISTED_TOKENS[symbol];
     if (!token) {

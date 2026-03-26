@@ -340,6 +340,32 @@ export interface PredictionRow {
   correct?: boolean | null;
 }
 
+type PredictionListDbRow = {
+  id: string;
+  chain: string;
+  pair_address: string;
+  created_at: Date;
+  horizon_sec: number;
+  model: string | null;
+  signal: string | null;
+  confidence: number | null;
+  entry_price_usd: number | null;
+  resolved_at: Date | null;
+  exit_price_usd: number | null;
+  return_pct: number | null;
+  correct: boolean | null;
+};
+
+type PendingPredictionDbRow = {
+  id: string;
+  chain: string;
+  pair_address: string;
+  created_at: Date;
+  horizon_sec: number;
+  signal: string | null;
+  entry_price_usd: number | null;
+};
+
 export interface FunnelEventInput {
   eventName: string;
   eventTs?: Date;
@@ -451,7 +477,7 @@ export async function listPredictions(
        limit ${limitSafe}`,
       params
     );
-    return res.rows.map((r: any) => ({
+    return (res.rows as PredictionListDbRow[]).map((r) => ({
       id: r.id,
       chain: r.chain,
       pairAddress: r.pair_address,
@@ -495,7 +521,7 @@ export async function listPendingPredictions(pairAddress?: string, chain?: strin
        limit 500`,
       params
     );
-    return res.rows.map((r: any) => ({
+    return (res.rows as PendingPredictionDbRow[]).map((r) => ({
       id: r.id,
       chain: r.chain,
       pairAddress: r.pair_address,
@@ -534,7 +560,10 @@ export async function updatePredictionResult(
   }
 }
 
-export async function getPredictionAccuracy(pairAddress: string | null, window: string): Promise<any[]> {
+export async function getPredictionAccuracy(
+  pairAddress: string | null,
+  window: string
+): Promise<Array<Record<string, unknown>>> {
   const p = getPool();
   if (!p) return [];
   try {

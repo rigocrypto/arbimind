@@ -74,7 +74,7 @@ export class SentimentAnalyzer {
       // Simulate some randomness
       const randomFactor = (Math.random() - 0.5) * 0.4;
       return Math.max(-1, Math.min(1, popularityScore + randomFactor));
-    } catch (error) {
+    } catch {
       this.logger.debug('Twitter sentiment analysis failed', { tokenSymbol });
       return 0;
     }
@@ -101,7 +101,7 @@ export class SentimentAnalyzer {
       
       const randomFactor = (Math.random() - 0.5) * 0.3;
       return Math.max(-1, Math.min(1, baseSentiment + randomFactor));
-    } catch (error) {
+    } catch {
       this.logger.debug('Reddit sentiment analysis failed', { tokenSymbol });
       return 0;
     }
@@ -130,7 +130,7 @@ export class SentimentAnalyzer {
       
       const randomFactor = (Math.random() - 0.5) * 0.2;
       return Math.max(-1, Math.min(1, baseSentiment + randomFactor));
-    } catch (error) {
+    } catch {
       this.logger.debug('News sentiment analysis failed', { tokenSymbol });
       return 0;
     }
@@ -146,11 +146,11 @@ export class SentimentAnalyzer {
       const hour = new Date().getHours();
       const isMarketHours = hour >= 9 && hour <= 17;
       
-      let baseSentiment = isMarketHours ? 0.2 : 0.1;
+      const baseSentiment = isMarketHours ? 0.2 : 0.1;
       const randomFactor = (Math.random() - 0.5) * 0.4;
       
       return Math.max(-1, Math.min(1, baseSentiment + randomFactor));
-    } catch (error) {
+    } catch {
       this.logger.debug('Telegram sentiment analysis failed', { tokenSymbol });
       return 0;
     }

@@ -18,7 +18,7 @@ export class SentimentModel {
 
   public async analyzeSentiment(
     tokens: string[],
-    sources: string[] = ['twitter', 'reddit', 'news']
+    _sources: string[] = ['twitter', 'reddit', 'news']
   ): Promise<{
     overallSentiment: number;
     confidence: number;
@@ -56,7 +56,7 @@ export class SentimentModel {
     // In a real implementation, this would train the model
   }
 
-  public async getStatus(): Promise<any> {
+  public async getStatus(): Promise<{ isInitialized: boolean; version: string; lastTrained: string }> {
     return {
       isInitialized: this.isInitialized,
       version: '1.0.0',

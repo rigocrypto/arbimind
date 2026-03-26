@@ -55,7 +55,7 @@ export class PerformanceTracker {
     };
   }
 
-  public async getStatus(): Promise<any> {
+  public async getStatus(): Promise<{ totalPredictions: number; totalFeedback: number; lastUpdate: string }> {
     return {
       totalPredictions: this.predictions.length,
       totalFeedback: this.feedback.length,

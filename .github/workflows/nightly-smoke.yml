@@ -5,6 +5,10 @@ on:
     - cron: '0 3 * * *'
   workflow_dispatch:
 
+concurrency:
+  group: nightly-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   nightly-smoke:
     runs-on: windows-latest
@@ -15,14 +19,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
         with:
-          node-version: 20
-          cache: pnpm
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.27.0
+          path: ~\AppData\Local\ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
 
       - name: Validate required secrets
         shell: pwsh

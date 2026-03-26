@@ -312,9 +312,9 @@ export class AIOrchestrator {
    */
   public getStatus(): {
     isInitialized: boolean;
-    opportunityModel: any;
-    riskModel: any;
-    sentimentAnalyzer: any;
+    opportunityModel: Record<string, unknown>;
+    riskModel: Record<string, unknown>;
+    sentimentAnalyzer: Record<string, unknown>;
   } {
     return {
       isInitialized: this.isInitialized,

@@ -9,22 +9,28 @@ on:
     paths:
       - 'packages/bot/**'
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: 'pnpm'
 
       - name: Install deps
         run: pnpm install --frozen-lockfile
+
+      - name: Lint bot code
+        run: pnpm --filter @arbimind/bot lint
 
       - name: Run bot tests
         run: pnpm --filter @arbimind/bot test:coverage

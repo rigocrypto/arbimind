@@ -1,0 +1,42 @@
+name: UI Build Check
+
+on:
+  pull_request:
+    paths:
+      - 'packages/ui/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/ui-build-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/ui/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/ui-build-check.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-build-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui-build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Build UI
+        run: pnpm --filter @arbimind/ui build

@@ -17,11 +17,10 @@ export default function AdminPage() {
   const [authed, setAuthed] = useState(false);
   const [key, setKey] = useState('');
   const [loginError, setLoginError] = useState('');
-  const [checking, setChecking] = useState(true);
+  const [checking, setChecking] = useState(() => hasAdminKey());
 
   useEffect(() => {
     if (!hasAdminKey()) {
-      setChecking(false);
       return;
     }
     adminApi.getMetrics('24h').then((res) => {

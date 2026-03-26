@@ -28,7 +28,6 @@ export function useReferral() {
 
   useEffect(() => {
     if (!address) {
-      setEarnings(0);
       return;
     }
     fetch(`${API_BASE}/referral/earnings?address=${address}`)
@@ -51,5 +50,5 @@ export function useReferral() {
   const storedReferrer =
     typeof window !== 'undefined' ? localStorage.getItem(REF_STORAGE_KEY) : null;
 
-  return { refLink, earnings, copyRefLink, referrer: storedReferrer };
+  return { refLink, earnings: address ? earnings : 0, copyRefLink, referrer: storedReferrer };
 }

@@ -1,12 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
+import { captureSentryException } from '../utils/sentry';
 
 export const errorHandler = (
   err: Error,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ) => {
+  captureSentryException(err);
+
   logger.error('Error occurred', {
     error: err.message,
     stack: err.stack,
