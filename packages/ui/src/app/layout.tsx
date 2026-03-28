@@ -7,7 +7,6 @@ import { Providers } from '@/components/Providers'
 import { Footer } from '@/components/Footer'
 import { Header } from '@/components/Header'
 import { PromotionBanner } from '@/components/PromotionBanner'
-import { MobileBottomBar } from '@/components/Layout/MobileBottomBar'
 import ClientOnly from '@/components/ClientOnly';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
@@ -25,7 +24,7 @@ export const metadata: Metadata = {
   keywords: ['arbitrage', 'mev', 'defi', 'ethereum', 'dex', 'trading'],
   authors: [{ name: 'ArbiMind Team' }],
   icons: {
-    icon: '/ArbiMind-Logo-1.svg',
+    icon: '/favicon.svg',
     apple: '/apple-touch-icon.png',
   },
 }
@@ -68,12 +67,11 @@ export default function RootLayout({
                 <div className="relative z-20">
                   <Header />
                 </div>
-                <main className="flex-1 flex flex-col min-h-0 pt-16 pb-16 relative z-10">
+                <main className="flex-1 flex flex-col min-h-0 pt-16 relative z-10">
                   <Suspense fallback={<LoadingFallback />}>
                     {children}
                   </Suspense>
                 </main>
-                <MobileBottomBar />
                 <Footer />
               </Providers>
             </ClientOnly>
