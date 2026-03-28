@@ -1013,17 +1013,19 @@ export default function SolanaWalletPageClient() {
                   <Send className="w-4 h-4" /> Fast Transfers
                 </span>
               </div>
-              {isSolanaConnected && (
-                <BaseWalletMultiButton
-                  className="mt-4 !bg-gradient-to-r !from-cyan-500 !via-purple-500 !to-pink-500 !text-white !font-semibold !px-6 !py-2.5 !rounded-xl !shadow-lg !border-none !hover:from-cyan-400 !hover:to-purple-500"
-                  labels={SOLANA_WALLET_BUTTON_LABELS}
-                />
-              )}
-              {!isSolanaConnected && (
-                <div className="mt-3 flex flex-wrap gap-2 justify-center lg:justify-start">
-                  <button
-                    type="button"
-                    onClick={() => void connectSpecificWallet(/phantom/i, 'Phantom')}
+                {isSolanaConnected && (
+                  <div data-testid="solana-connect" className="mt-4 inline-flex">
+                    <BaseWalletMultiButton
+                      className="!bg-gradient-to-r !from-cyan-500 !via-purple-500 !to-pink-500 !text-white !font-semibold !px-6 !py-2.5 !rounded-xl !shadow-lg !border-none !hover:from-cyan-400 !hover:to-purple-500"
+                      labels={SOLANA_WALLET_BUTTON_LABELS}
+                    />
+                  </div>
+                )}
+                {!isSolanaConnected && (
+                  <div data-testid="solana-connect" className="mt-3 flex flex-wrap gap-2 justify-center lg:justify-start">
+                    <button
+                      type="button"
+                      onClick={() => void connectSpecificWallet(/phantom/i, 'Phantom')}
                     className="px-4 py-2 rounded-lg bg-violet-600/80 hover:bg-violet-500 text-white text-sm font-semibold transition"
                   >
                     Connect Phantom
