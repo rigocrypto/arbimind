@@ -85,6 +85,11 @@ export function Header() {
   const solanaConnected = Boolean(solanaAddress);
   const evmLabel = isConnected ? truncateAddress(address) : 'EVM Wallet';
   const solLabel = solanaConnected ? truncateAddress(solanaAddress) : 'Solana Wallet';
+  const openWalletPageFallback = () => {
+    setIsWalletModalOpen(false);
+    setIsMobileNavOpen(false);
+    router.push('/wallet');
+  };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-white/10 bg-[#070d1b]/95 backdrop-blur-xl">
@@ -256,6 +261,10 @@ export function Header() {
                           ctaVariant,
                           pathname,
                         });
+                        if (!ready || !openConnectModal) {
+                          openWalletPageFallback();
+                          return;
+                        }
                         setIsWalletModalOpen(false);
                         window.setTimeout(() => {
                           openConnectModal?.();
