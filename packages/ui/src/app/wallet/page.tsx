@@ -215,28 +215,11 @@ export default function WalletPage() {
           </div>
           <div className="flex flex-col sm:flex-row items-center gap-3 mt-8 justify-center">
             {!isConnected ? (
-              <ConnectButton.Custom>
-                {({ account, mounted, openAccountModal, openConnectModal }) => {
-                  const ready = mounted;
-                  const connected = ready && !!account;
-
-                  return (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!connected) {
-                          openConnectModal?.();
-                          return;
-                        }
-                        openAccountModal?.();
-                      }}
-                      className="px-6 py-2 rounded-lg bg-gradient-to-r from-cyan-500/80 to-purple-500/80 text-white font-semibold shadow-md hover:from-cyan-500 hover:to-purple-500 transition"
-                    >
-                      {connected ? 'Manage Wallet' : 'Connect EVM Wallet'}
-                    </button>
-                  );
-                }}
-              </ConnectButton.Custom>
+              <div className="rounded-lg bg-gradient-to-r from-cyan-500/80 to-purple-500/80 p-[1px] shadow-md">
+                <div className="rounded-[calc(0.5rem-1px)] bg-[#151a29] px-1 py-1">
+                  <ConnectButton label="Connect EVM Wallet" showBalance={false} />
+                </div>
+              </div>
             ) : (
               <>
                 <button
@@ -274,28 +257,11 @@ export default function WalletPage() {
               <h2 className="text-xl font-bold text-white mb-2">No Wallet Connected</h2>
               <p className="text-dark-400 mb-6">Connect your wallet to view balances and activity.</p>
               <div className="mb-6 flex justify-center">
-                <ConnectButton.Custom>
-                  {({ account, mounted, openAccountModal, openConnectModal }) => {
-                    const ready = mounted;
-                    const connected = ready && !!account;
-
-                    return (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!connected) {
-                            openConnectModal?.();
-                            return;
-                          }
-                          openAccountModal?.();
-                        }}
-                        className="inline-flex min-h-11 items-center justify-center rounded-lg bg-gradient-to-r from-cyan-500 to-purple-500 px-5 py-3 text-sm font-semibold text-white shadow-md transition hover:brightness-110"
-                      >
-                        {connected ? 'Manage Wallet' : 'Open Wallet Connect'}
-                      </button>
-                    );
-                  }}
-                </ConnectButton.Custom>
+                <div className="rounded-lg bg-gradient-to-r from-cyan-500 to-purple-500 p-[1px] shadow-md">
+                  <div className="rounded-[calc(0.5rem-1px)] bg-[#151a29] px-1 py-1">
+                    <ConnectButton label="Open Wallet Connect" showBalance={false} />
+                  </div>
+                </div>
               </div>
               <div className="mx-auto max-w-2xl rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-left text-sm text-amber-200">
                 <div className="flex items-start gap-2">
