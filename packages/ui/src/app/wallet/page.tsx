@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
 import { useAccount, useBalance, useEnsName } from 'wagmi';
 import {
@@ -214,7 +215,28 @@ export default function WalletPage() {
           </div>
           <div className="flex flex-col sm:flex-row items-center gap-3 mt-8 justify-center">
             {!isConnected ? (
-                <></>
+              <ConnectButton.Custom>
+                {({ account, mounted, openAccountModal, openConnectModal }) => {
+                  const ready = mounted;
+                  const connected = ready && !!account;
+
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!connected) {
+                          openConnectModal?.();
+                          return;
+                        }
+                        openAccountModal?.();
+                      }}
+                      className="px-6 py-2 rounded-lg bg-gradient-to-r from-cyan-500/80 to-purple-500/80 text-white font-semibold shadow-md hover:from-cyan-500 hover:to-purple-500 transition"
+                    >
+                      {connected ? 'Manage Wallet' : 'Connect EVM Wallet'}
+                    </button>
+                  );
+                }}
+              </ConnectButton.Custom>
             ) : (
               <>
                 <button
@@ -247,13 +269,37 @@ export default function WalletPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className="glass-card p-8 sm:p-12 text-center"
-          >
-            <Wallet className="w-16 h-16 mx-auto mb-4 text-dark-400" />
-            <h2 className="text-xl font-bold text-white mb-2">No Wallet Connected</h2>
-            <p className="text-dark-400 mb-6">Connect your wallet to view balances and activity.</p>
-            <div className="mx-auto max-w-2xl rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-left text-sm text-amber-200">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            >
+              <Wallet className="w-16 h-16 mx-auto mb-4 text-dark-400" />
+              <h2 className="text-xl font-bold text-white mb-2">No Wallet Connected</h2>
+              <p className="text-dark-400 mb-6">Connect your wallet to view balances and activity.</p>
+              <div className="mb-6 flex justify-center">
+                <ConnectButton.Custom>
+                  {({ account, mounted, openAccountModal, openConnectModal }) => {
+                    const ready = mounted;
+                    const connected = ready && !!account;
+
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!connected) {
+                            openConnectModal?.();
+                            return;
+                          }
+                          openAccountModal?.();
+                        }}
+                        className="inline-flex min-h-11 items-center justify-center rounded-lg bg-gradient-to-r from-cyan-500 to-purple-500 px-5 py-3 text-sm font-semibold text-white shadow-md transition hover:brightness-110"
+                      >
+                        {connected ? 'Manage Wallet' : 'Open Wallet Connect'}
+                      </button>
+                    );
+                  }}
+                </ConnectButton.Custom>
+              </div>
+              <div className="mx-auto max-w-2xl rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-left text-sm text-amber-200">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
                 <div>
                   <p className="font-medium">On mobile Chrome/Safari, wallet extensions are not available.</p>
                   <p className="text-amber-200/80 mt-1">
