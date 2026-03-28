@@ -4,8 +4,8 @@ import { useCallback, useMemo } from 'react';
 import { ConnectionProvider, WalletProvider as SolanaWalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { clusterApiUrl } from '@solana/web3.js';
+import { BackpackWalletAdapter } from '@solana/wallet-adapter-backpack';
 import {
-  BackpackWalletAdapter,
   PhantomWalletAdapter,
   SolflareWalletAdapter,
 } from '@solana/wallet-adapter-wallets';
