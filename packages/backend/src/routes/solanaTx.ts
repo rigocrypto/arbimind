@@ -52,41 +52,124 @@ function tryKeypairFromBytes(secret: Uint8Array): Keypair {
   throw new Error('Secret key must decode to 32-byte seed or 64-byte keypair');
 }
 
-function parseTreasuryKeypair(): Keypair {
-  const raw =
-    process.env.SOLANA_TREASURY_SECRET_KEY?.trim() ||
-    process.env.SOLANA_ARB_SECRET_KEY?.trim() ||
-    '';
-  const normalized = normalizeSecretInput(raw);
+type TreasuryFormat = 'json-array' | 'base64' | 'base58';
+type TreasuryReason = 'not_configured' | 'invalid_format';
+
+type TreasuryDiagnostics = {
+  configured: boolean;
+  reason: TreasuryReason | null;
+  envVarSeen: boolean;
+  formatDetected: TreasuryFormat | null;
+  publicKeyDerived: string | null;
+  keypair: Keypair | null;
+};
+
+function tryParseJsonArray(value: string): Keypair {
+  const parsed = JSON.parse(value) as unknown;
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new Error('SOLANA_TREASURY_SECRET_KEY JSON must be a non-empty array');
+  }
+  const invalidItem = parsed.some((item) => !Number.isInteger(item) || item < 0 || item > 255);
+  if (invalidItem) {
+    throw new Error('SOLANA_TREASURY_SECRET_KEY JSON values must be integers in range 0..255');
+  }
+  return tryKeypairFromBytes(Uint8Array.from(parsed as number[]));
+}
+
+function tryDecodeBase64(value: string): Uint8Array {
+  const compact = value.replace(/\s+/g, '');
+  if (!compact || compact.length % 4 !== 0) {
+    throw new Error('invalid base64 length');
+  }
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) {
+    throw new Error('invalid base64 alphabet');
+  }
+  const buf = Buffer.from(compact, 'base64');
+  if (buf.length === 0) {
+    throw new Error('empty base64 payload');
+  }
+  const canonical = buf.toString('base64').replace(/=+$/g, '');
+  if (canonical !== compact.replace(/=+$/g, '')) {
+    throw new Error('base64 canonical mismatch');
+  }
+  return Uint8Array.from(buf);
+}
+
+function parseTreasuryDiagnostics(): TreasuryDiagnostics {
+  const treasuryRaw = process.env.SOLANA_TREASURY_SECRET_KEY;
+  const legacyRaw = process.env.SOLANA_ARB_SECRET_KEY;
+  const selectedRaw = treasuryRaw ?? legacyRaw ?? '';
+  const envVarSeen = typeof treasuryRaw === 'string' || typeof legacyRaw === 'string';
+  const normalized = normalizeSecretInput(selectedRaw);
 
   if (!normalized) {
-    throw new Error('SOLANA_TREASURY_SECRET_KEY not configured');
+    return {
+      configured: false,
+      reason: 'not_configured',
+      envVarSeen,
+      formatDetected: null,
+      publicKeyDerived: null,
+      keypair: null,
+    };
   }
 
   try {
     if (normalized.startsWith('[')) {
-      const parsed = JSON.parse(normalized) as unknown;
-      if (!Array.isArray(parsed)) {
-        throw new Error('SOLANA_TREASURY_SECRET_KEY JSON must be an array');
-      }
-      const secret = Uint8Array.from(parsed as number[]);
-      return tryKeypairFromBytes(secret);
+      const keypair = tryParseJsonArray(normalized);
+      return {
+        configured: true,
+        reason: null,
+        envVarSeen,
+        formatDetected: 'json-array',
+        publicKeyDerived: keypair.publicKey.toBase58(),
+        keypair,
+      };
     }
 
-    if (/^[1-9A-HJ-NP-Za-km-z]+$/.test(normalized)) {
-      try {
-        const secret = Uint8Array.from(bs58.decode(normalized));
-        return tryKeypairFromBytes(secret);
-      } catch {
-        // continue to base64 attempt below
-      }
+    try {
+      const keypair = tryKeypairFromBytes(tryDecodeBase64(normalized));
+      return {
+        configured: true,
+        reason: null,
+        envVarSeen,
+        formatDetected: 'base64',
+        publicKeyDerived: keypair.publicKey.toBase58(),
+        keypair,
+      };
+    } catch {
+      // Fall through to base58 parsing.
     }
 
-    const secret = Uint8Array.from(Buffer.from(normalized, 'base64'));
-    return tryKeypairFromBytes(secret);
+    const keypair = tryKeypairFromBytes(Uint8Array.from(bs58.decode(normalized)));
+    return {
+      configured: true,
+      reason: null,
+      envVarSeen,
+      formatDetected: 'base58',
+      publicKeyDerived: keypair.publicKey.toBase58(),
+      keypair,
+    };
   } catch {
-    throw new Error('SOLANA_TREASURY_SECRET_KEY must be valid base58, base64, or JSON byte array');
+    return {
+      configured: false,
+      reason: 'invalid_format',
+      envVarSeen,
+      formatDetected: null,
+      publicKeyDerived: null,
+      keypair: null,
+    };
   }
+}
+
+function parseTreasuryKeypair(): Keypair {
+  const diagnostics = parseTreasuryDiagnostics();
+  if (diagnostics.configured && diagnostics.keypair) {
+    return diagnostics.keypair;
+  }
+  if (diagnostics.reason === 'not_configured') {
+    throw new Error('SOLANA_TREASURY_SECRET_KEY not configured');
+  }
+  throw new Error('SOLANA_TREASURY_SECRET_KEY must be valid JSON byte array, base64, or base58');
 }
 
 const router: Router = express.Router();
@@ -97,23 +180,17 @@ const connection = new Connection(resolveSolanaRpc(), 'confirmed');
  * Returns whether treasury signer key is configured and parseable.
  */
 router.get('/withdraw-capabilities', async (_req: Request, res: Response) => {
-  try {
-    const treasury = parseTreasuryKeypair();
-    return res.json({
-      hasTreasuryKey: true,
-      treasuryPubkey: treasury.publicKey.toBase58(),
-    });
-  } catch (error) {
-    const reason =
-      error instanceof Error && /not configured/i.test(error.message)
-        ? 'not_configured'
-        : 'invalid_format';
-
-    return res.json({
-      hasTreasuryKey: false,
-      reason,
-    });
-  }
+  const diagnostics = parseTreasuryDiagnostics();
+  return res.json({
+    configured: diagnostics.configured,
+    reason: diagnostics.reason,
+    envVarSeen: diagnostics.envVarSeen,
+    formatDetected: diagnostics.formatDetected,
+    publicKeyDerived: diagnostics.publicKeyDerived,
+    // Backward-compatible fields used by existing UI.
+    hasTreasuryKey: diagnostics.configured,
+    treasuryPubkey: diagnostics.publicKeyDerived,
+  });
 });
 
 /**
