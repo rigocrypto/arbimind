@@ -10,13 +10,42 @@ import {
 } from '@solana/web3.js';
 import bs58 from 'bs58';
 
-function resolveSolanaRpc(): string {
-  const url = process.env.SOLANA_RPC_URL?.trim();
-  if (url) return url;
-  const cluster = process.env.SOLANA_CLUSTER || 'devnet';
-  if (cluster === 'mainnet-beta') return 'https://api.mainnet-beta.solana.com';
-  if (cluster === 'testnet') return 'https://api.testnet.solana.com';
-  return 'https://api.devnet.solana.com';
+type SolanaCluster = 'devnet' | 'testnet' | 'mainnet-beta';
+
+function normalizeCluster(value?: string | null): SolanaCluster {
+  if (value === 'mainnet-beta' || value === 'testnet' || value === 'devnet') {
+    return value;
+  }
+  const envCluster = process.env.SOLANA_CLUSTER;
+  if (envCluster === 'mainnet-beta' || envCluster === 'testnet' || envCluster === 'devnet') {
+    return envCluster;
+  }
+  return 'devnet';
+}
+
+function resolveSolanaRpc(cluster: SolanaCluster): string {
+  const explicit = process.env.SOLANA_RPC_URL?.trim();
+  const mainnet = process.env.SOLANA_RPC_URL_MAINNET_BETA?.trim() || process.env.SOLANA_RPC_URL_MAINNET?.trim();
+  const testnet = process.env.SOLANA_RPC_URL_TESTNET?.trim();
+  const devnet = process.env.SOLANA_RPC_URL_DEVNET?.trim();
+
+  if (cluster === 'mainnet-beta') {
+    return mainnet || explicit || 'https://api.mainnet-beta.solana.com';
+  }
+  if (cluster === 'testnet') {
+    return testnet || explicit || 'https://api.testnet.solana.com';
+  }
+  return devnet || explicit || 'https://api.devnet.solana.com';
+}
+
+function getExplorerSuffix(cluster: SolanaCluster): string {
+  return cluster === 'mainnet-beta' ? '' : `?cluster=${cluster}`;
+}
+
+function getRequestCluster(req: Request): SolanaCluster {
+  const q = req.query.cluster;
+  const value = Array.isArray(q) ? q[0] : q;
+  return normalizeCluster(typeof value === 'string' ? value : undefined);
 }
 
 function parseFeeLamports(amountLamports: number): number {
@@ -40,6 +69,19 @@ function normalizeSecretInput(raw: string): string {
   const unwrapped = hasDoubleQuotes || hasSingleQuotes ? trimmed.slice(1, -1).trim() : trimmed;
 
   return unwrapped;
+}
+
+function detectSecretFormat(raw: string): 'json-array' | 'base64' | 'base58' | null {
+  if (!raw) return null;
+  if (raw.startsWith('[')) return 'json-array';
+  const compact = raw.replace(/\s+/g, '');
+  if (compact.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(compact)) {
+    return 'base64';
+  }
+  if (/^[1-9A-HJ-NP-Za-km-z]+$/.test(raw)) {
+    return 'base58';
+  }
+  return null;
 }
 
 function tryKeypairFromBytes(secret: Uint8Array): Keypair {
@@ -73,16 +115,14 @@ function parseTreasuryKeypair(): Keypair {
       return tryKeypairFromBytes(secret);
     }
 
-    if (/^[1-9A-HJ-NP-Za-km-z]+$/.test(normalized)) {
-      try {
-        const secret = Uint8Array.from(bs58.decode(normalized));
-        return tryKeypairFromBytes(secret);
-      } catch {
-        // continue to base64 attempt below
-      }
+    try {
+      const secret = Uint8Array.from(Buffer.from(normalized, 'base64'));
+      return tryKeypairFromBytes(secret);
+    } catch {
+      // Fall through to base58 parsing
     }
 
-    const secret = Uint8Array.from(Buffer.from(normalized, 'base64'));
+    const secret = Uint8Array.from(bs58.decode(normalized));
     return tryKeypairFromBytes(secret);
   } catch {
     throw new Error('SOLANA_TREASURY_SECRET_KEY must be valid base58, base64, or JSON byte array');
@@ -90,16 +130,35 @@ function parseTreasuryKeypair(): Keypair {
 }
 
 const router: Router = express.Router();
-const connection = new Connection(resolveSolanaRpc(), 'confirmed');
+const connectionCache = new Map<SolanaCluster, Connection>();
+
+function getConnection(cluster: SolanaCluster): Connection {
+  const existing = connectionCache.get(cluster);
+  if (existing) return existing;
+  const created = new Connection(resolveSolanaRpc(cluster), 'confirmed');
+  connectionCache.set(cluster, created);
+  return created;
+}
 
 /**
  * GET /api/solana/tx/withdraw-capabilities
  * Returns whether treasury signer key is configured and parseable.
  */
-router.get('/withdraw-capabilities', async (_req: Request, res: Response) => {
+router.get('/withdraw-capabilities', async (req: Request, res: Response) => {
+  const cluster = getRequestCluster(req);
+  const raw = process.env.SOLANA_TREASURY_SECRET_KEY ?? process.env.SOLANA_ARB_SECRET_KEY ?? '';
+  const normalized = normalizeSecretInput(raw);
+  const envVarSeen = typeof process.env.SOLANA_TREASURY_SECRET_KEY === 'string' || typeof process.env.SOLANA_ARB_SECRET_KEY === 'string';
+  const detected = detectSecretFormat(normalized);
   try {
     const treasury = parseTreasuryKeypair();
     return res.json({
+      configured: true,
+      reason: null,
+      envVarSeen,
+      formatDetected: detected,
+      publicKeyDerived: treasury.publicKey.toBase58(),
+      activeCluster: cluster,
       hasTreasuryKey: true,
       treasuryPubkey: treasury.publicKey.toBase58(),
     });
@@ -110,8 +169,13 @@ router.get('/withdraw-capabilities', async (_req: Request, res: Response) => {
         : 'invalid_format';
 
     return res.json({
+      configured: false,
       hasTreasuryKey: false,
       reason,
+      envVarSeen,
+      formatDetected: detected,
+      publicKeyDerived: null,
+      activeCluster: cluster,
     });
   }
 });
@@ -123,6 +187,8 @@ router.get('/withdraw-capabilities', async (_req: Request, res: Response) => {
 router.get('/status/:sig', async (req: Request, res: Response) => {
   try {
     const sig = (req.params.sig || '').trim();
+    const cluster = getRequestCluster(req);
+    const connection = getConnection(cluster);
     if (!sig) {
       return res.status(400).json({ error: 'sig required' });
     }
@@ -135,10 +201,10 @@ router.get('/status/:sig', async (req: Request, res: Response) => {
     });
     const status = statusResp.value[0];
 
-    const cluster = process.env.SOLANA_CLUSTER || 'devnet';
-    const suffix = cluster === 'mainnet-beta' ? '' : `?cluster=${cluster}`;
+    const suffix = getExplorerSuffix(cluster);
 
     return res.json({
+      cluster,
       signature: sig,
       status: status?.confirmationStatus ?? 'unknown',
       confirmations: status?.confirmations ?? null,
@@ -163,6 +229,8 @@ router.get('/status/:sig', async (req: Request, res: Response) => {
  */
 router.post('/transfer', async (req: Request, res: Response) => {
   try {
+    const cluster = getRequestCluster(req);
+    const connection = getConnection(cluster);
     const arbAccount = process.env.SOLANA_ARB_ACCOUNT?.trim();
     const feeWallet = process.env.SOLANA_FEE_WALLET?.trim();
 
@@ -233,6 +301,7 @@ router.post('/transfer', async (req: Request, res: Response) => {
     const transactionBase64 = Buffer.from(tx.serialize()).toString('base64');
 
     return res.json({
+      cluster,
       transactionBase64,
       recipient: recipient.toBase58(),
       amountLamports,
@@ -254,6 +323,8 @@ router.post('/transfer', async (req: Request, res: Response) => {
  */
 router.post('/withdraw', async (req: Request, res: Response) => {
   try {
+    const cluster = getRequestCluster(req);
+    const connection = getConnection(cluster);
     const body = req.body as {
       amountSol?: number;
       amount?: number;
@@ -308,10 +379,10 @@ router.post('/withdraw', async (req: Request, res: Response) => {
       maxRetries: 3,
     });
 
-    const cluster = process.env.SOLANA_CLUSTER || 'devnet';
-    const suffix = cluster === 'mainnet-beta' ? '' : `?cluster=${cluster}`;
+    const suffix = getExplorerSuffix(cluster);
 
     return res.json({
+      cluster,
       txSig: signature,
       signature,
       fromPubkey: treasuryPubkey,
