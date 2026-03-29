@@ -69,6 +69,26 @@ function isLikelyMobileBrowser() {
   return /android|iphone|ipad|ipod/i.test(window.navigator.userAgent);
 }
 
+function isPhantomInAppBrowser() {
+  if (typeof window === 'undefined') return false;
+  const injected =
+    ((window as Window & { phantom?: { solana?: { isPhantom?: boolean } } }).phantom?.solana as
+      | { isPhantom?: boolean }
+      | undefined) ??
+    ((window as Window & { solana?: { isPhantom?: boolean } }).solana as
+      | { isPhantom?: boolean }
+      | undefined);
+  return Boolean(injected?.isPhantom);
+}
+
+function isSolflareInAppBrowser() {
+  if (typeof window === 'undefined') return false;
+  const injected = (window as Window & { solflare?: { isSolflare?: boolean } }).solflare as
+    | { isSolflare?: boolean }
+    | undefined;
+  return Boolean(injected?.isSolflare);
+}
+
 function buildPhantomBrowseLink(pathname: string) {
   if (typeof window === 'undefined') return pathname;
   const targetUrl = encodeURIComponent(new URL(pathname, window.location.origin).toString());
@@ -94,6 +114,8 @@ export default function SolanaWalletPageClient() {
     [wallets]
   );
   const isMobileBrowser = useMemo(() => isLikelyMobileBrowser(), []);
+  const isPhantomBrowser = useMemo(() => isPhantomInAppBrowser(), []);
+  const isSolflareBrowser = useMemo(() => isSolflareInAppBrowser(), []);
   const [userSolBalance, setUserSolBalance] = useState(0);
   const [treasurySolBalance, setTreasurySolBalance] = useState(0);
   const [botTrades, setBotTrades] = useState<BotTrade[]>(MOCK_BOT_TRADES);
@@ -181,9 +203,12 @@ export default function SolanaWalletPageClient() {
       return;
     }
 
-    const phantomWallet = wallets.find(
-      (item) => item.readyState === WalletReadyState.Installed && /phantom/i.test(item.adapter.name)
-    );
+    const phantomWallet = wallets.find((item) => {
+      if (!/phantom/i.test(item.adapter.name)) {
+        return false;
+      }
+      return item.readyState === WalletReadyState.Installed || item.readyState === WalletReadyState.Loadable;
+    });
     if (!phantomWallet) {
       return;
     }
@@ -464,11 +489,35 @@ export default function SolanaWalletPageClient() {
 
   const connectSpecificWallet = async (matcher: RegExp, label: string) => {
     try {
-      const targetWallet = wallets.find(
-        (item) => item.readyState === WalletReadyState.Installed && matcher.test(item.adapter.name)
-      );
+      const targetWallet = wallets.find((item) => {
+        if (!matcher.test(item.adapter.name)) {
+          return false;
+        }
+
+        if (item.readyState === WalletReadyState.Installed) {
+          return true;
+        }
+
+        if (/phantom/i.test(label) && isPhantomBrowser) {
+          return item.readyState !== WalletReadyState.Unsupported;
+        }
+
+        if (/solflare/i.test(label) && isSolflareBrowser) {
+          return item.readyState !== WalletReadyState.Unsupported;
+        }
+
+        return false;
+      });
 
       if (!targetWallet) {
+        if (isPhantomBrowser && /phantom/i.test(label)) {
+          window.location.assign(buildPhantomBrowseLink('/solana-wallet'));
+          return;
+        }
+        if (isSolflareBrowser && /solflare/i.test(label)) {
+          window.location.assign(buildSolflareBrowseLink('/solana-wallet'));
+          return;
+        }
         if (isMobileBrowser) {
           const deepLink = /phantom/i.test(label)
             ? buildPhantomBrowseLink('/solana-wallet')
@@ -503,6 +552,20 @@ export default function SolanaWalletPageClient() {
       }
       toast.error(msg || 'Wallet connection failed');
     }
+  };
+
+  const handlePrimarySolanaConnect = async () => {
+    if (isPhantomBrowser) {
+      await connectSpecificWallet(/phantom/i, 'Phantom');
+      return;
+    }
+
+    if (isSolflareBrowser) {
+      await connectSpecificWallet(/solflare/i, 'Solflare');
+      return;
+    }
+
+    await connect();
   };
 
   const handleTransfer = async () => {
@@ -1041,10 +1104,27 @@ export default function SolanaWalletPageClient() {
                 </span>
               </div>
               <div data-testid="solana-connect" className="mt-4 inline-flex">
-                <BaseWalletMultiButton
-                  className="!bg-gradient-to-r !from-cyan-500 !via-purple-500 !to-pink-500 !text-white !font-semibold !px-6 !py-2.5 !rounded-xl !shadow-lg !border-none !hover:from-cyan-400 !hover:to-purple-500"
-                  labels={SOLANA_WALLET_BUTTON_LABELS}
-                />
+                {isSolanaConnected ? (
+                  <BaseWalletMultiButton
+                    className="!bg-gradient-to-r !from-cyan-500 !via-purple-500 !to-pink-500 !text-white !font-semibold !px-6 !py-2.5 !rounded-xl !shadow-lg !border-none !hover:from-cyan-400 !hover:to-purple-500"
+                    labels={SOLANA_WALLET_BUTTON_LABELS}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handlePrimarySolanaConnect()}
+                    disabled={connecting}
+                    className="inline-flex min-h-10 items-center justify-center rounded-xl bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 px-6 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {connecting
+                      ? 'Connecting...'
+                      : isPhantomBrowser
+                        ? 'Connect Phantom'
+                        : isSolflareBrowser
+                          ? 'Connect Solflare'
+                          : 'Connect Solana'}
+                  </button>
+                )}
               </div>
               {!isSolanaConnected && (
                 <div className="mt-3 hidden flex-wrap gap-2 justify-center lg:justify-start sm:flex">
@@ -1088,7 +1168,7 @@ export default function SolanaWalletPageClient() {
               )}
               {!isSolanaConnected && (
                 <p className="text-xs text-dark-400 mt-2 max-w-md text-center lg:text-left">
-                  On mobile, start with the main <span className="font-medium text-white">Connect Solana</span> button above. The Phantom and Solflare quick buttons are best on desktop when the wallet extension is installed.
+                  On mobile, start with the main <span className="font-medium text-white">Connect Solana</span> button above. In Phantom or Solflare browser it now connects that wallet directly.
                 </p>
               )}
               <p className="text-xs text-dark-400/90 mt-2 max-w-md text-center lg:text-left">
