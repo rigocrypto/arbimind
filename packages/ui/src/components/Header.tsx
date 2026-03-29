@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { usePathname, useRouter } from 'next/navigation';
-import { useAccount } from 'wagmi';
+import { useAccount, useConnect } from 'wagmi';
 import { Menu, Wallet2, X } from 'lucide-react';
 import { NAV_ITEMS } from '@/config/nav';
 import { getPersistentCtaVariant, trackEvent } from '@/lib/analytics';
@@ -27,6 +27,11 @@ function readSolanaWalletAddress(): string | null {
   const connected = window.localStorage.getItem('arbimind:wallet:solanaConnected') === '1';
   const address = window.localStorage.getItem('arbimind:wallet:solanaAddress');
   return connected && address ? address : null;
+}
+
+function isMetaMaskInAppBrowser() {
+  if (typeof window === 'undefined') return false;
+  return Boolean((window as Window & { ethereum?: { isMetaMask?: boolean } }).ethereum?.isMetaMask);
 }
 
 function EthereumGlyph() {
@@ -52,13 +57,12 @@ export function Header() {
   const router = useRouter();
   const pathname = usePathname();
   const { isConnected, address } = useAccount();
+  const { connectAsync, connectors, isPending: isConnectPending } = useConnect();
   const ctaVariant = useMemo(() => getPersistentCtaVariant(), []);
   const wasConnectedRef = useRef(isConnected);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [solanaAddress, setSolanaAddress] = useState<string | null>(() => readSolanaWalletAddress());
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
-  const [logoVideoReady, setLogoVideoReady] = useState(false);
 
   useEffect(() => {
     const sync = () => setSolanaAddress(readSolanaWalletAddress());
@@ -70,17 +74,6 @@ export function Header() {
       window.removeEventListener(WALLET_STATE_UPDATED_EVENT, sync);
       window.removeEventListener('storage', sync);
       window.removeEventListener('focus', sync);
-    };
-  }, []);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const sync = () => setPrefersReducedMotion(mediaQuery.matches);
-    sync();
-    mediaQuery.addEventListener('change', sync);
-
-    return () => {
-      mediaQuery.removeEventListener('change', sync);
     };
   }, []);
 
@@ -98,13 +91,38 @@ export function Header() {
   const solanaConnected = Boolean(solanaAddress);
   const evmLabel = isConnected ? truncateAddress(address) : 'EVM Wallet';
   const solLabel = solanaConnected ? truncateAddress(solanaAddress) : 'Solana Wallet';
+  const isMetaMaskBrowser = useMemo(() => isMetaMaskInAppBrowser(), []);
+  const openWalletPageFallback = () => {
+    setIsWalletModalOpen(false);
+    setIsMobileNavOpen(false);
+    router.push('/wallet');
+  };
+
+  const handleDirectMetaMaskConnect = async () => {
+    const metaMaskConnector = connectors.find(
+      (connector) => /metamask/i.test(connector.name) || /metamask/i.test(connector.id)
+    );
+
+    if (!metaMaskConnector) {
+      openWalletPageFallback();
+      return;
+    }
+
+    try {
+      setIsWalletModalOpen(false);
+      setIsMobileNavOpen(false);
+      await connectAsync({ connector: metaMaskConnector });
+    } catch {
+      openWalletPageFallback();
+    }
+  };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-white/10 bg-[#070d1b]/95 backdrop-blur-xl">
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-[#00e5cc]/50 to-transparent" />
       <div className="h-full max-w-[1440px] mx-auto px-4 flex items-center justify-between">
         <div className="flex items-center gap-6">
-          <Link href="/" className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2.5">
             <div className="relative h-8 w-8 overflow-hidden rounded-lg ring-1 ring-white/15">
               <Image
                 src="/favicon.svg"
@@ -114,24 +132,11 @@ export function Header() {
                 className="object-cover"
                 priority
               />
-              {!prefersReducedMotion && (
-                <video
-                  src="/favicon.mp4"
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  preload="metadata"
-                  onLoadedData={() => setLogoVideoReady(true)}
-                  onError={() => setLogoVideoReady(false)}
-                  className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-200 ${
-                    logoVideoReady ? 'opacity-100' : 'opacity-0'
-                  }`}
-                  aria-label="Animated ArbiMind logo"
-                />
-              )}
             </div>
-            <span className="text-white font-semibold text-lg hidden sm:block">ArbiMind</span>
+            <div className="flex flex-col leading-none">
+              <span className="text-white font-semibold text-base sm:text-lg">ArbiMind</span>
+              <span className="text-[10px] uppercase tracking-[0.18em] text-cyan-300/75 sm:hidden">Arbitrage OS</span>
+            </div>
           </Link>
           <nav className="hidden md:flex items-center gap-1">
             {NAV_ITEMS.map((item) => (
@@ -282,18 +287,38 @@ export function Header() {
                           ctaVariant,
                           pathname,
                         });
-                        openConnectModal?.();
+                        if (isMetaMaskBrowser) {
+                          void handleDirectMetaMaskConnect();
+                          return;
+                        }
+                        if (!ready || !openConnectModal) {
+                          openWalletPageFallback();
+                          return;
+                        }
                         setIsWalletModalOpen(false);
+                        window.setTimeout(() => {
+                          openConnectModal?.();
+                        }, 80);
                         return;
                       }
-                      openAccountModal?.();
                       setIsWalletModalOpen(false);
+                      window.setTimeout(() => {
+                        openAccountModal?.();
+                      }, 80);
                     }}
                     className="mb-2 inline-flex h-9 w-full items-center gap-2 rounded-lg border border-[#00e5cc]/60 bg-transparent px-3.5 text-[13px] font-medium text-[#7ff6e7] transition-all duration-150 hover:bg-[#00e5cc]/10"
                   >
                     <EthereumGlyph />
                     {connected && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />}
-                    <span>{connected ? truncateAddress(account.address) : evmLabel}</span>
+                    <span>
+                      {connected
+                        ? truncateAddress(account.address)
+                        : isMetaMaskBrowser && isConnectPending
+                          ? 'Connecting MetaMask…'
+                          : isMetaMaskBrowser
+                            ? 'Connect MetaMask'
+                            : evmLabel}
+                    </span>
                   </button>
                 );
               }}
