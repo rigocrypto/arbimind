@@ -1642,12 +1642,12 @@ export default function SolanaWalletPageClient() {
                   onClick={handleWithdraw}
                   disabled={!isSolanaConnected || !hasTreasuryKey || withdrawLifecycle === 'signing' || withdrawLifecycle === 'pending'}
                   className="w-full xs:w-auto px-4 py-3 rounded-lg bg-green-500/20 border border-green-500/30 text-green-300 font-medium hover:bg-green-500/30 transition disabled:opacity-50"
-                  title={hasTreasuryKey ? 'Withdraw from treasury to connected wallet' : 'Set SOLANA_TREASURY_SECRET_KEY in backend vars'}
+                  title={hasTreasuryKey ? 'Withdraw from treasury to connected wallet' : 'Backend treasury signer is not configured yet'}
                 >
                   {hasTreasuryKey === null
                     ? 'Checking treasury signer…'
                     : !hasTreasuryKey
-                      ? 'Withdraw (Treasury Key Missing)'
+                      ? 'Withdraw unavailable'
                       : withdrawLifecycle === 'signing'
                     ? 'Preparing…'
                     : withdrawLifecycle === 'pending'
@@ -1658,7 +1658,7 @@ export default function SolanaWalletPageClient() {
                 </button>
                 {hasTreasuryKey === false && (
                   <p className="text-xs text-amber-300">
-                    Backend hint: set <span className="font-mono">SOLANA_TREASURY_SECRET_KEY</span> in backend vars, then redeploy.
+                    Treasury withdraws are disabled until the backend is configured with <span className="font-mono">SOLANA_TREASURY_SECRET_KEY</span> and redeployed.
                   </p>
                 )}
                 {withdrawSignature && (
