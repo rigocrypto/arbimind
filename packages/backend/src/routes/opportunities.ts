@@ -166,7 +166,7 @@ router.get('/', (_req: Request, res: Response) => {
   });
 });
 
-router.get('/stream', (req: Request, res: Response) => {
+router.get('/stream', (_req: Request, res: Response) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
@@ -183,7 +183,7 @@ router.get('/stream', (req: Request, res: Response) => {
     res.write(': keepalive\n\n');
   }, 15000);
 
-  req.on('close', () => {
+  _req.on('close', () => {
     clearInterval(snapshotInterval);
     clearInterval(keepAliveInterval);
     res.end();

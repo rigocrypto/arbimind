@@ -34,7 +34,9 @@ export default function FeedControlRail() {
   const setFilters = useFeedStore((state) => state.setFilters);
 
   const streamTone =
-    streamStatus === 'LIVE'
+    streamStatus === 'DEMO'
+      ? 'border-fuchsia-400/30 bg-fuchsia-500/10 text-fuchsia-200'
+      : streamStatus === 'LIVE'
       ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300'
       : streamStatus === 'POLLING'
         ? 'border-amber-400/30 bg-amber-500/10 text-amber-200'
@@ -116,7 +118,9 @@ export default function FeedControlRail() {
           <div className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold ${streamTone}`}>
             <Radio className="h-3.5 w-3.5" />
             <span>{streamStatus}</span>
-            <span className="text-dark-200/80">last tick {lastTickAgoMs}ms ago</span>
+            <span className="text-dark-200/80">
+              {streamStatus === 'DEMO' ? 'local seeded data' : `last tick ${lastTickAgoMs}ms ago`}
+            </span>
           </div>
 
           <div className="flex flex-wrap gap-2">

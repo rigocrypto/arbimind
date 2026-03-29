@@ -102,8 +102,8 @@ export function useOpportunityFeed() {
 
   useEffect(() => {
     if (source === 'DEMO') {
-      setStreamStatus('LIVE');
-      setLastTickAgoMs(300);
+      setStreamStatus('DEMO');
+      setLastTickAgoMs(0);
       return;
     }
 
