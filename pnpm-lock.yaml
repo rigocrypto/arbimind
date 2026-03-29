@@ -62,6 +62,9 @@ importers:
       bcryptjs:
         specifier: ^2.4.3
         version: 2.4.3
+      bs58:
+        specifier: ^6.0.0
+        version: 6.0.0
       compression:
         specifier: ^1.7.4
         version: 1.8.1
