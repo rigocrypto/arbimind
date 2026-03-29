@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { Wallet, ArrowRightLeft, ChevronLeft, Send, AlertTriangle, Shield } from 'lucide-react';
 import { BaseWalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import toast from 'react-hot-toast';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 import { API_BASE } from '@/lib/apiConfig';
 import { ArbAccountCard, PerformanceCharts, ActivityTable } from '@/components/portfolio';
@@ -18,9 +19,21 @@ import { getPortfolioErrorDetails, usePortfolioSummary, usePortfolioTimeseries }
 import { SOL_EQUIV_DECIMALS } from '@/utils/format';
 import { notifyWalletStateUpdated } from '@/lib/walletState';
 
-const IS_MAINNET = process.env.NEXT_PUBLIC_SOLANA_CLUSTER === 'mainnet-beta';
 const SOLSCAN_BASE = 'https://solscan.io';
-const SOLSCAN_TX_SUFFIX = IS_MAINNET ? '' : '?cluster=devnet';
+const SOLANA_CLUSTERS = ['devnet', 'testnet', 'mainnet-beta'] as const;
+type SolanaCluster = (typeof SOLANA_CLUSTERS)[number];
+
+function normalizeSolanaCluster(raw?: string | null): SolanaCluster {
+  if (raw === 'devnet' || raw === 'testnet' || raw === 'mainnet-beta') return raw;
+  const fromEnv = process.env.NEXT_PUBLIC_SOLANA_CLUSTER;
+  if (fromEnv === 'devnet' || fromEnv === 'testnet' || fromEnv === 'mainnet-beta') return fromEnv;
+  return 'devnet';
+}
+
+function solscanSuffixFor(cluster: SolanaCluster): string {
+  return cluster === 'mainnet-beta' ? '' : `?cluster=${cluster}`;
+}
+
 const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const SOLANA_TREASURY_ADDRESS =
   process.env.NEXT_PUBLIC_SOLANA_ARB_ACCOUNT || '6wmAm8uoPQTx9jEnGx4aDKwVFRSfdhKJfL2LJzwCmE6s';
@@ -84,8 +97,32 @@ function buildSolflareBrowseLink(pathname: string) {
 }
 
 export default function SolanaWalletPageClient() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { connection } = useConnection();
   const { publicKey, connected, sendTransaction, wallets, wallet, select, connect, connecting } = useWallet();
+  const activeCluster = useMemo(
+    () => normalizeSolanaCluster(searchParams.get('cluster')),
+    [searchParams]
+  );
+  const isMainnet = activeCluster === 'mainnet-beta';
+  const solscanTxSuffix = useMemo(() => solscanSuffixFor(activeCluster), [activeCluster]);
+  const apiWithCluster = useCallback(
+    (path: string) => {
+      const sep = path.includes('?') ? '&' : '?';
+      return `${API_BASE}${path}${sep}cluster=${encodeURIComponent(activeCluster)}`;
+    },
+    [activeCluster]
+  );
+  const applyCluster = useCallback(
+    (cluster: SolanaCluster) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('cluster', cluster);
+      router.replace(`${pathname}?${params.toString()}`);
+    },
+    [pathname, router, searchParams]
+  );
   const isSolanaConnected = Boolean(publicKey);
   const attemptedPhantomReconnect = useRef(false);
   const hasInstalledWallet = wallets.some((wallet) => wallet.readyState === WalletReadyState.Installed);
@@ -106,6 +143,9 @@ export default function SolanaWalletPageClient() {
   const [withdrawLifecycle, setWithdrawLifecycle] = useState<TransferLifecycle>('idle');
   const [withdrawSignature, setWithdrawSignature] = useState('');
   const [hasTreasuryKey, setHasTreasuryKey] = useState<boolean | null>(null);
+  const [treasuryCapabilityReason, setTreasuryCapabilityReason] = useState<
+    'not_configured' | 'invalid_format' | 'capability_check_failed' | null
+  >(null);
   const [backendTreasuryAddress, setBackendTreasuryAddress] = useState<string | null>(null);
   const withdrawStatusPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const withdrawStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -525,7 +565,7 @@ export default function SolanaWalletPageClient() {
     setTransferLifecycle('signing');
     setTransferSignature('');
     try {
-      const res = await fetch(`${API_BASE}/solana/tx/transfer`, {
+      const res = await fetch(apiWithCluster('/solana/tx/transfer'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -571,7 +611,7 @@ export default function SolanaWalletPageClient() {
       transferStatusPollRef.current = setInterval(() => {
         void (async () => {
           try {
-            const statusRes = await fetch(`${API_BASE}/solana/tx/status/${sig}`, {
+            const statusRes = await fetch(apiWithCluster(`/solana/tx/status/${sig}`), {
               method: 'GET',
               cache: 'no-store',
             });
@@ -610,7 +650,7 @@ export default function SolanaWalletPageClient() {
               setTransferLifecycle(statusJson.status);
               setTransferAmount('0.1');
               setTransferToPubkey('');
-              const explorerUrl = statusJson.explorer || `${SOLSCAN_BASE}/tx/${sig}${SOLSCAN_TX_SUFFIX}`;
+              const explorerUrl = statusJson.explorer || `${SOLSCAN_BASE}/tx/${sig}${solscanTxSuffix}`;
               const label = statusJson.status === 'finalized' ? 'Finalized' : 'Confirmed';
               toast(
                 (t) => (
@@ -663,24 +703,37 @@ export default function SolanaWalletPageClient() {
 
     const checkWithdrawCapability = async () => {
       try {
-        const response = await fetch(`${API_BASE}/solana/tx/withdraw-capabilities`, {
+        const response = await fetch(apiWithCluster('/solana/tx/withdraw-capabilities'), {
           method: 'GET',
           cache: 'no-store',
         });
         if (!response.ok) {
-          if (!cancelled) setHasTreasuryKey(false);
+          if (!cancelled) {
+            setHasTreasuryKey(false);
+            setTreasuryCapabilityReason('capability_check_failed');
+          }
           return;
         }
-        const body = (await response.json()) as { hasTreasuryKey?: boolean; treasuryPubkey?: string };
+        const body = (await response.json()) as {
+          configured?: boolean;
+          hasTreasuryKey?: boolean;
+          treasuryPubkey?: string;
+          reason?: 'not_configured' | 'invalid_format' | null;
+          publicKeyDerived?: string | null;
+        };
+        const treasuryOk = Boolean(body.configured ?? body.hasTreasuryKey);
+        const derivedAddress = body.publicKeyDerived ?? body.treasuryPubkey ?? null;
         if (!cancelled) {
-          setHasTreasuryKey(Boolean(body.hasTreasuryKey));
+          setHasTreasuryKey(treasuryOk);
+          setTreasuryCapabilityReason(treasuryOk ? null : body.reason || 'capability_check_failed');
           setBackendTreasuryAddress(
-            body.treasuryPubkey && isValidSolanaAddress(body.treasuryPubkey) ? body.treasuryPubkey : null
+            derivedAddress && isValidSolanaAddress(derivedAddress) ? derivedAddress : null
           );
         }
       } catch {
         if (!cancelled) {
           setHasTreasuryKey(false);
+          setTreasuryCapabilityReason('capability_check_failed');
           setBackendTreasuryAddress(null);
         }
       }
@@ -690,7 +743,7 @@ export default function SolanaWalletPageClient() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [apiWithCluster]);
 
   useEffect(() => {
     return () => {
@@ -719,13 +772,13 @@ export default function SolanaWalletPageClient() {
       toast.error('Enter a valid amount');
       return;
     }
-    if (!IS_MAINNET) {
-      toast.error('Swaps are mainnet-only. Set NEXT_PUBLIC_SOLANA_CLUSTER=mainnet-beta');
+    if (!isMainnet) {
+      toast.error('Swaps are mainnet-only. Switch cluster to mainnet-beta.');
       return;
     }
     setLoading('swap');
     try {
-      const res = await fetch(`${API_BASE}/solana/jupiter/swap-tx`, {
+      const res = await fetch(apiWithCluster('/solana/jupiter/swap-tx'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -783,14 +836,14 @@ export default function SolanaWalletPageClient() {
       toast.error('Enter a valid amount');
       return;
     }
-    if (!IS_MAINNET) {
-      toast.error('Quotes are mainnet-only. Set NEXT_PUBLIC_SOLANA_CLUSTER=mainnet-beta');
+    if (!isMainnet) {
+      toast.error('Quotes are mainnet-only. Switch cluster to mainnet-beta.');
       return;
     }
 
     setLoading('quote');
     try {
-      const res = await fetch(`${API_BASE}/solana/jupiter/swap-tx`, {
+      const res = await fetch(apiWithCluster('/solana/jupiter/swap-tx'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -866,7 +919,11 @@ export default function SolanaWalletPageClient() {
       return;
     }
     if (!hasTreasuryKey) {
-      toast.error('Backend missing SOLANA_TREASURY_SECRET_KEY');
+      toast.error(
+        treasuryCapabilityReason === 'invalid_format'
+          ? 'Treasury key format is invalid on backend'
+          : 'Backend missing SOLANA_TREASURY_SECRET_KEY'
+      );
       return;
     }
 
@@ -880,7 +937,7 @@ export default function SolanaWalletPageClient() {
     setWithdrawSignature('');
 
     try {
-      const res = await fetch(`${API_BASE}/solana/tx/withdraw`, {
+      const res = await fetch(apiWithCluster('/solana/tx/withdraw'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -919,7 +976,7 @@ export default function SolanaWalletPageClient() {
       withdrawStatusPollRef.current = setInterval(() => {
         void (async () => {
           try {
-            const statusRes = await fetch(`${API_BASE}/solana/tx/status/${signature}`, {
+            const statusRes = await fetch(apiWithCluster(`/solana/tx/status/${signature}`), {
               method: 'GET',
               cache: 'no-store',
             });
@@ -956,7 +1013,7 @@ export default function SolanaWalletPageClient() {
               }
 
               const label = statusJson.status === 'finalized' ? 'Finalized' : 'Confirmed';
-              const explorerUrl = statusJson.explorer || `${SOLSCAN_BASE}/tx/${signature}${SOLSCAN_TX_SUFFIX}`;
+              const explorerUrl = statusJson.explorer || `${SOLSCAN_BASE}/tx/${signature}${solscanTxSuffix}`;
               setWithdrawLifecycle(statusJson.status);
               setWithdrawAmount('0.1');
               toast.success(`${label}: ${signature.slice(0, 8)}...${signature.slice(-8)}`, { id: 'solana-withdraw' });
@@ -1008,6 +1065,29 @@ export default function SolanaWalletPageClient() {
           </Link>
           <span className="text-dark-600">|</span>
           <span className="text-sm font-medium text-cyan-400">Solana</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs uppercase tracking-wide text-dark-400">Cluster</span>
+          {SOLANA_CLUSTERS.map((cluster) => {
+            const active = cluster === activeCluster;
+            return (
+              <button
+                key={cluster}
+                type="button"
+                onClick={() => applyCluster(cluster)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                  active
+                    ? 'bg-cyan-500/20 text-cyan-200 border-cyan-400/60'
+                    : 'bg-dark-900/60 text-dark-300 border-dark-600 hover:text-white hover:border-dark-400'
+                }`}
+              >
+                {cluster}
+              </button>
+            );
+          })}
+          <span className="text-xs text-dark-500">
+            API: <span className="font-mono">{API_BASE}</span>
+          </span>
         </div>
 
         {/* Hero Section with Solana Logo and Parallax */}
@@ -1184,7 +1264,7 @@ export default function SolanaWalletPageClient() {
                     <p className="mt-1 text-sm text-white/90">{event.msg}</p>
                     {event.txSig && (
                       <a
-                        href={`${SOLSCAN_BASE}/tx/${event.txSig}${SOLSCAN_TX_SUFFIX}`}
+                        href={`${SOLSCAN_BASE}/tx/${event.txSig}${solscanTxSuffix}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="mt-1 inline-block underline text-cyan-300 hover:text-cyan-200"
@@ -1402,7 +1482,7 @@ export default function SolanaWalletPageClient() {
                 deposits={portfolio?.deposits ?? []}
                 withdrawals={portfolio?.withdrawals ?? []}
                 explorerBaseUrl={SOLSCAN_BASE}
-                explorerTxSuffix={SOLSCAN_TX_SUFFIX}
+                explorerTxSuffix={solscanTxSuffix}
                 isLoading={portfolioLoading}
               />
             </motion.div>
@@ -1553,7 +1633,7 @@ export default function SolanaWalletPageClient() {
                   <p className="text-xs text-cyan-300 break-all">
                     Tx: {transferSignature}{' '}
                     <a
-                      href={`${SOLSCAN_BASE}/tx/${transferSignature}${SOLSCAN_TX_SUFFIX}`}
+                      href={`${SOLSCAN_BASE}/tx/${transferSignature}${solscanTxSuffix}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="underline text-cyan-300 hover:text-cyan-200"
@@ -1596,12 +1676,20 @@ export default function SolanaWalletPageClient() {
                   onClick={handleWithdraw}
                   disabled={!isSolanaConnected || !hasTreasuryKey || withdrawLifecycle === 'signing' || withdrawLifecycle === 'pending'}
                   className="w-full xs:w-auto px-4 py-3 rounded-lg bg-green-500/20 border border-green-500/30 text-green-300 font-medium hover:bg-green-500/30 transition disabled:opacity-50"
-                  title={hasTreasuryKey ? 'Withdraw from treasury to connected wallet' : 'Set SOLANA_TREASURY_SECRET_KEY in backend vars'}
+                  title={
+                    hasTreasuryKey
+                      ? 'Withdraw from treasury to connected wallet'
+                      : treasuryCapabilityReason === 'invalid_format'
+                        ? 'Treasury key format is invalid in backend vars'
+                        : 'Set SOLANA_TREASURY_SECRET_KEY in backend vars'
+                  }
                 >
                   {hasTreasuryKey === null
                     ? 'Checking treasury signer…'
                     : !hasTreasuryKey
-                      ? 'Withdraw (Treasury Key Missing)'
+                      ? treasuryCapabilityReason === 'invalid_format'
+                        ? 'Withdraw (Treasury Key Invalid)'
+                        : 'Withdraw (Treasury Key Missing)'
                       : withdrawLifecycle === 'signing'
                     ? 'Preparing…'
                     : withdrawLifecycle === 'pending'
@@ -1612,14 +1700,23 @@ export default function SolanaWalletPageClient() {
                 </button>
                 {hasTreasuryKey === false && (
                   <p className="text-xs text-amber-300">
-                    Backend hint: set <span className="font-mono">SOLANA_TREASURY_SECRET_KEY</span> in backend vars, then redeploy.
+                    {treasuryCapabilityReason === 'invalid_format' ? (
+                      <>
+                        Backend hint: <span className="font-mono">SOLANA_TREASURY_SECRET_KEY</span> is set but invalid.
+                        Use raw base58, base64, or JSON byte array (no wrapping quotes), then redeploy.
+                      </>
+                    ) : (
+                      <>
+                        Backend hint: set <span className="font-mono">SOLANA_TREASURY_SECRET_KEY</span> in backend vars, then redeploy.
+                      </>
+                    )}
                   </p>
                 )}
                 {withdrawSignature && (
                   <p className="text-xs text-green-300 break-all">
                     Tx: {withdrawSignature}{' '}
                     <a
-                      href={`${SOLSCAN_BASE}/tx/${withdrawSignature}${SOLSCAN_TX_SUFFIX}`}
+                      href={`${SOLSCAN_BASE}/tx/${withdrawSignature}${solscanTxSuffix}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="underline text-green-300 hover:text-green-200"
@@ -1641,7 +1738,7 @@ export default function SolanaWalletPageClient() {
                 <ArrowRightLeft className="w-5 h-5 text-purple-400" />
                 Swap SOL ↔ USDC
               </h2>
-              {!IS_MAINNET && (
+              {!isMainnet && (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-sm mb-4">
                   <AlertTriangle className="w-4 h-4 flex-shrink-0" />
                   Swaps are mainnet-only. Set cluster to mainnet-beta.
@@ -1692,7 +1789,7 @@ export default function SolanaWalletPageClient() {
                 <button
                   type="button"
                   onClick={handleGetSwapQuote}
-                  disabled={!!loading || !IS_MAINNET}
+                  disabled={!!loading || !isMainnet}
                   className="w-full xs:w-auto px-4 py-3 rounded-lg bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-medium hover:bg-cyan-500/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading === 'quote' ? 'Getting quote…' : 'Get Quote'}
@@ -1708,7 +1805,7 @@ export default function SolanaWalletPageClient() {
                 <button
                   type="button"
                   onClick={handleSwap}
-                  disabled={!!loading || !IS_MAINNET}
+                  disabled={!!loading || !isMainnet}
                   className="w-full xs:w-auto px-4 py-3 rounded-lg bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 text-purple-300 font-medium hover:from-purple-500/30 hover:to-pink-500/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading === 'swap' ? 'Swapping…' : 'Swap (sign)'}
