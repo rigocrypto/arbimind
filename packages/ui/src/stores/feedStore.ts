@@ -17,7 +17,7 @@ type FeedState = {
   mode: FeedMode;
   chain: ChainFilter;
   source: FeedSource;
-  streamStatus: 'LIVE' | 'POLLING' | 'DELAYED';
+  streamStatus: 'DEMO' | 'LIVE' | 'POLLING' | 'DELAYED';
   lastTickAgoMs: number;
   filters: FeedFilters;
   selectedId: string | null;
@@ -35,7 +35,7 @@ export const useFeedStore = create<FeedState>((set) => ({
   mode: 'TRADER',
   chain: 'BOTH',
   source: 'DEMO',
-  streamStatus: 'LIVE',
+  streamStatus: 'DEMO',
   lastTickAgoMs: 300,
   filters: {
     minNetUsd: 5,

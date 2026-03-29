@@ -106,6 +106,7 @@ export default function SolanaWalletPageClient() {
   const [withdrawLifecycle, setWithdrawLifecycle] = useState<TransferLifecycle>('idle');
   const [withdrawSignature, setWithdrawSignature] = useState('');
   const [hasTreasuryKey, setHasTreasuryKey] = useState<boolean | null>(null);
+  const [treasuryCapabilityReason, setTreasuryCapabilityReason] = useState<string | null>(null);
   const [backendTreasuryAddress, setBackendTreasuryAddress] = useState<string | null>(null);
   const withdrawStatusPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const withdrawStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -668,12 +669,20 @@ export default function SolanaWalletPageClient() {
           cache: 'no-store',
         });
         if (!response.ok) {
-          if (!cancelled) setHasTreasuryKey(false);
+          if (!cancelled) {
+            setHasTreasuryKey(false);
+            setTreasuryCapabilityReason('capability_check_failed');
+          }
           return;
         }
-        const body = (await response.json()) as { hasTreasuryKey?: boolean; treasuryPubkey?: string };
+        const body = (await response.json()) as {
+          hasTreasuryKey?: boolean;
+          treasuryPubkey?: string;
+          reason?: string;
+        };
         if (!cancelled) {
           setHasTreasuryKey(Boolean(body.hasTreasuryKey));
+          setTreasuryCapabilityReason(body.hasTreasuryKey ? null : body.reason || 'capability_check_failed');
           setBackendTreasuryAddress(
             body.treasuryPubkey && isValidSolanaAddress(body.treasuryPubkey) ? body.treasuryPubkey : null
           );
@@ -681,6 +690,7 @@ export default function SolanaWalletPageClient() {
       } catch {
         if (!cancelled) {
           setHasTreasuryKey(false);
+          setTreasuryCapabilityReason('capability_check_failed');
           setBackendTreasuryAddress(null);
         }
       }
@@ -866,7 +876,11 @@ export default function SolanaWalletPageClient() {
       return;
     }
     if (!hasTreasuryKey) {
-      toast.error('Backend missing SOLANA_TREASURY_SECRET_KEY');
+      toast.error(
+        treasuryCapabilityReason === 'invalid_format'
+          ? 'Treasury key format is invalid on backend'
+          : 'Backend missing SOLANA_TREASURY_SECRET_KEY'
+      );
       return;
     }
 
@@ -1596,12 +1610,20 @@ export default function SolanaWalletPageClient() {
                   onClick={handleWithdraw}
                   disabled={!isSolanaConnected || !hasTreasuryKey || withdrawLifecycle === 'signing' || withdrawLifecycle === 'pending'}
                   className="w-full xs:w-auto px-4 py-3 rounded-lg bg-green-500/20 border border-green-500/30 text-green-300 font-medium hover:bg-green-500/30 transition disabled:opacity-50"
-                  title={hasTreasuryKey ? 'Withdraw from treasury to connected wallet' : 'Set SOLANA_TREASURY_SECRET_KEY in backend vars'}
+                  title={
+                    hasTreasuryKey
+                      ? 'Withdraw from treasury to connected wallet'
+                      : treasuryCapabilityReason === 'invalid_format'
+                        ? 'Treasury key format is invalid in backend vars'
+                        : 'Set SOLANA_TREASURY_SECRET_KEY in backend vars'
+                  }
                 >
                   {hasTreasuryKey === null
                     ? 'Checking treasury signer…'
                     : !hasTreasuryKey
-                      ? 'Withdraw (Treasury Key Missing)'
+                      ? treasuryCapabilityReason === 'invalid_format'
+                        ? 'Withdraw (Treasury Key Invalid)'
+                        : 'Withdraw (Treasury Key Missing)'
                       : withdrawLifecycle === 'signing'
                     ? 'Preparing…'
                     : withdrawLifecycle === 'pending'
@@ -1612,7 +1634,16 @@ export default function SolanaWalletPageClient() {
                 </button>
                 {hasTreasuryKey === false && (
                   <p className="text-xs text-amber-300">
-                    Backend hint: set <span className="font-mono">SOLANA_TREASURY_SECRET_KEY</span> in backend vars, then redeploy.
+                    {treasuryCapabilityReason === 'invalid_format' ? (
+                      <>
+                        Backend hint: <span className="font-mono">SOLANA_TREASURY_SECRET_KEY</span> is set but invalid.
+                        Use raw base64 or JSON byte array (no wrapping quotes), then redeploy.
+                      </>
+                    ) : (
+                      <>
+                        Backend hint: set <span className="font-mono">SOLANA_TREASURY_SECRET_KEY</span> in backend vars, then redeploy.
+                      </>
+                    )}
                   </p>
                 )}
                 {withdrawSignature && (
