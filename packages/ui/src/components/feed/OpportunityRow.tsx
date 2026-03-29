@@ -1,9 +1,9 @@
 'use client';
 
 import { AlertTriangle, Bell, ChevronRight, Play, Sparkles } from 'lucide-react';
-import { useAccount } from 'wagmi';
 
 import { HelpTooltip } from '@/components/HelpTooltip';
+import { useFeedWalletCta } from '@/hooks/useFeedWalletCta';
 import type { FeedMode, Opportunity } from '@/lib/feed/types';
 import { formatUSD } from '@/utils/format';
 import { useRelativeTime } from '@/hooks/useRelativeTime';
@@ -30,30 +30,9 @@ function getStatusTone(status: Opportunity['status']) {
   }
 }
 
-function getPrimaryCta(opportunity: Opportunity, isConnected: boolean, mode: FeedMode) {
-  if (!isConnected) return 'Connect to simulate';
-  if (mode === 'OPERATOR') {
-    return opportunity.status === 'READY' ? 'Save as strategy' : 'Create alert';
-  }
-
-  switch (opportunity.status) {
-    case 'READY':
-      return 'Simulate';
-    case 'NEEDS_APPROVAL':
-      return 'Approve tokens';
-    case 'LOW_BALANCE':
-      return 'Deposit to activate';
-    case 'HIGH_RISK':
-      return 'Review risk';
-    default:
-      return 'Inspect';
-  }
-}
-
 export default function OpportunityRow({ opportunity, isSelected, mode, onSelect }: OpportunityRowProps) {
-  const { isConnected } = useAccount();
   const age = useRelativeTime(opportunity.ts);
-  const primaryCta = getPrimaryCta(opportunity, isConnected, mode);
+  const cta = useFeedWalletCta(opportunity, mode);
   const statusTone = getStatusTone(opportunity.status);
   const confidencePct = Math.round(opportunity.scores.confidence * 100);
 
@@ -147,12 +126,12 @@ export default function OpportunityRow({ opportunity, isSelected, mode, onSelect
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
-                onSelect();
+                cta.runPrimaryAction(onSelect);
               }}
               className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-cyan-500/20 to-purple-500/20 px-3 py-2 text-sm font-medium text-cyan-200 transition hover:from-cyan-500/30 hover:to-purple-500/30"
             >
               {mode === 'OPERATOR' ? <Sparkles className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-              {primaryCta}
+              {cta.label}
             </button>
             <button
               type="button"
@@ -168,7 +147,7 @@ export default function OpportunityRow({ opportunity, isSelected, mode, onSelect
           <div className="flex items-center justify-between text-xs text-dark-400">
             <span className="inline-flex items-center gap-1">
               {opportunity.status === 'HIGH_RISK' ? <AlertTriangle className="h-3.5 w-3.5 text-red-300" /> : null}
-              {isConnected ? 'Wallet-aware CTA ready' : 'Connect wallet to unlock actions'}
+              {cta.hint}
             </span>
             <ChevronRight className="h-4 w-4" />
           </div>
