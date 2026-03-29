@@ -60,9 +60,10 @@ export function formatRelativeTime(timestamp: number | string | Date): string {
     return 'Just now';
   }
 
-  const date = typeof timestamp === 'string' || typeof timestamp === 'number'
-    ? new Date(timestamp)
-    : timestamp;
+  const date = typeof timestamp === 'string' || typeof timestamp === 'number' ? new Date(timestamp) : timestamp;
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return 'Just now';
+  }
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffSec = Math.floor(diffMs / 1000);

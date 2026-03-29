@@ -10,17 +10,37 @@ import { useFeedStore } from '@/stores/feedStore';
 
 type LivePayload = Opportunity[] | { items?: Opportunity[]; data?: Opportunity[] };
 
+function resolveTimestamp(item: Partial<Opportunity> & Record<string, unknown>, fallback: number): number {
+  const raw = item.ts ?? item.timestamp ?? item.createdAt ?? item.updatedAt;
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return raw;
+  }
+  if (typeof raw === 'string') {
+    const date = new Date(raw);
+    if (!Number.isNaN(date.getTime())) {
+      return date.getTime();
+    }
+  }
+  if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+    return raw.getTime();
+  }
+  return fallback;
+}
+
 function normalizeLivePayload(payload: LivePayload): Opportunity[] {
-  if (Array.isArray(payload)) {
-    return payload;
-  }
-  if (Array.isArray(payload.items)) {
-    return payload.items;
-  }
-  if (Array.isArray(payload.data)) {
-    return payload.data;
-  }
-  return [];
+  const now = Date.now();
+  const rawItems = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload.items)
+      ? payload.items
+      : Array.isArray(payload.data)
+        ? payload.data
+        : [];
+
+  return rawItems.map((item) => ({
+    ...item,
+    ts: resolveTimestamp(item as Partial<Opportunity> & Record<string, unknown>, now),
+  }));
 }
 
 function normalizeStatusFromFreshness(items: Opportunity[]): Opportunity[] {
