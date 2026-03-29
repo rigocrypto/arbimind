@@ -30,23 +30,39 @@ function isValidSolanaAddress(s: string): boolean {
   return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s);
 }
 
+function normalizeSecretInput(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+
+  const hasDoubleQuotes = trimmed.startsWith('"') && trimmed.endsWith('"');
+  const hasSingleQuotes = trimmed.startsWith('\'') && trimmed.endsWith('\'');
+  const unwrapped = hasDoubleQuotes || hasSingleQuotes ? trimmed.slice(1, -1).trim() : trimmed;
+
+  return unwrapped;
+}
+
 function parseTreasuryKeypair(): Keypair {
   const raw =
     process.env.SOLANA_TREASURY_SECRET_KEY?.trim() ||
     process.env.SOLANA_ARB_SECRET_KEY?.trim() ||
     '';
+  const normalized = normalizeSecretInput(raw);
 
-  if (!raw) {
+  if (!normalized) {
     throw new Error('SOLANA_TREASURY_SECRET_KEY not configured');
   }
 
   try {
-    if (raw.startsWith('[')) {
-      const secret = Uint8Array.from(JSON.parse(raw) as number[]);
+    if (normalized.startsWith('[')) {
+      const parsed = JSON.parse(normalized) as unknown;
+      if (!Array.isArray(parsed)) {
+        throw new Error('SOLANA_TREASURY_SECRET_KEY JSON must be an array');
+      }
+      const secret = Uint8Array.from(parsed as number[]);
       return Keypair.fromSecretKey(secret);
     }
 
-    const secret = Uint8Array.from(Buffer.from(raw, 'base64'));
+    const secret = Uint8Array.from(Buffer.from(normalized, 'base64'));
     return Keypair.fromSecretKey(secret);
   } catch {
     throw new Error('SOLANA_TREASURY_SECRET_KEY must be a valid base64 key or JSON byte array');
@@ -67,9 +83,15 @@ router.get('/withdraw-capabilities', async (_req: Request, res: Response) => {
       hasTreasuryKey: true,
       treasuryPubkey: treasury.publicKey.toBase58(),
     });
-  } catch {
+  } catch (error) {
+    const reason =
+      error instanceof Error && /not configured/i.test(error.message)
+        ? 'not_configured'
+        : 'invalid_format';
+
     return res.json({
       hasTreasuryKey: false,
+      reason,
     });
   }
 });
