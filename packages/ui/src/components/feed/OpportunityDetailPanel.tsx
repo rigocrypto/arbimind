@@ -1,8 +1,8 @@
 'use client';
 
 import { BarChart3, Bot, Download, Play, ShieldAlert, SlidersHorizontal } from 'lucide-react';
-import { useAccount } from 'wagmi';
 
+import { useFeedWalletCta } from '@/hooks/useFeedWalletCta';
 import type { Opportunity } from '@/lib/feed/types';
 import { formatUSD } from '@/utils/format';
 import { useFeedStore } from '@/stores/feedStore';
@@ -21,8 +21,8 @@ function DetailLine({ label, value }: { label: string; value: string }) {
 }
 
 export default function OpportunityDetailPanel({ opportunity }: OpportunityDetailPanelProps) {
-  const { isConnected } = useAccount();
   const mode = useFeedStore((state) => state.mode);
+  const cta = useFeedWalletCta(opportunity, mode);
 
   if (!opportunity) {
     return (
@@ -34,8 +34,6 @@ export default function OpportunityDetailPanel({ opportunity }: OpportunityDetai
   }
 
   const sizeMid = Math.round((opportunity.size.min + opportunity.size.max) / 2);
-  const needsWallet = !isConnected;
-
   return (
     <section className="glass-card sticky top-[9.75rem] p-5">
       <div className="flex items-start justify-between gap-3">
@@ -103,11 +101,13 @@ export default function OpportunityDetailPanel({ opportunity }: OpportunityDetai
         <div className="grid gap-2">
           <button
             type="button"
+            onClick={() => cta.runPrimaryAction()}
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-cyan-500/20 to-purple-500/20 px-4 py-3 text-sm font-medium text-cyan-200 transition hover:from-cyan-500/30 hover:to-purple-500/30"
           >
             <Play className="h-4 w-4" />
-            {needsWallet ? 'Connect to simulate' : mode === 'TRADER' ? 'Simulate route' : 'Save as strategy'}
+            {cta.label}
           </button>
+          <p className="text-xs text-dark-400">{cta.hint}</p>
           <button
             type="button"
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-dark-200 transition hover:text-white"
