@@ -8,6 +8,7 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from '@solana/web3.js';
+import bs58 from 'bs58';
 
 function resolveSolanaRpc(): string {
   const url = process.env.SOLANA_RPC_URL?.trim();
@@ -41,6 +42,14 @@ function normalizeSecretInput(raw: string): string {
   return unwrapped;
 }
 
+function tryKeypairFromBytes(secret: Uint8Array): Keypair | null {
+  try {
+    return Keypair.fromSecretKey(secret);
+  } catch {
+    return null;
+  }
+}
+
 function parseTreasuryKeypair(): Keypair {
   const raw =
     process.env.SOLANA_TREASURY_SECRET_KEY?.trim() ||
@@ -59,13 +68,26 @@ function parseTreasuryKeypair(): Keypair {
         throw new Error('SOLANA_TREASURY_SECRET_KEY JSON must be an array');
       }
       const secret = Uint8Array.from(parsed as number[]);
-      return Keypair.fromSecretKey(secret);
+      const keypair = tryKeypairFromBytes(secret);
+      if (keypair) return keypair;
+      throw new Error('SOLANA_TREASURY_SECRET_KEY JSON key bytes are invalid');
     }
 
-    const secret = Uint8Array.from(Buffer.from(normalized, 'base64'));
-    return Keypair.fromSecretKey(secret);
+    const base64Bytes = Uint8Array.from(Buffer.from(normalized, 'base64'));
+    const base64Keypair = tryKeypairFromBytes(base64Bytes);
+    if (base64Keypair) {
+      return base64Keypair;
+    }
+
+    const base58Bytes = bs58.decode(normalized);
+    const base58Keypair = tryKeypairFromBytes(base58Bytes);
+    if (base58Keypair) {
+      return base58Keypair;
+    }
+
+    throw new Error('SOLANA_TREASURY_SECRET_KEY bytes are invalid');
   } catch {
-    throw new Error('SOLANA_TREASURY_SECRET_KEY must be a valid base64 key or JSON byte array');
+    throw new Error('SOLANA_TREASURY_SECRET_KEY must be a valid base64/base58 key or JSON byte array');
   }
 }
 
