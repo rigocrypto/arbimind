@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { usePathname, useRouter } from 'next/navigation';
-import { useAccount } from 'wagmi';
+import { useAccount, useConnect } from 'wagmi';
 import { Menu, Wallet2, X } from 'lucide-react';
 import { NAV_ITEMS } from '@/config/nav';
 import { getPersistentCtaVariant, trackEvent } from '@/lib/analytics';
@@ -27,6 +27,11 @@ function readSolanaWalletAddress(): string | null {
   const connected = window.localStorage.getItem('arbimind:wallet:solanaConnected') === '1';
   const address = window.localStorage.getItem('arbimind:wallet:solanaAddress');
   return connected && address ? address : null;
+}
+
+function isMetaMaskInAppBrowser() {
+  if (typeof window === 'undefined') return false;
+  return Boolean((window as Window & { ethereum?: { isMetaMask?: boolean } }).ethereum?.isMetaMask);
 }
 
 function EthereumGlyph() {
@@ -52,6 +57,7 @@ export function Header() {
   const router = useRouter();
   const pathname = usePathname();
   const { isConnected, address } = useAccount();
+  const { connectAsync, connectors, isPending: isConnectPending } = useConnect();
   const ctaVariant = useMemo(() => getPersistentCtaVariant(), []);
   const wasConnectedRef = useRef(isConnected);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
@@ -85,10 +91,30 @@ export function Header() {
   const solanaConnected = Boolean(solanaAddress);
   const evmLabel = isConnected ? truncateAddress(address) : 'EVM Wallet';
   const solLabel = solanaConnected ? truncateAddress(solanaAddress) : 'Solana Wallet';
+  const isMetaMaskBrowser = useMemo(() => isMetaMaskInAppBrowser(), []);
   const openWalletPageFallback = () => {
     setIsWalletModalOpen(false);
     setIsMobileNavOpen(false);
     router.push('/wallet');
+  };
+
+  const handleDirectMetaMaskConnect = async () => {
+    const metaMaskConnector = connectors.find(
+      (connector) => /metamask/i.test(connector.name) || /metamask/i.test(connector.id)
+    );
+
+    if (!metaMaskConnector) {
+      openWalletPageFallback();
+      return;
+    }
+
+    try {
+      setIsWalletModalOpen(false);
+      setIsMobileNavOpen(false);
+      await connectAsync({ connector: metaMaskConnector });
+    } catch {
+      openWalletPageFallback();
+    }
   };
 
   return (
@@ -261,6 +287,10 @@ export function Header() {
                           ctaVariant,
                           pathname,
                         });
+                        if (isMetaMaskBrowser) {
+                          void handleDirectMetaMaskConnect();
+                          return;
+                        }
                         if (!ready || !openConnectModal) {
                           openWalletPageFallback();
                           return;
@@ -280,7 +310,15 @@ export function Header() {
                   >
                     <EthereumGlyph />
                     {connected && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />}
-                    <span>{connected ? truncateAddress(account.address) : evmLabel}</span>
+                    <span>
+                      {connected
+                        ? truncateAddress(account.address)
+                        : isMetaMaskBrowser && isConnectPending
+                          ? 'Connecting MetaMask…'
+                          : isMetaMaskBrowser
+                            ? 'Connect MetaMask'
+                            : evmLabel}
+                    </span>
                   </button>
                 );
               }}
