@@ -3,19 +3,27 @@
 import { useState, useEffect } from 'react';
 import { useHydrated } from './useHydrated';
 
+function toValidDate(value: number | string | Date | null | undefined): Date | null {
+  if (value == null) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 /**
  * Hook to format relative time that avoids hydration errors
  * Returns a stable value during SSR and updates on client
  */
-export function useRelativeTime(timestamp: number | string | Date): string {
+export function useRelativeTime(timestamp: number | string | Date | null | undefined): string {
   const [relativeTime, setRelativeTime] = useState('Just now');
   const mounted = useHydrated();
 
   useEffect(() => {
     const updateTime = () => {
-      const date = typeof timestamp === 'string' || typeof timestamp === 'number'
-        ? new Date(timestamp)
-        : timestamp;
+      const date = toValidDate(timestamp);
+      if (!date) {
+        setRelativeTime('Just now');
+        return;
+      }
       const now = new Date();
       const diffMs = now.getTime() - date.getTime();
       const diffSec = Math.floor(diffMs / 1000);
