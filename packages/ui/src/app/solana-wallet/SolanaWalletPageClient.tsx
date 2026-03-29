@@ -93,7 +93,7 @@ export default function SolanaWalletPageClient() {
     () => wallets.filter((item) => item.readyState === WalletReadyState.Installed).map((item) => item.adapter.name),
     [wallets]
   );
-  const [isMobileBrowser, setIsMobileBrowser] = useState(false);
+  const isMobileBrowser = useMemo(() => isLikelyMobileBrowser(), []);
   const [userSolBalance, setUserSolBalance] = useState(0);
   const [treasurySolBalance, setTreasurySolBalance] = useState(0);
   const [botTrades, setBotTrades] = useState<BotTrade[]>(MOCK_BOT_TRADES);
@@ -158,10 +158,6 @@ export default function SolanaWalletPageClient() {
     } catch {
       return null;
     }
-  }, []);
-
-  useEffect(() => {
-    setIsMobileBrowser(isLikelyMobileBrowser());
   }, []);
 
   useEffect(() => {

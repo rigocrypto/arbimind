@@ -2,7 +2,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
@@ -105,11 +105,7 @@ export default function WalletPage() {
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [chainSwitcherOpen, setChainSwitcherOpen] = useState(false);
   const [txFilter, setTxFilter] = useState<string>('all');
-  const [isMobileBrowser, setIsMobileBrowser] = useState(false);
-
-  useEffect(() => {
-    setIsMobileBrowser(isLikelyMobileBrowser());
-  }, []);
+  const isMobileBrowser = useMemo(() => isLikelyMobileBrowser(), []);
 
   const ethVal = ethBalance ? parseFloat(ethBalance.formatted) : 0;
   const usdcVal = usdcBalance ? Number(usdcBalance.formatted) / 1e6 : 0;
