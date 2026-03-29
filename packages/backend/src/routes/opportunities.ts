@@ -156,8 +156,14 @@ function writeSseEvent(res: Response, event: string, payload: unknown): void {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
+// Returns both modern and legacy shapes for compatibility with older consumers.
 router.get('/', (_req: Request, res: Response) => {
-  return res.json(createSnapshot());
+  const snapshot = createSnapshot();
+  return res.json({
+    items: snapshot.items,
+    data: snapshot.items,
+    generatedAt: snapshot.generatedAt,
+  });
 });
 
 router.get('/stream', (_req: Request, res: Response) => {

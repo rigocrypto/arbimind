@@ -8,7 +8,7 @@ import { getDemoOpportunities } from '@/lib/feed/demoOpportunities';
 import type { Opportunity } from '@/lib/feed/types';
 import { useFeedStore } from '@/stores/feedStore';
 
-type LivePayload = Opportunity[] | { items?: Opportunity[] };
+type LivePayload = Opportunity[] | { items?: Opportunity[]; data?: Opportunity[] };
 
 function normalizeLivePayload(payload: LivePayload): Opportunity[] {
   if (Array.isArray(payload)) {
@@ -17,7 +17,25 @@ function normalizeLivePayload(payload: LivePayload): Opportunity[] {
   if (Array.isArray(payload.items)) {
     return payload.items;
   }
+  if (Array.isArray(payload.data)) {
+    return payload.data;
+  }
   return [];
+}
+
+function normalizeStatusFromFreshness(items: Opportunity[]): Opportunity[] {
+  const now = Date.now();
+
+  return items.map((item) => {
+    const ageMs = Math.max(0, now - item.ts);
+    if (ageMs > 10_000) {
+      return { ...item, status: 'STALE' };
+    }
+    if (item.status === 'STALE') {
+      return { ...item, status: 'READY' };
+    }
+    return item;
+  });
 }
 
 function applyFilters(
@@ -25,10 +43,11 @@ function applyFilters(
   chain: 'EVM' | 'SOL' | 'BOTH',
   filters: ReturnType<typeof useFeedStore.getState>['filters']
 ) {
+  const normalized = normalizeStatusFromFreshness(items);
   const now = Date.now();
   const search = filters.search.trim().toLowerCase();
 
-  return items
+  return normalized
     .filter((item) => (chain === 'BOTH' ? true : item.chain === chain))
     .filter((item) => item.profit.netUsd >= filters.minNetUsd)
     .filter((item) => item.scores.confidence >= filters.minConfidence)
