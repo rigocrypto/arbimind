@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
-import { useAccount, useBalance, useConnect, useEnsName } from 'wagmi';
+import { useAccount, useBalance, useConnect, useDisconnect, useEnsName } from 'wagmi';
 import {
   Wallet,
   Copy,
@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Shield,
   Banknote,
+  LogOut,
 } from 'lucide-react';
 import { formatETH, formatUSD, formatAddress, formatTxHash } from '@/utils/format';
 import { HelpTooltip } from '@/components/HelpTooltip';
@@ -35,7 +36,7 @@ const USDC_BY_CHAIN: Record<number, `0x${string}`> = {
 };
 
 const MIN_ETH = parseFloat(process.env.NEXT_PUBLIC_MIN_TRADE_ETH || '0.05');
-const MIN_USDC = parseFloat(process.env.NEXT_PUBLIC_MIN_TRADE_USDC || '125');
+const MIN_USDC = parseFloat(process.env.NEXT_PUBLIC_MIN_TRADE_USDC || '20');
 
 function isLikelyMobileBrowser() {
   if (typeof window === 'undefined') return false;
@@ -101,6 +102,7 @@ function WithdrawModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
 export default function WalletPage() {
   const { address, isConnected, chain, chainId } = useAccount();
   const { connectAsync, connectors, isPending: isConnectPending } = useConnect();
+  const { disconnect } = useDisconnect();
   const { data: ethBalance } = useBalance({ address });
   const usdcToken = address && chainId ? USDC_BY_CHAIN[chainId] : null;
   const { data: usdcBalance } = useBalance({
@@ -138,6 +140,7 @@ export default function WalletPage() {
 
   const ethVal = ethBalance ? parseFloat(ethBalance.formatted) : 0;
   const usdcVal = usdcBalance ? Number(usdcBalance.formatted) / 1e6 : 0;
+  const totalUsd = ethVal * 3000 + usdcVal;
   const isLowBalance = ethVal < MIN_ETH && usdcVal < MIN_USDC;
   const explorerUrl = chain?.blockExplorers?.default?.url ?? '';
   const {
@@ -155,6 +158,11 @@ export default function WalletPage() {
       navigator.clipboard.writeText(address);
       toast.success('Address copied');
     }
+  };
+
+  const handleDisconnect = () => {
+    disconnect();
+    toast.success('EVM wallet disconnected');
   };
 
   const filteredTxs = useMemo(() => {
@@ -273,7 +281,26 @@ export default function WalletPage() {
                 </div>
               </div>
             ) : (
-              <>
+              <div className="w-full max-w-3xl space-y-3">
+                <div className="grid gap-3 rounded-2xl border border-white/10 bg-dark-900/60 p-4 shadow-xl sm:grid-cols-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-dark-400">Wallet</p>
+                    <p className="mt-1 font-mono text-sm text-white">{ensName || formatAddress(address ?? '')}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-dark-400">Available funds</p>
+                    <p className="mt-1 text-lg font-bold text-white">{formatUSD(totalUsd)}</p>
+                    <p className="text-xs text-dark-400">{formatETH(ethVal)} ETH + {usdcVal.toFixed(2)} USDC</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-dark-400">Bot activation</p>
+                    <p className={`mt-1 text-sm font-semibold ${isLowBalance ? 'text-amber-300' : 'text-emerald-300'}`}>
+                      {isLowBalance ? `Need at least ~$${MIN_USDC}` : 'Ready to activate'}
+                    </p>
+                    <p className="text-xs text-dark-400">Minimum available funds target: ${MIN_USDC}</p>
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row items-center gap-3 justify-center">
                 <button
                   type="button"
                   onClick={() => setChainSwitcherOpen(true)}
@@ -291,7 +318,15 @@ export default function WalletPage() {
                     View on Explorer
                   </a>
                 )}
-              </>
+                <button
+                  type="button"
+                  onClick={handleDisconnect}
+                  className="px-6 py-2 rounded-lg border border-red-400/40 bg-red-500/10 text-red-200 font-semibold shadow-md hover:bg-red-500/20 transition"
+                >
+                  Disconnect Wallet
+                </button>
+                </div>
+              </div>
             )}
           </div>
           <div className="mt-4 text-xs text-dark-400 text-center">
@@ -408,10 +443,12 @@ export default function WalletPage() {
                 <div className="p-4 rounded-lg bg-dark-800/50 border border-dark-700">
                   <div className="flex items-center gap-2 mb-2">
                     <TrendingUp className="w-4 h-4 text-purple-400" />
-                    <span className="text-xs text-dark-400">Total PnL</span>
+                    <span className="text-xs text-dark-400">Available Funds</span>
                   </div>
-                  <div className="text-xl font-bold text-white">+0.00 ETH</div>
-                  <div className="text-xs text-dark-400 mt-1">$0.00</div>
+                  <div className="text-xl font-bold text-white">{formatUSD(totalUsd)}</div>
+                  <div className="text-xs text-dark-400 mt-1">
+                    {isLowBalance ? `Below activation minimum ($${MIN_USDC})` : 'Enough to activate the bot'}
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -539,7 +576,7 @@ export default function WalletPage() {
               className="glass-card p-4 sm:p-6"
             >
               <h3 className="text-lg font-bold text-white mb-4">Quick Actions</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <button
                   type="button"
                   onClick={() => setWithdrawOpen(true)}
@@ -563,6 +600,17 @@ export default function WalletPage() {
                   </div>
                   <ChevronRight className="w-5 h-5 text-dark-400 group-hover:text-purple-400" />
                 </a>
+                <button
+                  type="button"
+                  onClick={handleDisconnect}
+                  className="flex items-center justify-between p-4 rounded-lg bg-dark-800/50 hover:bg-dark-700/50 border border-dark-600 transition group text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <LogOut className="w-5 h-5 text-red-300" />
+                    <span className="font-medium text-white">Disconnect</span>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-dark-400 group-hover:text-red-300" />
+                </button>
               </div>
             </motion.div>
           </>

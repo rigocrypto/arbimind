@@ -17,8 +17,8 @@ const MIN_ETH = (() => {
   return Number.isFinite(v) ? v : 0.05;
 })();
 const MIN_USDC = (() => {
-  const v = parseFloat(process.env.NEXT_PUBLIC_MIN_TRADE_USDC || '125');
-  return Number.isFinite(v) ? v : 125;
+  const v = parseFloat(process.env.NEXT_PUBLIC_MIN_TRADE_USDC || '20');
+  return Number.isFinite(v) ? v : 20;
 })();
 
 export function useBalanceGuard() {
