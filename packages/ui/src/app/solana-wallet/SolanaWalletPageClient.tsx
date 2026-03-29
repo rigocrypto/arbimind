@@ -64,6 +64,25 @@ const MOCK_BOT_TRADES: BotTrade[] = [
   { id: 't-0999', pair: 'RAY/SOL', side: 'buy', volumeSol: 0.51, pnlSol: 0.019, status: 'success', at: '13m ago' },
 ];
 
+function isLikelyMobileBrowser() {
+  if (typeof window === 'undefined') return false;
+  return /android|iphone|ipad|ipod/i.test(window.navigator.userAgent);
+}
+
+function buildPhantomBrowseLink(pathname: string) {
+  if (typeof window === 'undefined') return pathname;
+  const targetUrl = encodeURIComponent(new URL(pathname, window.location.origin).toString());
+  const refUrl = encodeURIComponent(window.location.origin);
+  return `https://phantom.app/ul/browse/${targetUrl}?ref=${refUrl}`;
+}
+
+function buildSolflareBrowseLink(pathname: string) {
+  if (typeof window === 'undefined') return pathname;
+  const targetUrl = encodeURIComponent(new URL(pathname, window.location.origin).toString());
+  const refUrl = encodeURIComponent(window.location.origin);
+  return `https://solflare.com/ul/v1/browse/${targetUrl}?ref=${refUrl}`;
+}
+
 export default function SolanaWalletPageClient() {
   const { connection } = useConnection();
   const { publicKey, connected, sendTransaction, wallets, wallet, select, connect, connecting } = useWallet();
@@ -74,6 +93,7 @@ export default function SolanaWalletPageClient() {
     () => wallets.filter((item) => item.readyState === WalletReadyState.Installed).map((item) => item.adapter.name),
     [wallets]
   );
+  const isMobileBrowser = useMemo(() => isLikelyMobileBrowser(), []);
   const [userSolBalance, setUserSolBalance] = useState(0);
   const [treasurySolBalance, setTreasurySolBalance] = useState(0);
   const [botTrades, setBotTrades] = useState<BotTrade[]>(MOCK_BOT_TRADES);
@@ -449,6 +469,13 @@ export default function SolanaWalletPageClient() {
       );
 
       if (!targetWallet) {
+        if (isMobileBrowser) {
+          const deepLink = /phantom/i.test(label)
+            ? buildPhantomBrowseLink('/solana-wallet')
+            : buildSolflareBrowseLink('/solana-wallet');
+          window.location.assign(deepLink);
+          return;
+        }
         toast.error(`${label} extension not detected in this browser profile`);
         return;
       }
@@ -1041,6 +1068,22 @@ export default function SolanaWalletPageClient() {
                   >
                     Open EVM Wallet
                   </Link>
+                </div>
+              )}
+              {!isSolanaConnected && isMobileBrowser && (
+                <div className="mt-3 flex flex-wrap gap-2 justify-center lg:justify-start sm:hidden">
+                  <a
+                    href={buildPhantomBrowseLink('/solana-wallet')}
+                    className="px-4 py-2 rounded-lg bg-violet-600/80 hover:bg-violet-500 text-white text-sm font-semibold transition"
+                  >
+                    Open in Phantom App
+                  </a>
+                  <a
+                    href={buildSolflareBrowseLink('/solana-wallet')}
+                    className="px-4 py-2 rounded-lg bg-amber-500/80 hover:bg-amber-400 text-black text-sm font-semibold transition"
+                  >
+                    Open in Solflare App
+                  </a>
                 </div>
               )}
               {!isSolanaConnected && (

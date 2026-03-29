@@ -2,7 +2,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
@@ -36,6 +36,17 @@ const USDC_BY_CHAIN: Record<number, `0x${string}`> = {
 
 const MIN_ETH = parseFloat(process.env.NEXT_PUBLIC_MIN_TRADE_ETH || '0.05');
 const MIN_USDC = parseFloat(process.env.NEXT_PUBLIC_MIN_TRADE_USDC || '125');
+
+function isLikelyMobileBrowser() {
+  if (typeof window === 'undefined') return false;
+  return /android|iphone|ipad|ipod/i.test(window.navigator.userAgent);
+}
+
+function buildMetaMaskDappLink(pathname: string) {
+  if (typeof window === 'undefined') return pathname;
+  const url = new URL(pathname, window.location.origin).toString();
+  return `https://link.metamask.io/dapp/${encodeURIComponent(url)}`;
+}
 
 // Mock tx history – replace with /api/wallet/txs or viem when wired
 interface TxRow {
@@ -94,6 +105,7 @@ export default function WalletPage() {
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [chainSwitcherOpen, setChainSwitcherOpen] = useState(false);
   const [txFilter, setTxFilter] = useState<string>('all');
+  const isMobileBrowser = useMemo(() => isLikelyMobileBrowser(), []);
 
   const ethVal = ethBalance ? parseFloat(ethBalance.formatted) : 0;
   const usdcVal = usdcBalance ? Number(usdcBalance.formatted) / 1e6 : 0;
@@ -263,6 +275,16 @@ export default function WalletPage() {
                   </div>
                 </div>
               </div>
+              {isMobileBrowser && (
+                <div className="mb-6 flex justify-center">
+                  <a
+                    href={buildMetaMaskDappLink('/wallet')}
+                    className="inline-flex items-center rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-4 py-2.5 text-sm font-medium text-cyan-200 transition hover:bg-cyan-500/20"
+                  >
+                    Open in MetaMask App Browser
+                  </a>
+                </div>
+              )}
               <div className="mx-auto max-w-2xl rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-left text-sm text-amber-200">
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
