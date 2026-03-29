@@ -6,7 +6,7 @@ import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
-import { useAccount, useBalance, useEnsName } from 'wagmi';
+import { useAccount, useBalance, useConnect, useEnsName } from 'wagmi';
 import {
   Wallet,
   Copy,
@@ -40,6 +40,11 @@ const MIN_USDC = parseFloat(process.env.NEXT_PUBLIC_MIN_TRADE_USDC || '125');
 function isLikelyMobileBrowser() {
   if (typeof window === 'undefined') return false;
   return /android|iphone|ipad|ipod/i.test(window.navigator.userAgent);
+}
+
+function isMetaMaskInAppBrowser() {
+  if (typeof window === 'undefined') return false;
+  return Boolean((window as Window & { ethereum?: { isMetaMask?: boolean } }).ethereum?.isMetaMask);
 }
 
 function buildMetaMaskDappLink(pathname: string) {
@@ -95,6 +100,7 @@ function WithdrawModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
 
 export default function WalletPage() {
   const { address, isConnected, chain, chainId } = useAccount();
+  const { connectAsync, connectors, isPending: isConnectPending } = useConnect();
   const { data: ethBalance } = useBalance({ address });
   const usdcToken = address && chainId ? USDC_BY_CHAIN[chainId] : null;
   const { data: usdcBalance } = useBalance({
@@ -106,6 +112,29 @@ export default function WalletPage() {
   const [chainSwitcherOpen, setChainSwitcherOpen] = useState(false);
   const [txFilter, setTxFilter] = useState<string>('all');
   const isMobileBrowser = useMemo(() => isLikelyMobileBrowser(), []);
+  const isMetaMaskBrowser = useMemo(() => isMetaMaskInAppBrowser(), []);
+
+  const handleDirectMetaMaskConnect = async () => {
+    const metaMaskConnector = connectors.find(
+      (connector) => /metamask/i.test(connector.name) || /metamask/i.test(connector.id)
+    );
+
+    if (!metaMaskConnector) {
+      toast.error('MetaMask connector is not available');
+      return;
+    }
+
+    try {
+      await connectAsync({ connector: metaMaskConnector });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error ?? 'MetaMask connection failed');
+      if (/user rejected|cancelled|rejected/i.test(message)) {
+        toast('Connection cancelled', { icon: '🔒' });
+        return;
+      }
+      toast.error(message || 'MetaMask connection failed');
+    }
+  };
 
   const ethVal = ethBalance ? parseFloat(ethBalance.formatted) : 0;
   const usdcVal = usdcBalance ? Number(usdcBalance.formatted) / 1e6 : 0;
@@ -229,7 +258,18 @@ export default function WalletPage() {
             {!isConnected ? (
               <div className="rounded-lg bg-gradient-to-r from-cyan-500/80 to-purple-500/80 p-[1px] shadow-md">
                 <div className="rounded-[calc(0.5rem-1px)] bg-[#151a29] px-1 py-1">
-                  <ConnectButton label="Connect EVM Wallet" showBalance={false} />
+                  {isMetaMaskBrowser ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleDirectMetaMaskConnect()}
+                      disabled={isConnectPending}
+                      className="inline-flex min-h-10 items-center justify-center rounded-lg bg-gradient-to-r from-cyan-500 to-purple-500 px-4 py-2 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isConnectPending ? 'Connecting MetaMask…' : 'Connect MetaMask'}
+                    </button>
+                  ) : (
+                    <ConnectButton label="Connect EVM Wallet" showBalance={false} />
+                  )}
                 </div>
               </div>
             ) : (
@@ -271,11 +311,22 @@ export default function WalletPage() {
               <div className="mb-6 flex justify-center">
                 <div className="rounded-lg bg-gradient-to-r from-cyan-500 to-purple-500 p-[1px] shadow-md">
                   <div className="rounded-[calc(0.5rem-1px)] bg-[#151a29] px-1 py-1">
-                    <ConnectButton label="Open Wallet Connect" showBalance={false} />
+                    {isMetaMaskBrowser ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleDirectMetaMaskConnect()}
+                        disabled={isConnectPending}
+                        className="inline-flex min-h-10 items-center justify-center rounded-lg bg-gradient-to-r from-cyan-500 to-purple-500 px-4 py-2 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isConnectPending ? 'Connecting MetaMask…' : 'Connect MetaMask'}
+                      </button>
+                    ) : (
+                      <ConnectButton label="Open Wallet Connect" showBalance={false} />
+                    )}
                   </div>
                 </div>
               </div>
-              {isMobileBrowser && (
+              {isMobileBrowser && !isMetaMaskBrowser && (
                 <div className="mb-6 flex justify-center">
                   <a
                     href={buildMetaMaskDappLink('/wallet')}
