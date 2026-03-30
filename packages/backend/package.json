@@ -47,7 +47,7 @@
     "node-cron": "^3.0.3",
     "pg": "^8.20.0",
     "rate-limiter-flexible": "^5.0.0",
-    "redis": "^4.6.10",
+    "redis": "^5.11.0",
     "winston": "^3.11.0",
     "ws": "^8.14.2",
     "yargs": "^17.7.2"
