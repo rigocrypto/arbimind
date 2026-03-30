@@ -190,4 +190,107 @@ router.get('/stream', (_req: Request, res: Response) => {
   });
 });
 
+router.post('/simulate', async (req: Request, res: Response) => {
+  try {
+    const { routeId, amount, cluster } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Amount must be a positive number',
+      });
+    }
+
+    // Token mints
+    const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+    const SOL_MINT = 'So11111111111111111111111111111111111111112';
+
+    // Leg 1: USDC → SOL via Jupiter Quote API v6
+    const leg1Url = 'https://quote-api.jup.ag/v6/quote?' +
+      new URLSearchParams({
+        inputMint: USDC_MINT,
+        outputMint: SOL_MINT,
+        amount: String(Math.round(amount * 1e6)), // USDC has 6 decimals
+        slippageBps: '50',
+      });
+
+    const leg1Resp = await fetch(leg1Url);
+    if (!leg1Resp.ok) {
+      return res.status(502).json({
+        success: false,
+        error: `Jupiter leg 1 quote failed: ${leg1Resp.status}`,
+      });
+    }
+    const leg1 = await leg1Resp.json();
+
+    // Leg 2: SOL → USDC (reverse leg)
+    const leg2Url = 'https://quote-api.jup.ag/v6/quote?' +
+      new URLSearchParams({
+        inputMint: SOL_MINT,
+        outputMint: USDC_MINT,
+        amount: leg1.outAmount,
+        slippageBps: '50',
+      });
+
+    const leg2Resp = await fetch(leg2Url);
+    if (!leg2Resp.ok) {
+      return res.status(502).json({
+        success: false,
+        error: `Jupiter leg 2 quote failed: ${leg2Resp.status}`,
+      });
+    }
+    const leg2 = await leg2Resp.json();
+
+    const inputAmount = amount;
+    const outputAmount = parseInt(leg2.outAmount) / 1e6;
+    const netProfit = outputAmount - inputAmount;
+    const estimatedFees = 0.005; // ~5000 lamports tx fee
+    const netAfterFees = netProfit - estimatedFees;
+
+    return res.json({
+      success: true,
+      simulation: {
+        routeId: routeId || 'usdc-sol-usdc',
+        cluster: cluster || 'mainnet-beta',
+        inputAmount,
+        outputAmount: Math.round(outputAmount * 1e6) / 1e6,
+        netProfit: Math.round(netAfterFees * 1e6) / 1e6,
+        netBps: Math.round((netAfterFees / inputAmount) * 10000),
+        legs: [
+          {
+            venue: 'Jupiter',
+            direction: 'buy',
+            inToken: 'USDC',
+            outToken: 'SOL',
+            inAmount: inputAmount,
+            outAmount: Math.round((parseInt(leg1.outAmount) / 1e9) * 1e6) / 1e6,
+            priceImpact: leg1.priceImpactPct || '0',
+          },
+          {
+            venue: 'Jupiter',
+            direction: 'sell',
+            inToken: 'SOL',
+            outToken: 'USDC',
+            inAmount: Math.round((parseInt(leg1.outAmount) / 1e9) * 1e6) / 1e6,
+            outAmount: Math.round(outputAmount * 1e6) / 1e6,
+            priceImpact: leg2.priceImpactPct || '0',
+          },
+        ],
+        estimatedFees,
+        willRevert: netAfterFees < 0,
+        revertReason: netAfterFees < 0
+          ? 'Negative profit after slippage and fees'
+          : null,
+        quotedAt: Date.now(),
+      },
+    });
+  } catch (err: any) {
+    console.error('[simulate] error:', err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'Simulation failed',
+    });
+  }
+});
+
 export default router;
