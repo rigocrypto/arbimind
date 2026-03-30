@@ -10,7 +10,6 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
-      - dependabot
     commit-message:
       prefix: "deps"
       include: scope
@@ -39,7 +38,6 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
-      - dependabot
     commit-message:
       prefix: "deps"
       include: scope

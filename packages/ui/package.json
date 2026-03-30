@@ -47,13 +47,13 @@
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "autoprefixer": "^10.4.27",
-    "eslint": "^10.1.0",
+    "eslint": "^8.57.1",
     "eslint-config-next": "16.2.1",
     "postcss": "^8.5.8",
     "@tailwindcss/postcss": "^4.2.2",
     "tailwindcss": "^4.2.2",
     "tsx": "^4.19.2",
-    "typescript": "6.0.2"
+    "typescript": "5.9.3"
   },
   "keywords": [
     "nextjs",
