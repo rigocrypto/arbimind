@@ -49,7 +49,7 @@
     "rate-limiter-flexible": "^5.0.0",
     "redis": "^4.6.10",
     "winston": "^3.11.0",
-    "ws": "^8.14.2",
+    "ws": "^8.20.0",
     "yargs": "^17.7.2"
   },
   "devDependencies": {
