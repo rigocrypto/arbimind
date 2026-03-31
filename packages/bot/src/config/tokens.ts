@@ -15,7 +15,7 @@ const DEFAULT_ALLOWLISTED_TOKENS: Record<string, TokenConfig> = {
     logoURI: "https://assets.coingecko.com/coins/images/2518/thumb/weth.png"
   },
   USDC: {
-    address: "0xA0b86a33E6441b8C4C8C8C8C8C8C8C8C8C8C8C8",
+    address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
     symbol: "USDC",
     name: "USD Coin",
     decimals: 6,
@@ -179,13 +179,15 @@ export function getEffectiveTokenPairs(): Array<{ tokenA: string; tokenB: string
     ? basePairs.filter((p) => requestedPairs.has(`${p.tokenA}/${p.tokenB}`) || requestedPairs.has(`${p.tokenB}/${p.tokenA}`))
     : basePairs;
 
+  const isSepolia = isEthereumSepoliaProfile();
   console.log('[EFFECTIVE_PAIRS]', {
     count: pairs.length,
     pairs: pairs.map((p) => `${p.tokenA}/${p.tokenB}`),
     scanPairsEnv: scanPairsEnv || 'ALL',
-    WETH: process.env['SEPOLIA_WETH_ADDRESS']?.trim() || 'MISSING',
-    USDC: process.env['SEPOLIA_USDC_ADDRESS']?.trim() || 'MISSING',
-    DAI: process.env['SEPOLIA_DAI_ADDRESS']?.trim() || 'MISSING',
+    profile: isSepolia ? 'sepolia' : 'mainnet',
+    WETH: ALLOWLISTED_TOKENS['WETH']?.address || 'MISSING',
+    USDC: ALLOWLISTED_TOKENS['USDC']?.address || 'MISSING',
+    DAI: ALLOWLISTED_TOKENS['DAI']?.address || 'MISSING',
   });
 
   return pairs;

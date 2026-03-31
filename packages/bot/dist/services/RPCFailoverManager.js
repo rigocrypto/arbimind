@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getRPCFailoverManager = exports.RPCFailoverManager = void 0;
+exports.RPCFailoverManager = void 0;
+exports.getRPCFailoverManager = getRPCFailoverManager;
 const ethers_1 = require("ethers");
 const Logger_1 = require("../utils/Logger");
 const logger = new Logger_1.Logger('RPCFailover');
@@ -168,4 +169,3 @@ function getRPCFailoverManager() {
     }
     return rpcManager;
 }
-exports.getRPCFailoverManager = getRPCFailoverManager;

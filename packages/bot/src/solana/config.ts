@@ -4,13 +4,20 @@
  */
 
 export interface SolanaConfig {
+  enabled: boolean;
   watchedPools: string[];
   pumpFunProgram: string;
   scanIntervalSec: number;
   isTestnet: boolean;
 }
 
+function isEnvTrue(value: string | undefined): boolean {
+  const v = (value || '').trim().toLowerCase();
+  return v === 'true' || v === '1' || v === 'yes' || v === 'on';
+}
+
 export const solanaConfig: SolanaConfig = {
+  enabled: isEnvTrue(process.env['SOLANA_SCANNER_ENABLED']),
   watchedPools: (process.env['SOLANA_WATCHED_POOLS'] || '')
     .split(',')
     .map((p) => p.trim())
