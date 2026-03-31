@@ -54,15 +54,22 @@ export function formatCompact(value: number | string): string {
  * Format timestamp to relative time (e.g., "2m ago")
  * Note: This should only be called on the client to avoid hydration mismatches
  */
-export function formatRelativeTime(timestamp: number | string | Date): string {
+export function formatRelativeTime(timestamp: number | string | Date | undefined | null): string {
   // Only calculate on client side to avoid hydration errors
   if (typeof window === 'undefined') {
     return 'Just now';
   }
 
+  if (timestamp === undefined || timestamp === null) return 'Just now';
+
   const date = typeof timestamp === 'string' || typeof timestamp === 'number'
     ? new Date(timestamp)
     : timestamp;
+
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return 'Just now';
+  }
+
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffSec = Math.floor(diffMs / 1000);
