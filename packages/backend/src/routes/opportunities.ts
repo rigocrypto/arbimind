@@ -221,7 +221,7 @@ router.post('/simulate', async (req: Request, res: Response) => {
         error: `Jupiter leg 1 quote failed: ${leg1Resp.status}`,
       });
     }
-    const leg1 = await leg1Resp.json();
+    const leg1 = (await leg1Resp.json()) as { outAmount: string; priceImpactPct?: string };
 
     // Leg 2: SOL → USDC (reverse leg)
     const leg2Url = 'https://quote-api.jup.ag/v6/quote?' +
@@ -239,7 +239,7 @@ router.post('/simulate', async (req: Request, res: Response) => {
         error: `Jupiter leg 2 quote failed: ${leg2Resp.status}`,
       });
     }
-    const leg2 = await leg2Resp.json();
+    const leg2 = (await leg2Resp.json()) as { outAmount: string; priceImpactPct?: string };
 
     const inputAmount = amount;
     const outputAmount = parseInt(leg2.outAmount) / 1e6;
