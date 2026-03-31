@@ -238,7 +238,8 @@ router.get('/withdraw-capabilities', async (req: Request, res: Response) => {
  */
 router.get('/status/:sig', async (req: Request, res: Response) => {
   try {
-    const sig = (req.params.sig || '').trim();
+    const raw = req.params.sig;
+    const sig = (Array.isArray(raw) ? (raw[0] ?? '') : raw ?? '').trim();
     const cluster = getRequestCluster(req);
     const connection = getConnection(cluster);
     if (!sig) {
