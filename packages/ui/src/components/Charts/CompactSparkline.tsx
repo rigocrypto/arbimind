@@ -41,7 +41,7 @@ export function CompactSparkline({
 
   return (
     <div className="w-full overflow-hidden" style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
         <AreaChart
           data={chartData}
           margin={{ top: 2, right: 2, left: 2, bottom: 2 }}

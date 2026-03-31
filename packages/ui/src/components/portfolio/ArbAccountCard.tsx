@@ -134,7 +134,7 @@ export function ArbAccountCard({
           <div className="text-sm font-bold text-white">
             {formatUSD(totalDeposited)}
             {depositedSolEquivalent !== null && (
-              <span className="text-dark-300"> · {depositedSolEquivalent.toFixed(SOL_EQUIV_DECIMALS)} SOL</span>
+              <span className="text-dark-300"> · {(depositedSolEquivalent ?? 0).toFixed(SOL_EQUIV_DECIMALS)} SOL</span>
             )}
           </div>
           <div className="text-[10px] text-dark-500 mt-0.5">Est. (static price)</div>
@@ -144,7 +144,7 @@ export function ArbAccountCard({
           <div className="text-sm font-bold text-white">
             {formatUSD(totalWithdrawn)}
             {withdrawnSolEquivalent !== null && (
-              <span className="text-dark-300"> · {withdrawnSolEquivalent.toFixed(SOL_EQUIV_DECIMALS)} SOL</span>
+              <span className="text-dark-300"> · {(withdrawnSolEquivalent ?? 0).toFixed(SOL_EQUIV_DECIMALS)} SOL</span>
             )}
           </div>
           <div className="text-[10px] text-dark-500 mt-0.5">Est. (static price)</div>
@@ -177,7 +177,7 @@ export function ArbAccountCard({
                 : 'text-dark-400'
             }`}
           >
-            {roiPct !== undefined ? `${roiPct >= 0 ? '+' : ''}${roiPct.toFixed(2)}%` : '—'}
+            {roiPct !== undefined ? `${roiPct >= 0 ? '+' : ''}${(roiPct ?? 0).toFixed(2)}%` : '—'}
           </div>
         </div>
       </div>

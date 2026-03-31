@@ -60,7 +60,7 @@ export function AdminCharts({ pnlSeries, txsByStrategy, range }: AdminChartsProp
       <div className="card">
         <h3 className="text-lg font-semibold text-white mb-4">Net P&L Over Time</h3>
         <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
             <AreaChart data={pnlData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="adminPnlGrad" x1="0" y1="0" x2="0" y2="1">
@@ -70,7 +70,7 @@ export function AdminCharts({ pnlSeries, txsByStrategy, range }: AdminChartsProp
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
               <XAxis dataKey="timeStr" tick={{ fill: '#94a3b8', fontSize: 11 }} />
-              <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={(v) => v.toFixed(3)} />
+              <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={(v) => (v ?? 0).toFixed(3)} />
               <Tooltip content={<AdminChartTooltip />} />
               <Area type="monotone" dataKey="netProfit" stroke="#22c55e" fill="url(#adminPnlGrad)" strokeWidth={2} />
             </AreaChart>
@@ -80,11 +80,11 @@ export function AdminCharts({ pnlSeries, txsByStrategy, range }: AdminChartsProp
       <div className="card">
         <h3 className="text-lg font-semibold text-white mb-4">Gas Cost Over Time</h3>
         <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
             <BarChart data={gasData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
               <XAxis dataKey="time" tick={{ fill: '#94a3b8', fontSize: 11 }} />
-              <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={(v) => v.toFixed(4)} />
+              <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={(v) => (v ?? 0).toFixed(4)} />
               <Tooltip content={<AdminChartTooltip />} />
               <Bar dataKey="gas" fill="#f97316" radius={[4, 4, 0, 0]} />
             </BarChart>
@@ -95,7 +95,7 @@ export function AdminCharts({ pnlSeries, txsByStrategy, range }: AdminChartsProp
         <h3 className="text-lg font-semibold text-white mb-4">Strategy Share of Profit</h3>
         <div className="h-48 flex items-center justify-center">
           {txsByStrategy.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
               <PieChart>
                 <Pie
                   data={txsByStrategy}
@@ -104,13 +104,13 @@ export function AdminCharts({ pnlSeries, txsByStrategy, range }: AdminChartsProp
                   cx="50%"
                   cy="50%"
                   outerRadius={70}
-                  label={({ strategy, profit }) => `${strategy}: ${profit.toFixed(3)} ETH`}
+                  label={({ strategy, profit }) => `${strategy}: ${(profit ?? 0).toFixed(3)} ETH`}
                 >
                   {txsByStrategy.map((_, i) => (
                     <Cell key={i} fill={COLORS[i % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(v: number) => `${v.toFixed(4)} ETH`} />
+                <Tooltip formatter={(v: number) => `${(v ?? 0).toFixed(4)} ETH`} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
