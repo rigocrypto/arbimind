@@ -39,7 +39,7 @@ export function AIConfidenceRadar({ data }: AIConfidenceRadarProps) {
       </div>
 
       <div className="h-52 w-full">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
           <RadarChart data={chartData} outerRadius="70%">
             <PolarGrid stroke="rgba(148, 163, 184, 0.25)" />
             <PolarAngleAxis

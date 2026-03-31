@@ -75,12 +75,29 @@ async function queryFilterChunked(
 ): Promise<ethers.EventLog[]> {
   const events: ethers.EventLog[] = [];
   let start = fromBlock;
+  let currentChunk = chunkSize;
 
   while (start <= toBlock) {
-    const end = Math.min(start + chunkSize - 1, toBlock);
-    const chunk = (await contract.queryFilter(filter as never, start, end)) as ethers.EventLog[];
-    events.push(...chunk);
-    start = end + 1;
+    const end = Math.min(start + currentChunk - 1, toBlock);
+    try {
+      const chunk = (await contract.queryFilter(filter as never, start, end)) as ethers.EventLog[];
+      events.push(...chunk);
+      start = end + 1;
+      // Restore original chunk size on success
+      currentChunk = chunkSize;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // If block range exceeds provider limit, halve the chunk and retry
+      if (msg.includes('block range') || msg.includes('exceed') || msg.includes('Log response size exceeded')) {
+        const halved = Math.max(50, Math.floor(currentChunk / 2));
+        console.warn(`[queryFilterChunked] block range error at ${start}-${end}, halving chunk to ${halved}`);
+        currentChunk = halved;
+        continue; // retry same start with smaller chunk
+      }
+      // Non-recoverable error — log and skip this chunk
+      console.error(`[queryFilterChunked] non-recoverable error at ${start}-${end}:`, msg);
+      start = end + 1;
+    }
   }
 
   return events;
