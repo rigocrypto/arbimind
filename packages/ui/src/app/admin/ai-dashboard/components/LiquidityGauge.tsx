@@ -21,7 +21,7 @@ export function LiquidityGauge({ liquidityUsd, priceUsd }: LiquidityGaugeProps) 
           </RadialBarChart>
         </ResponsiveContainer>
         <div className="absolute text-center">
-          <div className="text-2xl font-bold text-white">{ratio === 0 ? '—' : `${(ratio * 100).toFixed(1)}%`}</div>
+          <div className="text-2xl font-bold text-white">{ratio === 0 ? '—' : `${((ratio ?? 0) * 100).toFixed(1)}%`}</div>
           <div className="text-xs text-dark-400">liq/price</div>
         </div>
       </div>

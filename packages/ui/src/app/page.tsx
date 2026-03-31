@@ -61,7 +61,7 @@ function explainMetricsForOpportunity(opportunity: Opportunity | null): Explaina
     liquidity,
     risk,
     slippagePct,
-    rationale: `AI prioritized ${opportunity.pair} because spread quality (${profitSignal.toFixed(0)} score) and route depth are favorable. ${opportunity.fromDex} -> ${opportunity.toDex} shows positive net edge after estimated gas and projected slippage.`
+    rationale: `AI prioritized ${opportunity.pair} because spread quality (${(profitSignal ?? 0).toFixed(0)} score) and route depth are favorable. ${opportunity.fromDex} -> ${opportunity.toDex} shows positive net edge after estimated gas and projected slippage.`
   };
 }
 
@@ -179,7 +179,7 @@ export default function HomePage() {
           setNotifications((current) => [
             makeNotification(
               'opportunity_found',
-              `${latest.pair} opportunity found (${latest.profitPct.toFixed(2)}% spread)`
+              `${latest.pair} opportunity found (${(latest.profitPct ?? 0).toFixed(2)}% spread)`
             ),
             ...current,
           ].slice(0, 10));
