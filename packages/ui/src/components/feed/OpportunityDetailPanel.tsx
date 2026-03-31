@@ -161,14 +161,14 @@ export default function OpportunityDetailPanel({ opportunity }: OpportunityDetai
                     : 'text-red-400 font-semibold'
                   }>
                     {simulation.data.netProfit >= 0 ? '+' : ''}
-                    ${simulation.data.netProfit.toFixed(4)}
+                    ${(simulation.data.netProfit ?? 0).toFixed(4)}
                     {' '}({simulation.data.netBps} bps)
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-white/60">Fees</span>
                   <span className="text-white/80">
-                    ~${simulation.data.estimatedFees.toFixed(4)}
+                    ~${(simulation.data.estimatedFees ?? 0).toFixed(4)}
                   </span>
                 </div>
               </div>
