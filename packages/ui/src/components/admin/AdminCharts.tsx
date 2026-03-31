@@ -60,7 +60,7 @@ export function AdminCharts({ pnlSeries, txsByStrategy, range }: AdminChartsProp
       <div className="card">
         <h3 className="text-lg font-semibold text-white mb-4">Net P&L Over Time</h3>
         <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={10} minHeight={10}>
             <AreaChart data={pnlData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="adminPnlGrad" x1="0" y1="0" x2="0" y2="1">
@@ -80,7 +80,7 @@ export function AdminCharts({ pnlSeries, txsByStrategy, range }: AdminChartsProp
       <div className="card">
         <h3 className="text-lg font-semibold text-white mb-4">Gas Cost Over Time</h3>
         <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={10} minHeight={10}>
             <BarChart data={gasData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
               <XAxis dataKey="time" tick={{ fill: '#94a3b8', fontSize: 11 }} />
@@ -95,7 +95,7 @@ export function AdminCharts({ pnlSeries, txsByStrategy, range }: AdminChartsProp
         <h3 className="text-lg font-semibold text-white mb-4">Strategy Share of Profit</h3>
         <div className="h-48 flex items-center justify-center">
           {txsByStrategy.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={10} minHeight={10}>
               <PieChart>
                 <Pie
                   data={txsByStrategy}

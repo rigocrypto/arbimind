@@ -84,7 +84,7 @@ export function AnalystCharts({ strategies, timestamps, totalTrades }: AnalystCh
       <div>
         <h4 className="text-xs font-semibold text-dark-400 uppercase tracking-wider mb-2">Strategy profit</h4>
         <div className="h-[120px]">
-          <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={10} minHeight={10}>
             <PieChart>
               <Pie
                 data={strategyData}
@@ -108,7 +108,7 @@ export function AnalystCharts({ strategies, timestamps, totalTrades }: AnalystCh
       <div>
         <h4 className="text-xs font-semibold text-dark-400 uppercase tracking-wider mb-2">Trades by period</h4>
         <div className="h-[120px]">
-          <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={10} minHeight={10}>
             <BarChart data={activityData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="2 2" stroke="#1f2937" opacity={0.4} vertical={false} />
               <XAxis dataKey="time" tick={{ fill: '#6b7280', fontSize: 9 }} interval={0} />

@@ -317,11 +317,12 @@ export class ArbitrageBot {
     let quotesFailed = 0;
 
     const quotes: PriceQuote[] = [];
-    const amountIn = ethers.parseEther(
-      String(this.botConfig.swapAmountEth ?? 0.001)
-    );
     const decimalsIn = getTokenConfig(tokenA).decimals;
     const decimalsOut = getTokenConfig(tokenB).decimals;
+    const amountIn = ethers.parseUnits(
+      String(this.botConfig.swapAmountEth ?? 0.001),
+      decimalsIn
+    );
 
     for (const [dexName] of enabledDexes) {
       try {
