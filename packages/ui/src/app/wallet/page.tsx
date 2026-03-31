@@ -290,7 +290,7 @@ export default function WalletPage() {
                   <div>
                     <p className="text-xs uppercase tracking-[0.18em] text-dark-400">Available funds</p>
                     <p className="mt-1 text-lg font-bold text-white">{formatUSD(totalUsd)}</p>
-                    <p className="text-xs text-dark-400">{formatETH(ethVal)} ETH + {usdcVal.toFixed(2)} USDC</p>
+                    <p className="text-xs text-dark-400">{formatETH(ethVal)} ETH + {(usdcVal ?? 0).toFixed(2)} USDC</p>
                   </div>
                   <div>
                     <p className="text-xs uppercase tracking-[0.18em] text-dark-400">Bot activation</p>
@@ -437,7 +437,7 @@ export default function WalletPage() {
                     <Banknote className="w-4 h-4 text-green-400" />
                     <span className="text-xs text-dark-400">USDC</span>
                   </div>
-                  <div className="text-xl font-bold text-white">{usdcVal.toFixed(2)}</div>
+                  <div className="text-xl font-bold text-white">{(usdcVal ?? 0).toFixed(2)}</div>
                   <div className="text-xs text-dark-400 mt-1">≈ {formatUSD(usdcVal)}</div>
                 </div>
                 <div className="p-4 rounded-lg bg-dark-800/50 border border-dark-700">

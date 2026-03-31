@@ -1223,7 +1223,7 @@ export default function SolanaWalletPageClient() {
             </span>
           )}
           <span className="inline-flex items-center rounded-full border border-dark-700 bg-dark-900/70 px-3 py-1 text-xs font-semibold tracking-wide text-dark-200">
-            {engineOppsCount} Opps | {engineLastProfit.toFixed(SOL_EQUIV_DECIMALS)} SOL
+            {engineOppsCount} Opps | {(engineLastProfit ?? 0).toFixed(SOL_EQUIV_DECIMALS)} SOL
           </span>
           <span className="text-xs text-dark-400">
             Last HB:{' '}
@@ -1323,7 +1323,7 @@ export default function SolanaWalletPageClient() {
               </div>
               <div className="glass-card p-4 sm:p-5 opacity-90">
                 <h2 className="text-sm font-medium text-dark-300 mb-2">Bot Treasury Balance</h2>
-                <p className="text-2xl font-bold text-cyan-300">{treasurySolBalance.toFixed(4)} SOL</p>
+                <p className="text-2xl font-bold text-cyan-300">{(treasurySolBalance ?? 0).toFixed(4)} SOL</p>
                 <p className="text-xs text-dark-500 mt-1 break-all">{effectiveTreasuryAddress}</p>
               </div>
             </motion.div>
@@ -1335,17 +1335,17 @@ export default function SolanaWalletPageClient() {
             >
               <div className="glass-card p-4 sm:p-5 opacity-90">
                 <h2 className="text-sm font-medium text-dark-300 mb-2">PnL</h2>
-                <p className={`text-2xl font-bold ${tradeStats.totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {tradeStats.totalPnl >= 0 ? '+' : ''}{tradeStats.totalPnl.toFixed(4)} SOL
+                <p className={`text-2xl font-bold ${(tradeStats.totalPnl ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {(tradeStats.totalPnl ?? 0) >= 0 ? '+' : ''}{(tradeStats.totalPnl ?? 0).toFixed(4)} SOL
                 </p>
               </div>
               <div className="glass-card p-4 sm:p-5 opacity-90">
                 <h2 className="text-sm font-medium text-dark-300 mb-2">Volume</h2>
-                <p className="text-2xl font-bold text-white">{tradeStats.totalVolume.toFixed(4)} SOL</p>
+                <p className="text-2xl font-bold text-white">{(tradeStats.totalVolume ?? 0).toFixed(4)} SOL</p>
               </div>
               <div className="glass-card p-4 sm:p-5 opacity-90">
                 <h2 className="text-sm font-medium text-dark-300 mb-2">Success Rate</h2>
-                <p className="text-2xl font-bold text-cyan-300">{tradeStats.successRate.toFixed(1)}%</p>
+                <p className="text-2xl font-bold text-cyan-300">{(tradeStats.successRate ?? 0).toFixed(1)}%</p>
               </div>
             </motion.div>
 
@@ -1374,9 +1374,9 @@ export default function SolanaWalletPageClient() {
                         <td className="py-2 pr-3 font-mono text-xs text-dark-300">{trade.id}</td>
                         <td className="py-2 pr-3">{trade.pair}</td>
                         <td className="py-2 pr-3 uppercase text-xs">{trade.side}</td>
-                        <td className="py-2 pr-3">{trade.volumeSol.toFixed(3)}</td>
-                        <td className={`py-2 pr-3 ${trade.pnlSol >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {trade.pnlSol >= 0 ? '+' : ''}{trade.pnlSol.toFixed(4)} SOL
+                        <td className="py-2 pr-3">{(trade.volumeSol ?? 0).toFixed(3)}</td>
+                        <td className={`py-2 pr-3 ${(trade.pnlSol ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {(trade.pnlSol ?? 0) >= 0 ? '+' : ''}{(trade.pnlSol ?? 0).toFixed(4)} SOL
                         </td>
                         <td className="py-2 pr-3">
                           <span className={`text-xs px-2 py-1 rounded-full ${trade.status === 'success' ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
@@ -1419,11 +1419,11 @@ export default function SolanaWalletPageClient() {
             >
               <div className="glass-card p-4 sm:p-5">
                 <h2 className="text-sm font-medium text-dark-300 mb-2">Your SOL Balance</h2>
-                <p className="text-2xl font-bold text-white">{userSolBalance.toFixed(4)} SOL</p>
+                <p className="text-2xl font-bold text-white">{(userSolBalance ?? 0).toFixed(4)} SOL</p>
               </div>
               <div className="glass-card p-4 sm:p-5">
                 <h2 className="text-sm font-medium text-dark-300 mb-2">Bot Treasury Balance</h2>
-                <p className="text-2xl font-bold text-cyan-300">{treasurySolBalance.toFixed(4)} SOL</p>
+                <p className="text-2xl font-bold text-cyan-300">{(treasurySolBalance ?? 0).toFixed(4)} SOL</p>
                 <p className="text-xs text-dark-500 mt-1 break-all">{effectiveTreasuryAddress}</p>
               </div>
             </motion.div>
@@ -1436,17 +1436,17 @@ export default function SolanaWalletPageClient() {
             >
               <div className="glass-card p-4 sm:p-5">
                 <h2 className="text-sm font-medium text-dark-300 mb-2">PnL</h2>
-                <p className={`text-2xl font-bold ${tradeStats.totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {tradeStats.totalPnl >= 0 ? '+' : ''}{tradeStats.totalPnl.toFixed(4)} SOL
+                <p className={`text-2xl font-bold ${(tradeStats.totalPnl ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {(tradeStats.totalPnl ?? 0) >= 0 ? '+' : ''}{(tradeStats.totalPnl ?? 0).toFixed(4)} SOL
                 </p>
               </div>
               <div className="glass-card p-4 sm:p-5">
                 <h2 className="text-sm font-medium text-dark-300 mb-2">Volume</h2>
-                <p className="text-2xl font-bold text-white">{tradeStats.totalVolume.toFixed(4)} SOL</p>
+                <p className="text-2xl font-bold text-white">{(tradeStats.totalVolume ?? 0).toFixed(4)} SOL</p>
               </div>
               <div className="glass-card p-4 sm:p-5">
                 <h2 className="text-sm font-medium text-dark-300 mb-2">Success Rate</h2>
-                <p className="text-2xl font-bold text-cyan-300">{tradeStats.successRate.toFixed(1)}%</p>
+                <p className="text-2xl font-bold text-cyan-300">{(tradeStats.successRate ?? 0).toFixed(1)}%</p>
               </div>
             </motion.div>
 
@@ -1513,9 +1513,9 @@ export default function SolanaWalletPageClient() {
                         <td className="py-2 pr-3 font-mono text-xs text-dark-300">{trade.id}</td>
                         <td className="py-2 pr-3">{trade.pair}</td>
                         <td className="py-2 pr-3 uppercase text-xs">{trade.side}</td>
-                        <td className="py-2 pr-3">{trade.volumeSol.toFixed(3)}</td>
-                        <td className={`py-2 pr-3 ${trade.pnlSol >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {trade.pnlSol >= 0 ? '+' : ''}{trade.pnlSol.toFixed(4)} SOL
+                        <td className="py-2 pr-3">{(trade.volumeSol ?? 0).toFixed(3)}</td>
+                        <td className={`py-2 pr-3 ${(trade.pnlSol ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {(trade.pnlSol ?? 0) >= 0 ? '+' : ''}{(trade.pnlSol ?? 0).toFixed(4)} SOL
                         </td>
                         <td className="py-2 pr-3">
                           <span className={`text-xs px-2 py-1 rounded-full ${trade.status === 'success' ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
@@ -1797,9 +1797,9 @@ export default function SolanaWalletPageClient() {
                 {swapQuoteOutAmount !== null && (
                   <div className="p-4 rounded-lg border border-green-500/30 bg-green-500/10 text-sm space-y-1">
                     <p className="text-green-300">
-                      Receive: {swapQuoteOutAmount.toFixed(SOL_EQUIV_DECIMALS)} {swapSide === 'SOL_TO_USDC' ? 'USDC' : 'SOL'}
+                      Receive: {(swapQuoteOutAmount ?? 0).toFixed(SOL_EQUIV_DECIMALS)} {swapSide === 'SOL_TO_USDC' ? 'USDC' : 'SOL'}
                     </p>
-                    <p className="text-dark-300">USDC ATA Balance: {usdcBalance.toFixed(SOL_EQUIV_DECIMALS)} USDC</p>
+                    <p className="text-dark-300">USDC ATA Balance: {(usdcBalance ?? 0).toFixed(SOL_EQUIV_DECIMALS)} USDC</p>
                   </div>
                 )}
                 <button
