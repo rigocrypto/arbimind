@@ -1,6 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ENABLED_DEXES = exports.DEX_CONFIG = exports.TOKEN_PAIRS = exports.ALLOWLISTED_TOKENS = exports.validateConfig = exports.refreshConfig = exports.config = exports.viemChain = void 0;
+exports.ENABLED_DEXES = exports.DEX_CONFIG = exports.TOKEN_PAIRS = exports.ALLOWLISTED_TOKENS = exports.config = exports.viemChain = void 0;
+exports.refreshConfig = refreshConfig;
+exports.validateConfig = validateConfig;
 const chains_1 = require("viem/chains");
 const tokens_1 = require("./tokens");
 Object.defineProperty(exports, "ALLOWLISTED_TOKENS", { enumerable: true, get: function () { return tokens_1.ALLOWLISTED_TOKENS; } });
@@ -184,8 +186,10 @@ function createConfig() {
         logLevel: process.env['LOG_LEVEL'] || 'info',
         // Risk Management
         maxSlippagePercent: parseFloat(process.env['MAX_SLIPPAGE_PERCENT'] || '1.0'),
+        maxSlippageBps: parseInt(process.env['MAX_SLIPPAGE_BPS'] || '100', 10),
         maxGasPriceGwei: parseFloat(process.env['MAX_GAS_PRICE_GWEI'] || '100'),
         minLiquidityEth: parseFloat(process.env['MIN_LIQUIDITY_ETH'] || '10'),
+        minProfitUsd: parseFloat(process.env['MIN_PROFIT_USD'] || '1.0'),
         // AI Scoring (optional)
         aiPredictUrl: process.env['AI_PREDICT_URL'],
         aiLogUrl: process.env['AI_LOG_URL'],
@@ -211,7 +215,6 @@ exports.config = createConfig();
 function refreshConfig() {
     exports.config = createConfig();
 }
-exports.refreshConfig = refreshConfig;
 // Validation
 function validateConfig() {
     // Re-read environment variables at validation time (they're set by dotenv.config() at startup)
@@ -316,4 +319,3 @@ function validateConfig() {
         }
     }
 }
-exports.validateConfig = validateConfig;

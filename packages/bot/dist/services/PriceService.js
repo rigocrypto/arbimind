@@ -3,10 +3,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PriceService = void 0;
 /**
  * Price service – fetches DEX quotes for arbitrage.
- * Uniswap V3 (Quoter V2) + Uniswap V2 on Ethereum Sepolia.
+ * Supports Uniswap V3 (Quoter V2) + any V2-compatible router (Uniswap V2, SushiSwap).
  */
 const ethers_1 = require("ethers");
 const tokens_1 = require("../config/tokens");
+const dexes_1 = require("../config/dexes");
 const QUOTER_V2_ABI = [
     'function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96)) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)',
 ];
@@ -14,88 +15,51 @@ const V2_ROUTER_ABI = [
     'function getAmountsOut(uint256 amountIn, address[] path) external view returns (uint256[] amounts)',
 ];
 const V3_FEE_TIERS = [500, 3000, 10000]; // 0.05%, 0.3%, 1%
-const MAINNET_V3_QUOTER = '0xb27308f9f90d607463bb33ea1bebb41c27ce5ab6';
-const MAINNET_V2_ROUTER = '0x7a250d5630b4cf539739df2c5dacb4c659f2488d';
-function normalizeAddress(value) {
-    return (value || '').trim().toLowerCase();
-}
-function isEthereumSepoliaProfile() {
-    const network = (process.env['NETWORK'] || '').trim().toLowerCase();
-    const evmChain = (process.env['EVM_CHAIN'] || '').trim().toLowerCase();
-    return network === 'testnet' && evmChain === 'ethereum';
-}
-function isV3QuotesEnabled() {
-    const value = (process.env['ENABLE_V3_QUOTES'] || process.env['SEPOLIA_ENABLE_V3_QUOTES'] || 'true')
-        .trim()
-        .toLowerCase();
-    return value !== 'false' && value !== '0' && value !== 'no' && value !== 'off';
-}
-function resolveAddress(primaryEnv, fallbackEnv, label) {
-    const raw = (process.env[primaryEnv] || process.env[fallbackEnv] || '').trim();
-    if (!raw)
-        return '';
-    try {
-        // Lowercase first so non-checksummed mixed-case env values are accepted and canonicalized.
-        return (0, ethers_1.getAddress)(raw.toLowerCase());
-    }
-    catch {
-        throw new Error(`Invalid address for ${label}: ${raw}`);
-    }
-}
-function isSepoliaQuoterConfigured() {
-    return Boolean(resolveAddress('SEPOLIA_UNISWAP_V3_QUOTER', 'UNISWAP_V3_QUOTER', 'SEPOLIA_UNISWAP_V3_QUOTER'));
-}
-function isSepoliaV2Configured() {
-    return Boolean(resolveAddress('SEPOLIA_UNISWAP_V2_ROUTER', 'UNISWAP_V2_ROUTER', 'SEPOLIA_UNISWAP_V2_ROUTER'));
-}
 class PriceService {
     provider;
     quoterV3 = null;
-    routerV2 = null;
+    v2Routers = new Map();
     rateLimitedUntilMs = 0;
     lastRateLimitLogMs = 0;
     v3Enabled;
     constructor(provider) {
         this.provider = provider;
-        const quoterAddr = resolveAddress('SEPOLIA_UNISWAP_V3_QUOTER', 'UNISWAP_V3_QUOTER', 'SEPOLIA_UNISWAP_V3_QUOTER');
-        const routerAddr = resolveAddress('SEPOLIA_UNISWAP_V2_ROUTER', 'UNISWAP_V2_ROUTER', 'SEPOLIA_UNISWAP_V2_ROUTER');
-        const isSepolia = isEthereumSepoliaProfile();
-        this.v3Enabled = isV3QuotesEnabled();
-        if (isSepolia && (!quoterAddr || !routerAddr)) {
-            throw new Error('Missing Sepolia DEX configuration: set SEPOLIA_UNISWAP_V3_QUOTER and SEPOLIA_UNISWAP_V2_ROUTER');
+        // Resolve V3 quoter from DEX_CONFIG
+        const v3Config = dexes_1.DEX_CONFIG['UNISWAP_V3'];
+        const quoterAddr = v3Config?.quoter?.trim() || '';
+        this.v3Enabled = Boolean(v3Config?.enabled && quoterAddr);
+        if (this.v3Enabled && quoterAddr) {
+            try {
+                const checksummed = (0, ethers_1.getAddress)(quoterAddr.toLowerCase());
+                this.quoterV3 = new ethers_1.Contract(checksummed, QUOTER_V2_ABI, provider);
+                void this.logQuoterCheck(checksummed);
+            }
+            catch {
+                console.warn('[PRICE_SERVICE_INIT] Invalid V3 quoter address, disabling V3:', quoterAddr);
+            }
         }
-        if (isSepolia && normalizeAddress(quoterAddr) === MAINNET_V3_QUOTER) {
-            throw new Error('Invalid Sepolia config: SEPOLIA_UNISWAP_V3_QUOTER points to mainnet quoter 0xb273...');
-        }
-        if (isSepolia && normalizeAddress(routerAddr) === MAINNET_V2_ROUTER) {
-            throw new Error('Invalid Sepolia config: SEPOLIA_UNISWAP_V2_ROUTER points to mainnet router 0x7a25...');
-        }
-        if (quoterAddr && this.v3Enabled) {
-            this.quoterV3 = new ethers_1.Contract(quoterAddr, QUOTER_V2_ABI, provider);
-            void this.logQuoterCheck(quoterAddr);
-        }
-        if (routerAddr) {
-            this.routerV2 = new ethers_1.Contract(routerAddr, V2_ROUTER_ABI, provider);
+        // Build V2 router contracts for all enabled V2 DEXes
+        for (const [dexName, dexCfg] of Object.entries(dexes_1.DEX_CONFIG)) {
+            if (!dexCfg.enabled || dexCfg.version !== 'v2' || !dexCfg.router)
+                continue;
+            try {
+                const checksummed = (0, ethers_1.getAddress)(dexCfg.router.toLowerCase());
+                this.v2Routers.set(dexName, new ethers_1.Contract(checksummed, V2_ROUTER_ABI, provider));
+            }
+            catch {
+                console.warn(`[PRICE_SERVICE_INIT] Invalid V2 router address for ${dexName}:`, dexCfg.router);
+            }
         }
         // Log once at startup so we can verify exactly which addresses are being used.
         console.log('[PRICE_SERVICE_INIT]', {
-            v3Quoter: quoterAddr || 'MISSING',
-            v2Router: routerAddr || 'MISSING',
+            v3Quoter: quoterAddr || 'DISABLED',
             v3Enabled: this.v3Enabled,
-            mode: isSepolia ? 'sepolia' : 'generic',
+            v2Routers: Object.fromEntries([...this.v2Routers.entries()].map(([k, c]) => [k, c.target])),
         });
     }
     async getQuote(tokenInSymbol, tokenOutSymbol, amountIn, dex) {
         const nowMs = Date.now();
         if (nowMs < this.rateLimitedUntilMs) {
-            return null;
-        }
-        if (!isSepoliaQuoterConfigured() && !isSepoliaV2Configured()) {
-            console.log('[QUOTE_FAIL]', {
-                dex,
-                pair: `${tokenInSymbol}/${tokenOutSymbol}`,
-                reason: 'missing_sepolia_quoter_and_v2_router',
-            });
             return null;
         }
         let tokenInAddr;
@@ -119,16 +83,15 @@ class PriceService {
         }
         const amountInBig = BigInt(amountIn);
         const now = Date.now();
-        if (dex === 'UNISWAP_V3' && this.quoterV3) {
+        // V3 quote path
+        if (dex === 'UNISWAP_V3' && this.quoterV3 && this.v3Enabled) {
             const quote = await this.getBestV3Quote(tokenInAddr, tokenOutAddr, amountInBig, decimalsIn, decimalsOut);
-            if (!quote) {
-                // Keep this lightweight; detailed per-fee errors are logged only when useful.
+            if (!quote)
                 return null;
-            }
             return {
                 tokenIn: tokenInSymbol,
                 tokenOut: tokenOutSymbol,
-                amountIn: amountIn,
+                amountIn,
                 amountOut: quote.amountOut.toString(),
                 dex: 'UNISWAP_V3',
                 fee: quote.fee ?? 3000,
@@ -138,19 +101,19 @@ class PriceService {
         if (dex === 'UNISWAP_V3' && !this.v3Enabled) {
             return null;
         }
-        if (dex === 'UNISWAP_V2' && this.routerV2) {
-            const quote = await this.getV2Quote(tokenInAddr, tokenOutAddr, amountInBig, decimalsIn, decimalsOut);
-            if (!quote) {
-                // Keep this lightweight; the underlying call failure logs include details.
+        // V2 quote path — supports any V2-compatible router (Uniswap V2, SushiSwap, etc.)
+        const v2Router = this.v2Routers.get(dex);
+        if (v2Router) {
+            const quote = await this.getV2Quote(v2Router, dex, tokenInAddr, tokenOutAddr, amountInBig, decimalsIn, decimalsOut);
+            if (!quote)
                 return null;
-            }
             return {
                 tokenIn: tokenInSymbol,
                 tokenOut: tokenOutSymbol,
-                amountIn: amountIn,
+                amountIn,
                 amountOut: quote.amountOut.toString(),
-                dex: 'UNISWAP_V2',
-                fee: 3000,
+                dex,
+                fee: dexes_1.DEX_CONFIG[dex]?.fee ? dexes_1.DEX_CONFIG[dex].fee * 10000 : 3000,
                 timestamp: now,
             };
         }
@@ -185,17 +148,15 @@ class PriceService {
         }
         return best;
     }
-    async getV2Quote(tokenIn, tokenOut, amountIn, _decimalsIn, _decimalsOut) {
-        if (!this.routerV2)
-            return null;
+    async getV2Quote(router, dexName, tokenIn, tokenOut, amountIn, _decimalsIn, _decimalsOut) {
         try {
-            const amounts = await this.routerV2.getAmountsOut.staticCall(amountIn, [tokenIn, tokenOut]);
+            const amounts = await router.getAmountsOut.staticCall(amountIn, [tokenIn, tokenOut]);
             const amountOut = Array.isArray(amounts) ? amounts[1] : amounts[1];
             if (amountOut && amountOut > 0n)
                 return { amountOut };
         }
         catch (error) {
-            this.handleRpcError('UNISWAP_V2', `${tokenIn}/${tokenOut}`, error);
+            this.handleRpcError(dexName, `${tokenIn}/${tokenOut}`, error);
         }
         return null;
     }
@@ -203,15 +164,15 @@ class PriceService {
         const message = error instanceof Error ? error.message : String(error);
         const isRateLimit = message.includes('Too Many Requests') || message.includes('code": -32005');
         if (isRateLimit) {
-            this.rateLimitedUntilMs = Date.now() + 10000;
-            if (Date.now() - this.lastRateLimitLogMs > 10000) {
+            this.rateLimitedUntilMs = Date.now() + 10_000;
+            if (Date.now() - this.lastRateLimitLogMs > 10_000) {
                 this.lastRateLimitLogMs = Date.now();
                 console.warn('[QUOTE_BACKOFF]', {
                     dex,
                     pair,
                     fee,
                     reason: 'rpc_rate_limited',
-                    backoffMs: 10000,
+                    backoffMs: 10_000,
                 });
             }
             return;
@@ -220,7 +181,7 @@ class PriceService {
             dex,
             pair,
             fee,
-            reason: dex === 'UNISWAP_V3' ? 'v3_quote_call_failed' : 'v2_getAmountsOut_failed',
+            reason: `${dex.toLowerCase()}_quote_call_failed`,
             error: message,
         });
     }

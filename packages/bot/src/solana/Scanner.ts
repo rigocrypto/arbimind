@@ -65,6 +65,11 @@ export class SolanaScanner {
       return;
     }
 
+    if (!solanaConfig.enabled) {
+      logger.info('📭 Solana scanner disabled (set SOLANA_SCANNER_ENABLED=true to enable)');
+      return;
+    }
+
     if (solanaConfig.watchedPools.length === 0) {
       logger.info('📭 No Solana pools to watch; skipping scanner');
       return;

@@ -1,6 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getAllTokenAddresses = exports.getTokenConfig = exports.getTokenAddress = exports.getEffectiveTokenPairs = exports.getSepoliaPairs = exports.TOKEN_PAIRS = exports.ALLOWLISTED_TOKENS = void 0;
+exports.TOKEN_PAIRS = exports.ALLOWLISTED_TOKENS = void 0;
+exports.getSepoliaPairs = getSepoliaPairs;
+exports.getEffectiveTokenPairs = getEffectiveTokenPairs;
+exports.getTokenAddress = getTokenAddress;
+exports.getTokenConfig = getTokenConfig;
+exports.getAllTokenAddresses = getAllTokenAddresses;
 const DEFAULT_ALLOWLISTED_TOKENS = {
     WETH: {
         address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
@@ -10,7 +15,7 @@ const DEFAULT_ALLOWLISTED_TOKENS = {
         logoURI: "https://assets.coingecko.com/coins/images/2518/thumb/weth.png"
     },
     USDC: {
-        address: "0xA0b86a33E6441b8C4C8C8C8C8C8C8C8C8C8C8C8",
+        address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
         symbol: "USDC",
         name: "USD Coin",
         decimals: 6,
@@ -143,7 +148,6 @@ function getSepoliaPairs() {
         { tokenA: 'USDC', tokenB: 'DAI' },
     ];
 }
-exports.getSepoliaPairs = getSepoliaPairs;
 /** Pairs to use for scanning. On Sepolia, prefer explicit 3 pairs if TOKEN_PAIRS is empty. */
 function getEffectiveTokenPairs() {
     const basePairs = isEthereumSepoliaProfile() && exports.TOKEN_PAIRS.length === 0
@@ -157,17 +161,18 @@ function getEffectiveTokenPairs() {
     const pairs = requestedPairs.size > 0
         ? basePairs.filter((p) => requestedPairs.has(`${p.tokenA}/${p.tokenB}`) || requestedPairs.has(`${p.tokenB}/${p.tokenA}`))
         : basePairs;
+    const isSepolia = isEthereumSepoliaProfile();
     console.log('[EFFECTIVE_PAIRS]', {
         count: pairs.length,
         pairs: pairs.map((p) => `${p.tokenA}/${p.tokenB}`),
         scanPairsEnv: scanPairsEnv || 'ALL',
-        WETH: process.env['SEPOLIA_WETH_ADDRESS']?.trim() || 'MISSING',
-        USDC: process.env['SEPOLIA_USDC_ADDRESS']?.trim() || 'MISSING',
-        DAI: process.env['SEPOLIA_DAI_ADDRESS']?.trim() || 'MISSING',
+        profile: isSepolia ? 'sepolia' : 'mainnet',
+        WETH: exports.ALLOWLISTED_TOKENS['WETH']?.address || 'MISSING',
+        USDC: exports.ALLOWLISTED_TOKENS['USDC']?.address || 'MISSING',
+        DAI: exports.ALLOWLISTED_TOKENS['DAI']?.address || 'MISSING',
     });
     return pairs;
 }
-exports.getEffectiveTokenPairs = getEffectiveTokenPairs;
 function getTokenAddress(symbol) {
     const token = exports.ALLOWLISTED_TOKENS[symbol];
     if (!token) {
@@ -175,7 +180,6 @@ function getTokenAddress(symbol) {
     }
     return token.address;
 }
-exports.getTokenAddress = getTokenAddress;
 function getTokenConfig(symbol) {
     const token = exports.ALLOWLISTED_TOKENS[symbol];
     if (!token) {
@@ -183,8 +187,6 @@ function getTokenConfig(symbol) {
     }
     return token;
 }
-exports.getTokenConfig = getTokenConfig;
 function getAllTokenAddresses() {
     return Object.values(exports.ALLOWLISTED_TOKENS).map(token => token.address);
 }
-exports.getAllTokenAddresses = getAllTokenAddresses;
