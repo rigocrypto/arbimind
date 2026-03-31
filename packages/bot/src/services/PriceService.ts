@@ -11,6 +11,10 @@ const QUOTER_V2_ABI = [
   'function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96)) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)',
 ];
 
+const QUOTER_V1_ABI = [
+  'function quoteExactInputSingle(address tokenIn, address tokenOut, uint24 fee, uint256 amountIn, uint160 sqrtPriceLimitX96) external returns (uint256 amountOut)',
+];
+
 const V2_ROUTER_ABI = [
   'function getAmountsOut(uint256 amountIn, address[] path) external view returns (uint256[] amounts)',
 ];
@@ -20,10 +24,12 @@ const V3_FEE_TIERS = [500, 3000, 10000]; // 0.05%, 0.3%, 1%
 export class PriceService {
   private provider: Provider;
   private quoterV3: Contract | null = null;
+  private quoterV3v1: Contract | null = null;
   private v2Routers: Map<string, Contract> = new Map();
   private rateLimitedUntilMs: number = 0;
   private lastRateLimitLogMs: number = 0;
   private readonly v3Enabled: boolean;
+  private v3QuoterVersion: 'v2' | 'v1' | 'unknown' = 'unknown';
 
   constructor(provider: Provider) {
     this.provider = provider;
@@ -37,7 +43,8 @@ export class PriceService {
       try {
         const checksummed = getAddress(quoterAddr.toLowerCase());
         this.quoterV3 = new Contract(checksummed, QUOTER_V2_ABI, provider);
-        void this.logQuoterCheck(checksummed);
+        this.quoterV3v1 = new Contract(checksummed, QUOTER_V1_ABI, provider);
+        void this.detectQuoterVersion(checksummed);
       } catch {
         console.warn('[PRICE_SERVICE_INIT] Invalid V3 quoter address, disabling V3:', quoterAddr);
       }
@@ -161,26 +168,70 @@ export class PriceService {
     _decimalsIn: number,
     _decimalsOut: number
   ): Promise<{ amountOut: bigint; fee: number } | null> {
-    if (!this.quoterV3) return null;
+    if (!this.quoterV3 && !this.quoterV3v1) return null;
     let best: { amountOut: bigint; fee: number } | null = null;
+    const errors: string[] = [];
 
     for (const fee of V3_FEE_TIERS) {
       try {
-        const result = await this.quoterV3.quoteExactInputSingle.staticCall({
-          tokenIn,
-          tokenOut,
-          amountIn,
-          fee,
-          sqrtPriceLimitX96: 0n,
-        });
-        const amountOut = typeof result === 'bigint' ? result : (result as unknown[])[0] as bigint;
-        if (amountOut > 0n && (!best || amountOut > best.amountOut)) {
+        let amountOut: bigint | null = null;
+
+        // Try QuoterV2 struct ABI first (unless we already know it's V1)
+        if (this.v3QuoterVersion !== 'v1' && this.quoterV3) {
+          try {
+            const result = await this.quoterV3.quoteExactInputSingle.staticCall({
+              tokenIn,
+              tokenOut,
+              amountIn,
+              fee,
+              sqrtPriceLimitX96: 0n,
+            });
+            amountOut = typeof result === 'bigint' ? result : (result as unknown[])[0] as bigint;
+            if (this.v3QuoterVersion === 'unknown') {
+              this.v3QuoterVersion = 'v2';
+              console.log('[V3_QUOTER_DETECTED] QuoterV2 ABI works');
+            }
+          } catch {
+            // V2 ABI failed — will try V1 below
+          }
+        }
+
+        // Fallback to QuoterV1 individual-param ABI
+        if (amountOut == null && this.quoterV3v1) {
+          try {
+            const result = await this.quoterV3v1.quoteExactInputSingle.staticCall(
+              tokenIn,
+              tokenOut,
+              fee,
+              amountIn,
+              0n,
+            );
+            amountOut = typeof result === 'bigint' ? result : (result as unknown[])[0] as bigint;
+            if (this.v3QuoterVersion === 'unknown') {
+              this.v3QuoterVersion = 'v1';
+              console.log('[V3_QUOTER_DETECTED] QuoterV1 ABI works (individual params)');
+            }
+          } catch (v1Error) {
+            errors.push(`fee=${fee}: ${v1Error instanceof Error ? v1Error.message : String(v1Error)}`);
+          }
+        }
+
+        if (amountOut != null && amountOut > 0n && (!best || amountOut > best.amountOut)) {
           best = { amountOut, fee };
         }
       } catch (error) {
         this.handleRpcError('UNISWAP_V3', `${tokenIn}/${tokenOut}`, error, fee);
       }
     }
+
+    if (!best && errors.length > 0) {
+      console.log('[V3_QUOTE_ALL_TIERS_FAILED]', {
+        pair: `${tokenIn}/${tokenOut}`,
+        quoterVersion: this.v3QuoterVersion,
+        errors: errors.slice(0, 3),
+      });
+    }
+
     return best;
   }
 
@@ -231,14 +282,18 @@ export class PriceService {
     });
   }
 
-  private async logQuoterCheck(quoterAddress: string): Promise<void> {
+  private async detectQuoterVersion(quoterAddress: string): Promise<void> {
     try {
       const code = await this.provider.getCode(quoterAddress);
+      const hasCode = code !== '0x';
       console.log('[V3_QUOTER_CHECK]', {
         address: quoterAddress,
-        hasCode: code !== '0x',
+        hasCode,
         codeLength: code.length,
       });
+      if (!hasCode) {
+        console.warn('[V3_QUOTER_CHECK] No contract at quoter address — V3 quotes will fail');
+      }
     } catch (error) {
       console.log('[V3_QUOTER_CHECK_FAIL]', {
         address: quoterAddress,

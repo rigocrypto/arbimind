@@ -15,7 +15,7 @@ export function LiquidityGauge({ liquidityUsd, priceUsd }: LiquidityGaugeProps) 
     <div className="card">
       <div className="text-white font-semibold mb-3">Liquidity Ratio</div>
       <div className="h-56 flex items-center justify-center">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
           <RadialBarChart innerRadius="60%" outerRadius="90%" data={data} startAngle={180} endAngle={-180}>
             <RadialBar dataKey="value" fill="#8b5cf6" cornerRadius={8} />
           </RadialBarChart>

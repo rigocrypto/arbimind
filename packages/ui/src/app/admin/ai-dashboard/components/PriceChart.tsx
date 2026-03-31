@@ -16,7 +16,7 @@ export function PriceChart({ data }: PriceChartProps) {
     <div className="card">
       <div className="text-white font-semibold mb-3">Price (USD)</div>
       <div className="h-56">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
           <LineChart data={data} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
             <CartesianGrid stroke="#374151" strokeDasharray="3 3" opacity={0.4} />
             <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 10 }} axisLine={{ stroke: '#374151' }} tickLine={{ stroke: '#374151' }} />
