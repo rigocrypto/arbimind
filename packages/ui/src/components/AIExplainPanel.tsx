@@ -74,7 +74,7 @@ function MetricBar({ label, icon, value }: { label: string; icon: ReactNode; val
           {icon}
           {label}
         </span>
-        <span className={[ 'font-mono', scoreColor(normalized) ].join(' ')}>{normalized.toFixed(0)}</span>
+        <span className={[ 'font-mono', scoreColor(normalized) ].join(' ')}>{(normalized ?? 0).toFixed(0)}</span>
       </div>
       <div className="h-2 rounded-full bg-dark-800/80 overflow-hidden">
         <div
@@ -128,7 +128,7 @@ export function AIExplainPanel({ opportunity, metrics, open, onClose }: AIExplai
               <Gauge className="h-3.5 w-3.5 text-cyan-300" />
               Slippage Prediction
             </span>
-            <span className="font-mono text-cyan-200">{metrics.slippagePct.toFixed(2)}%</span>
+            <span className="font-mono text-cyan-200">{(metrics.slippagePct ?? 0).toFixed(2)}%</span>
           </div>
           <div className="h-2 rounded-full bg-dark-800/80 overflow-hidden">
             <div

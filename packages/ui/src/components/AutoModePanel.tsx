@@ -97,7 +97,7 @@ export function AutoModePanel({
               <Shield className="h-3.5 w-3.5 text-amber-300" />
               Max Risk / Trade
             </span>
-            <span className="font-mono text-white">{maxRiskPct.toFixed(1)}%</span>
+            <span className="font-mono text-white">{(maxRiskPct ?? 0).toFixed(1)}%</span>
           </label>
           <input
             id="auto-risk"
@@ -117,7 +117,7 @@ export function AutoModePanel({
               <Wallet className="h-3.5 w-3.5 text-cyan-300" />
               Max Trade Size
             </span>
-            <span className="font-mono text-white">{maxTradeSizeEth.toFixed(3)} ETH</span>
+            <span className="font-mono text-white">{(maxTradeSizeEth ?? 0).toFixed(3)} ETH</span>
           </label>
           <input
             id="auto-size"

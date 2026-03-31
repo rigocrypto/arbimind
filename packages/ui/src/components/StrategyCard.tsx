@@ -140,7 +140,7 @@ export function StrategyCard({ strategy, onRun, onToggleAuto, engineActiveStrate
       {/* Allocation */}
       <div className="flex items-center justify-between py-2 px-2 rounded-lg bg-dark-800/30">
         <span className="text-xs text-dark-400">Allocation</span>
-        <span className="text-sm font-bold text-white">{allocationPercent.toFixed(0)}%</span>
+        <span className="text-sm font-bold text-white">{(allocationPercent ?? 0).toFixed(0)}%</span>
       </div>
 
       {/* Actions */}

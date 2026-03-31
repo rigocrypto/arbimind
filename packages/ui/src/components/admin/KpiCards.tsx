@@ -12,7 +12,7 @@ interface KpiCardsProps {
 }
 
 function fmtEth(v: number) {
-  return `${v >= 0 ? '' : '-'}${Math.abs(v).toFixed(4)} ETH`;
+  return `${v >= 0 ? '' : '-'}${Math.abs(v ?? 0).toFixed(4)} ETH`;
 }
 
 export function KpiCards({
@@ -27,7 +27,7 @@ export function KpiCards({
     { label: '24h Net Profit', value: fmtEth(netProfit), icon: TrendingUp, positive: netProfit >= 0 },
     { label: 'Gross Profit', value: fmtEth(grossProfit), icon: DollarSign, positive: true },
     { label: 'Gas Spend', value: fmtEth(gasSpend), icon: Flame, positive: false },
-    { label: 'Win Rate', value: `${winRate.toFixed(1)}%`, icon: Target, positive: winRate >= 70 },
+    { label: 'Win Rate', value: `${(winRate ?? 0).toFixed(1)}%`, icon: Target, positive: winRate >= 70 },
     { label: 'Failed Tx', value: String(failedTxCount), icon: XCircle, positive: failedTxCount === 0 },
     { label: 'Tx Count', value: String(txCount), icon: Target, positive: true },
   ];
