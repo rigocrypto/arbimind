@@ -43,6 +43,8 @@ export class ArbitrageBot {
   private canaryDailyPnlEth: number = 0;
   private canaryDay: string = new Date().toISOString().slice(0, 10);
   private lastSanityTxAtMs: number = 0;
+  private cachedGasPriceWei: number = 20e9; // fallback 20 gwei, refreshed from provider
+  private lastGasPriceRefreshMs: number = 0;
   // last scan timestamp removed (not currently read anywhere)
 
   constructor(deps: ArbitrageBotDependencies = {}) {
@@ -136,6 +138,24 @@ export class ArbitrageBot {
     this.isRunning = true;
     this.stats.startTime = Date.now();
 
+    // Log RPC/chain diagnostics
+    try {
+      const network = await this.provider.getNetwork();
+      const latestBlock = await this.provider.getBlockNumber();
+      const rpcHost = this.botConfig.ethereumRpcUrl
+        ? new URL(this.botConfig.ethereumRpcUrl).host
+        : 'unknown';
+      console.log('[RPC_BOOT]', {
+        network: this.botConfig.network,
+        evmChain: this.botConfig.evmChain,
+        chainId: Number(network.chainId),
+        rpcHost,
+        latestBlock,
+      });
+    } catch (e) {
+      console.warn('[RPC_BOOT] diagnostics failed:', e instanceof Error ? e.message : e);
+    }
+
     // Validate configuration
     this.validateSetup();
 
@@ -178,6 +198,7 @@ export class ArbitrageBot {
   private async runMainLoop(): Promise<void> {
     while (this.isRunning) {
       try {
+        await this.refreshGasPrice();
         await this.maybeRunSanityTransfer();
         await this.scanForOpportunities();
         await this.sleep(this.botConfig.scanIntervalMs);
@@ -423,9 +444,20 @@ export class ArbitrageBot {
     const amountOut2Big = ethers.getBigInt(quote2.amountOut);
 
     // Calculate profit (assuming we buy on DEX1 and sell on DEX2)
-    const profit = amountOut2Big > amountOut1Big ? amountOut2Big - amountOut1Big : ethers.getBigInt(0);
-    
-    if (profit <= 0) {
+    let buyQuote: PriceQuote;
+    let sellQuote: PriceQuote;
+    let profit: bigint;
+    if (amountOut2Big > amountOut1Big) {
+      // DEX2 gives more output — buy on DEX1 (cheaper), sell on DEX2 (pricier)
+      buyQuote = quote1;
+      sellQuote = quote2;
+      profit = amountOut2Big - amountOut1Big;
+    } else if (amountOut1Big > amountOut2Big) {
+      // DEX1 gives more output — buy on DEX2, sell on DEX1
+      buyQuote = quote2;
+      sellQuote = quote1;
+      profit = amountOut1Big - amountOut2Big;
+    } else {
       return null;
     }
 
@@ -440,18 +472,18 @@ export class ArbitrageBot {
     const profitPercent = (Number(profit) / Number(amountInBig)) * 100;
 
     return {
-      tokenA: quote1.tokenIn,
-      tokenB: quote1.tokenOut,
-      dex1: quote1.dex,
-      dex2: quote2.dex,
+      tokenA: buyQuote.tokenIn,
+      tokenB: buyQuote.tokenOut,
+      dex1: buyQuote.dex,
+      dex2: sellQuote.dex,
       amountIn,
-      amountOut1: quote1.amountOut,
-      amountOut2: quote2.amountOut,
+      amountOut1: buyQuote.amountOut,
+      amountOut2: sellQuote.amountOut,
       profit: profit.toString(),
       profitPercent,
       gasEstimate: gasEstimate.totalCost,
       netProfit: netProfit.toString(),
-      route: `${quote1.dex} -> ${quote2.dex}`,
+      route: `${buyQuote.dex} -> ${sellQuote.dex}`,
       timestamp: Date.now()
     };
   }
@@ -662,21 +694,37 @@ export class ArbitrageBot {
    */
   private estimateGasCost(): { totalCost: string } {
     const gasLimit = 300000; // Conservative estimate
-    const gasPrice = this.getCurrentGasPrice();
+    const gasPrice = this.cachedGasPriceWei;
     const totalCost = gasLimit * gasPrice;
-    
+
     return {
       totalCost: totalCost.toString()
     };
   }
 
   /**
-   * Get current gas price in wei
+   * Get current gas price in wei (cached, refreshed from provider)
    */
   private getCurrentGasPrice(): number {
-    // This would typically come from a gas price oracle
-    // For now, return a conservative estimate
-    return 20 * 1e9; // 20 gwei in wei
+    return this.cachedGasPriceWei;
+  }
+
+  /**
+   * Refresh gas price from provider (call periodically, e.g. each scan tick)
+   */
+  private async refreshGasPrice(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastGasPriceRefreshMs < 15_000) return; // refresh at most every 15s
+    try {
+      const feeData = await this.provider.getFeeData();
+      const price = feeData.maxFeePerGas ?? feeData.gasPrice;
+      if (price && price > 0n) {
+        this.cachedGasPriceWei = Number(price);
+        this.lastGasPriceRefreshMs = now;
+      }
+    } catch {
+      // keep cached value on failure
+    }
   }
 
   /**

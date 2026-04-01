@@ -7,7 +7,7 @@ import { ethers } from 'ethers';
 
 class MockPriceService {
   async getQuote(tokenIn: string, tokenOut: string, amountIn: string, dex: string): Promise<PriceQuote | null> {
-    if (dex === 'UNISWAP_V2') {
+    if (dex === 'UNISWAP_V2' || dex === 'SUSHISWAP') {
       return {
         tokenIn,
         tokenOut,

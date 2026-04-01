@@ -96,6 +96,12 @@ function isEthereumSepoliaProfile(): boolean {
   return network === 'testnet' && evmChain === 'ethereum';
 }
 
+function isArbitrumProfile(): boolean {
+  const network = normalizeEnvValue(process.env['NETWORK'] || 'mainnet').toLowerCase();
+  const evmChain = normalizeEnvValue(process.env['EVM_CHAIN'] || 'arbitrum').toLowerCase();
+  return network === 'mainnet' && evmChain === 'arbitrum';
+}
+
 function buildSepoliaTokens(): Record<string, TokenConfig> {
   const sepoliaTokens: Record<string, TokenConfig> = {};
 
@@ -135,7 +141,73 @@ function buildSepoliaTokens(): Record<string, TokenConfig> {
   return sepoliaTokens;
 }
 
+const ARBITRUM_ALLOWLISTED_TOKENS: Record<string, TokenConfig> = {
+  WETH: {
+    address: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
+    symbol: 'WETH',
+    name: 'Wrapped Ether (Arbitrum)',
+    decimals: 18,
+    logoURI: DEFAULT_ALLOWLISTED_TOKENS['WETH']?.logoURI,
+  },
+  USDC: {
+    address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+    symbol: 'USDC',
+    name: 'USD Coin (Arbitrum Native)',
+    decimals: 6,
+    logoURI: DEFAULT_ALLOWLISTED_TOKENS['USDC']?.logoURI,
+  },
+  USDT: {
+    address: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9',
+    symbol: 'USDT',
+    name: 'Tether USD (Arbitrum)',
+    decimals: 6,
+    logoURI: DEFAULT_ALLOWLISTED_TOKENS['USDT']?.logoURI,
+  },
+  DAI: {
+    address: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1',
+    symbol: 'DAI',
+    name: 'Dai Stablecoin (Arbitrum)',
+    decimals: 18,
+    logoURI: DEFAULT_ALLOWLISTED_TOKENS['DAI']?.logoURI,
+  },
+  WBTC: {
+    address: '0x2f2a2543B6822d9a882063fDA12032f94A611C5d',
+    symbol: 'WBTC',
+    name: 'Wrapped Bitcoin (Arbitrum)',
+    decimals: 8,
+    logoURI: DEFAULT_ALLOWLISTED_TOKENS['WBTC']?.logoURI,
+  },
+  ARB: {
+    address: '0x912CE59144191C1204E64559FE8253a0e49E6548',
+    symbol: 'ARB',
+    name: 'Arbitrum',
+    decimals: 18,
+    logoURI: 'https://assets.coingecko.com/coins/images/16547/thumb/photo_2023-03-29_21.47.00.jpeg',
+  },
+  LINK: {
+    address: '0xf97f4df75117a78c1A5a0DBb814Af92458539FB4',
+    symbol: 'LINK',
+    name: 'Chainlink (Arbitrum)',
+    decimals: 18,
+    logoURI: DEFAULT_ALLOWLISTED_TOKENS['LINK']?.logoURI,
+  },
+};
+
+const ARBITRUM_TOKEN_PAIRS = [
+  { tokenA: 'WETH', tokenB: 'USDC' },
+  { tokenA: 'WETH', tokenB: 'USDT' },
+  { tokenA: 'WETH', tokenB: 'DAI' },
+  { tokenA: 'WETH', tokenB: 'WBTC' },
+  { tokenA: 'USDC', tokenB: 'USDT' },
+  { tokenA: 'USDC', tokenB: 'DAI' },
+  { tokenA: 'WETH', tokenB: 'ARB' },
+  { tokenA: 'WETH', tokenB: 'LINK' },
+];
+
 function buildTokenPairs(tokens: Record<string, TokenConfig>): Array<{ tokenA: string; tokenB: string }> {
+  if (isArbitrumProfile()) {
+    return ARBITRUM_TOKEN_PAIRS;
+  }
   if (!isEthereumSepoliaProfile()) {
     return DEFAULT_TOKEN_PAIRS;
   }
@@ -147,8 +219,13 @@ function buildTokenPairs(tokens: Record<string, TokenConfig>): Array<{ tokenA: s
   return pairs;
 }
 
-export const ALLOWLISTED_TOKENS: Record<string, TokenConfig> =
-  isEthereumSepoliaProfile() ? buildSepoliaTokens() : DEFAULT_ALLOWLISTED_TOKENS;
+function resolveTokens(): Record<string, TokenConfig> {
+  if (isArbitrumProfile()) return ARBITRUM_ALLOWLISTED_TOKENS;
+  if (isEthereumSepoliaProfile()) return buildSepoliaTokens();
+  return DEFAULT_ALLOWLISTED_TOKENS;
+}
+
+export const ALLOWLISTED_TOKENS: Record<string, TokenConfig> = resolveTokens();
 
 export const TOKEN_PAIRS = buildTokenPairs(ALLOWLISTED_TOKENS);
 
@@ -184,7 +261,7 @@ export function getEffectiveTokenPairs(): Array<{ tokenA: string; tokenB: string
     count: pairs.length,
     pairs: pairs.map((p) => `${p.tokenA}/${p.tokenB}`),
     scanPairsEnv: scanPairsEnv || 'ALL',
-    profile: isSepolia ? 'sepolia' : 'mainnet',
+    profile: isSepolia ? 'sepolia' : isArbitrumProfile() ? 'arbitrum' : 'ethereum',
     WETH: ALLOWLISTED_TOKENS['WETH']?.address || 'MISSING',
     USDC: ALLOWLISTED_TOKENS['USDC']?.address || 'MISSING',
     DAI: ALLOWLISTED_TOKENS['DAI']?.address || 'MISSING',
