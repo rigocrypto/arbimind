@@ -453,4 +453,5 @@ router.post('/withdraw', async (req: Request, res: Response) => {
   }
 });
 
+export { getConnection, getRequestCluster };
 export default router;
