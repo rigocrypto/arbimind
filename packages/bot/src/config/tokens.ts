@@ -193,17 +193,19 @@ const ARBITRUM_ALLOWLISTED_TOKENS: Record<string, TokenConfig> = {
     decimals: 18,
     logoURI: DEFAULT_ALLOWLISTED_TOKENS['LINK']?.logoURI,
   },
+  'USDC.e': {
+    address: '0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8',
+    symbol: 'USDC.e',
+    name: 'Bridged USDC (Arbitrum)',
+    decimals: 6,
+    logoURI: DEFAULT_ALLOWLISTED_TOKENS['USDC']?.logoURI,
+  },
 };
 
 const ARBITRUM_TOKEN_PAIRS = [
   { tokenA: 'WETH', tokenB: 'USDC' },
-  { tokenA: 'WETH', tokenB: 'USDT' },
-  { tokenA: 'WETH', tokenB: 'DAI' },
-  { tokenA: 'WETH', tokenB: 'WBTC' },
-  { tokenA: 'USDC', tokenB: 'USDT' },
+  { tokenA: 'WETH', tokenB: 'USDC.e' },
   { tokenA: 'USDC', tokenB: 'DAI' },
-  { tokenA: 'WETH', tokenB: 'ARB' },
-  { tokenA: 'WETH', tokenB: 'LINK' },
 ];
 
 function buildTokenPairs(tokens: Record<string, TokenConfig>): Array<{ tokenA: string; tokenB: string }> {
