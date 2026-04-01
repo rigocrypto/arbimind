@@ -28,11 +28,10 @@ export function SafeResponsiveContainer({
     const el = ref.current;
     if (!el) return;
 
-    if (el.offsetWidth > 0 && el.offsetHeight > 0) {
-      setReady(true);
-      return;
-    }
-
+    // Always go through ResizeObserver — calling setReady synchronously
+    // in the effect body triggers react-hooks/set-state-in-effect.
+    // ResizeObserver fires its callback on the first frame if the element
+    // already has size, so there is no extra delay.
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width: w, height: h } = entry.contentRect;
