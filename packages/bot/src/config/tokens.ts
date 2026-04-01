@@ -274,7 +274,11 @@ export function getEffectiveTokenPairs(): Array<{ tokenA: string; tokenB: string
   );
 
   const pairs = requestedPairs.size > 0
-    ? basePairs.filter((p) => requestedPairs.has(`${p.tokenA}/${p.tokenB}`) || requestedPairs.has(`${p.tokenB}/${p.tokenA}`))
+    ? basePairs.filter((p) => {
+        const fwd = `${p.tokenA}/${p.tokenB}`.toUpperCase();
+        const rev = `${p.tokenB}/${p.tokenA}`.toUpperCase();
+        return requestedPairs.has(fwd) || requestedPairs.has(rev);
+      })
     : basePairs;
 
   const isSepolia = isEthereumSepoliaProfile();

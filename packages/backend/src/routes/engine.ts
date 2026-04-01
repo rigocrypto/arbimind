@@ -71,6 +71,11 @@ function runLoop(): void {
 }
 
 router.post('/start', (req: Request, res: Response): Response => {
+  // Block simulated engine in production unless explicitly enabled
+  if (process.env.NODE_ENV === 'production' && process.env.SIMULATED_ENGINE_ENABLED !== 'true') {
+    console.warn('[ENGINE] Simulated arbitrage engine BLOCKED in production (set SIMULATED_ENGINE_ENABLED=true to override)');
+    return res.status(403).json({ status: 'blocked', message: 'Simulated engine disabled in production. Set SIMULATED_ENGINE_ENABLED=true to enable.' });
+  }
   try {
     const { strategy = 'arbitrage', referrer, walletAddress, walletChain } = req.body || {};
     if (!VALID_STRATEGIES.has(strategy)) {
