@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { WalletReadyState } from '@solana/wallet-adapter-base';
-import { LAMPORTS_PER_SOL, PublicKey, VersionedTransaction } from '@solana/web3.js';
+import { PublicKey, VersionedTransaction } from '@solana/web3.js';
 import Link from 'next/link';
 import { Wallet, ArrowRightLeft, ChevronLeft, Send, AlertTriangle, Shield } from 'lucide-react';
 import { BaseWalletMultiButton } from '@solana/wallet-adapter-react-ui';
@@ -192,14 +192,6 @@ export default function SolanaWalletPageClient() {
     }
   }, [effectiveTreasuryAddress]);
 
-  const usdcMintPubkey = useMemo(() => {
-    try {
-      return new PublicKey(USDC_MINT);
-    } catch {
-      return null;
-    }
-  }, []);
-
   useEffect(() => {
     if (attemptedPhantomReconnect.current || isSolanaConnected || connecting) {
       return;
@@ -268,18 +260,24 @@ export default function SolanaWalletPageClient() {
     const refreshBalances = async () => {
       try {
         if (publicKey) {
-          const lamports = await connection.getBalance(publicKey);
-          if (!cancelled) {
-            setUserSolBalance(lamports / LAMPORTS_PER_SOL);
+          const res = await fetch(apiWithCluster(`/solana/balance?address=${publicKey.toBase58()}`), { cache: 'no-store' });
+          if (res.ok) {
+            const body = (await res.json()) as { sol?: number };
+            if (!cancelled) setUserSolBalance(body.sol ?? 0);
+          } else if (!cancelled) {
+            setUserSolBalance(0);
           }
         } else if (!cancelled) {
           setUserSolBalance(0);
         }
 
         if (treasuryPubkey) {
-          const treasuryLamports = await connection.getBalance(treasuryPubkey);
-          if (!cancelled) {
-            setTreasurySolBalance(treasuryLamports / LAMPORTS_PER_SOL);
+          const res = await fetch(apiWithCluster(`/solana/balance?address=${treasuryPubkey.toBase58()}`), { cache: 'no-store' });
+          if (res.ok) {
+            const body = (await res.json()) as { sol?: number };
+            if (!cancelled) setTreasurySolBalance(body.sol ?? 0);
+          } else if (!cancelled) {
+            setTreasurySolBalance(0);
           }
         }
       } catch {
@@ -299,7 +297,7 @@ export default function SolanaWalletPageClient() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [connection, publicKey, treasuryPubkey]);
+  }, [apiWithCluster, publicKey, treasuryPubkey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -872,27 +870,28 @@ export default function SolanaWalletPageClient() {
   };
 
   const refreshUsdcBalance = useCallback(async () => {
-    if (!publicKey || !usdcMintPubkey) {
+    if (!publicKey) {
       setUsdcBalance(0);
       return;
     }
     try {
-      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
-        mint: usdcMintPubkey,
-      });
-      if (tokenAccounts.value.length === 0) {
+      const res = await fetch(apiWithCluster(`/solana/token-accounts?address=${publicKey.toBase58()}`), { cache: 'no-store' });
+      if (!res.ok) {
         setUsdcBalance(0);
         return;
       }
-      const amount = tokenAccounts.value.reduce((sum, account) => {
-        const parsed = account.account.data.parsed as { info?: { tokenAmount?: { uiAmount?: number | null } } };
-        return sum + Number(parsed?.info?.tokenAmount?.uiAmount ?? 0);
-      }, 0);
-      setUsdcBalance(amount);
+      const body = (await res.json()) as { accounts?: Array<{ mint: string; amount: string; decimals: number }> };
+      const usdcAccounts = (body.accounts ?? []).filter((a) => a.mint === USDC_MINT);
+      if (usdcAccounts.length === 0) {
+        setUsdcBalance(0);
+        return;
+      }
+      const total = usdcAccounts.reduce((sum, a) => sum + Number(a.amount ?? 0), 0);
+      setUsdcBalance(total);
     } catch {
       setUsdcBalance(0);
     }
-  }, [publicKey, usdcMintPubkey, connection]);
+  }, [publicKey, apiWithCluster]);
 
   useEffect(() => {
     let cancelled = false;

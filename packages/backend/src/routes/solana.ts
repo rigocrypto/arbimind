@@ -1,7 +1,10 @@
 import express, { Request, Response, Router } from 'express';
-import solanaTxRouter from './solanaTx';
+import { PublicKey } from '@solana/web3.js';
+import solanaTxRouter, { getConnection, getRequestCluster } from './solanaTx';
 import solanaJupiterRouter from './solanaJupiter';
 import { adminStore } from '../store/adminStore';
+
+const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 
 const router: Router = express.Router();
 router.use('/tx', solanaTxRouter);
@@ -99,6 +102,79 @@ router.post('/:action', (req: Request, res: Response) => {
   } catch (error) {
     console.error('Solana route error:', error);
     return res.status(500).json({ success: false, error: 'Internal error' });
+  }
+});
+
+// ─── RPC Proxy Endpoints ────────────────────────────────────────────
+// These proxy browser-side Solana RPC calls through the backend to
+// avoid CORS issues and keep API keys server-side only.
+
+function isValidSolanaAddress(s: string): boolean {
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s);
+}
+
+/**
+ * GET /api/solana/balance?address=<pubkey>&cluster=<cluster>
+ * Returns SOL balance for the given address.
+ */
+router.get('/balance', async (req: Request, res: Response) => {
+  const address = typeof req.query.address === 'string' ? req.query.address.trim() : '';
+  if (!address || !isValidSolanaAddress(address)) {
+    return res.status(400).json({ error: 'Missing or invalid address parameter' });
+  }
+
+  try {
+    const cluster = getRequestCluster(req);
+    const connection = getConnection(cluster);
+    const pubkey = new PublicKey(address);
+    const lamports = await connection.getBalance(pubkey);
+
+    return res.json({
+      address,
+      lamports,
+      sol: lamports / LAMPORTS_PER_SOL,
+    });
+  } catch (err) {
+    console.error('[solana-proxy] balance error:', err instanceof Error ? err.message : err);
+    return res.status(502).json({ error: 'RPC request failed' });
+  }
+});
+
+/**
+ * GET /api/solana/token-accounts?address=<pubkey>&cluster=<cluster>
+ * Returns parsed SPL token accounts for the given address.
+ */
+router.get('/token-accounts', async (req: Request, res: Response) => {
+  const address = typeof req.query.address === 'string' ? req.query.address.trim() : '';
+  if (!address || !isValidSolanaAddress(address)) {
+    return res.status(400).json({ error: 'Missing or invalid address parameter' });
+  }
+
+  try {
+    const cluster = getRequestCluster(req);
+    const connection = getConnection(cluster);
+    const pubkey = new PublicKey(address);
+
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(pubkey, {
+      programId: TOKEN_PROGRAM_ID,
+    });
+
+    const accounts = tokenAccounts.value.map((ta) => {
+      const info = ta.account.data.parsed.info as {
+        mint: string;
+        tokenAmount: { uiAmountString: string; decimals: number };
+      };
+      return {
+        mint: info.mint,
+        amount: info.tokenAmount.uiAmountString,
+        decimals: info.tokenAmount.decimals,
+      };
+    });
+
+    return res.json({ address, accounts });
+  } catch (err) {
+    console.error('[solana-proxy] token-accounts error:', err instanceof Error ? err.message : err);
+    return res.status(502).json({ error: 'RPC request failed' });
   }
 });
 
