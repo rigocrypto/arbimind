@@ -174,13 +174,18 @@ export async function getEvmPortfolio(userAddress: string): Promise<PortfolioSum
 
   const cacheKey = `evm:${userAddress.toLowerCase()}`;
   const cached = getCached<PortfolioSummary>(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    console.log(`[PORTFOLIO_REQ] chain=evm wallet=${userAddress.slice(0,8)} status=cache_hit key=${cacheKey}`);
+    return cached;
+  }
 
   return coalesce(cacheKey, async () => {
     // Re-check cache inside coalesce — a prior coalesced call may have populated it.
     const inner = getCached<PortfolioSummary>(cacheKey);
     if (inner) return inner;
 
+  const scanStartMs = Date.now();
+  console.log(`[PORTFOLIO_REQ] chain=evm wallet=${userAddress.slice(0,8)} status=cold_miss key=${cacheKey}`);
   try {
     const provider = new ethers.JsonRpcProvider(
       resolveRpcUrl('evm', [
@@ -312,9 +317,11 @@ export async function getEvmPortfolio(userAddress: string): Promise<PortfolioSum
     };
 
     setCache(cacheKey, summary, scanNative && alchemyKey ? CACHE_TTL_NATIVE_MS : CACHE_TTL_MS);
+    console.log(`[PORTFOLIO_REQ] chain=evm wallet=${userAddress.slice(0,8)} status=scan_ok durationMs=${Date.now() - scanStartMs} deposits=${deposits.length}`);
     return summary;
   } catch (err) {
     console.error('EVM portfolio error:', err);
+    console.log(`[PORTFOLIO_REQ] chain=evm wallet=${userAddress.slice(0,8)} status=scan_error durationMs=${Date.now() - scanStartMs}`);
 
     // Keep portfolio endpoints available when upstream RPC log queries fail.
     // This avoids surfacing a hard 503 to the UI for transient provider issues.
@@ -411,13 +418,18 @@ export async function getSolanaPortfolio(userPubkey: string): Promise<PortfolioS
 
   const cacheKey = `solana:${userPubkey}`;
   const cached = getCached<PortfolioSummary>(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    console.log(`[PORTFOLIO_REQ] chain=solana wallet=${userPubkey.slice(0,8)} status=cache_hit key=${cacheKey}`);
+    return cached;
+  }
 
   return coalesce(cacheKey, async () => {
     // Re-check cache inside coalesce — a prior coalesced call may have populated it.
     const inner = getCached<PortfolioSummary>(cacheKey);
     if (inner) return inner;
 
+    const scanStartMs = Date.now();
+    console.log(`[PORTFOLIO_REQ] chain=solana wallet=${userPubkey.slice(0,8)} status=cold_miss key=${cacheKey}`);
     try {
     const cluster = process.env.SOLANA_CLUSTER || 'devnet';
     const solanaFallback =
@@ -531,9 +543,11 @@ export async function getSolanaPortfolio(userPubkey: string): Promise<PortfolioS
     };
 
     setCache(cacheKey, summary);
+    console.log(`[PORTFOLIO_REQ] chain=solana wallet=${userPubkey.slice(0,8)} status=scan_ok durationMs=${Date.now() - scanStartMs} deposits=${summary.deposits.length}`);
     return summary;
   } catch (err) {
     console.error('Solana portfolio error:', err);
+    console.log(`[PORTFOLIO_REQ] chain=solana wallet=${userPubkey.slice(0,8)} status=scan_error durationMs=${Date.now() - scanStartMs}`);
     return null;
   }
   });
