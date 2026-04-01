@@ -41,7 +41,7 @@ const nextConfig = {
               "script-src 'self' 'unsafe-eval' 'unsafe-inline';",
               "style-src 'self' 'unsafe-inline';",
               "img-src 'self' data: blob: https://dexscreener.com https://api.dexscreener.com;",
-              `connect-src 'self' https://api.dexscreener.com${backendOrigin} wss: ws:;`,
+              `connect-src 'self' https://api.dexscreener.com${backendOrigin} https://api.web3modal.org https://pulse.walletconnect.org https://rpc.walletconnect.com https://relay.walletconnect.com https://cloud.walletconnect.com https://rpc-amoy.polygon.technology https://*.alchemy.com wss: ws:;`,
               "frame-ancestors 'none';"
             ].join('; ')
           },
