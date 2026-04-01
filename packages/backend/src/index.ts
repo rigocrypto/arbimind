@@ -22,10 +22,18 @@ if (!process.env.ADMIN_KEY?.trim() && !process.env.ADMIN_API_KEY?.trim()) {
   console.warn('⚠️  ADMIN_KEY not set – /api/admin/* will return 503. Add it to .env or Railway vars.');
 }
 
-if (resolveRpcUrl('worldchain_sepolia')) {
-  console.log('🌐 World Chain Sepolia RPC loaded');
-} else {
-  console.warn('⚠️  World Chain Sepolia RPC not configured');
+// RPC boot diagnostics — log all configured chains
+{
+  const rpcChains = ['evm', 'solana', 'worldchain_sepolia'] as const;
+  const rpcStatus = rpcChains.map((chain) => {
+    const url = resolveRpcUrl(chain);
+    return {
+      chain,
+      configured: Boolean(url),
+      host: url ? new URL(url).hostname : 'NONE',
+    };
+  });
+  console.log('[BACKEND_RPC_BOOT]', JSON.stringify(rpcStatus));
 }
 
 const app = express();
