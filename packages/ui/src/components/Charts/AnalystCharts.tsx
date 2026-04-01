@@ -11,8 +11,8 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
 } from 'recharts';
+import { SafeResponsiveContainer } from '@/components/Charts/SafeResponsiveContainer';
 import { formatETH } from '@/utils/format';
 import type { Strategy } from '@/hooks/useArbiApi';
 
@@ -84,7 +84,7 @@ export function AnalystCharts({ strategies, timestamps, totalTrades }: AnalystCh
       <div>
         <h4 className="text-xs font-semibold text-dark-400 uppercase tracking-wider mb-2">Strategy profit</h4>
         <div className="h-[120px]">
-          <ResponsiveContainer width="100%" height="100%" minWidth={10} minHeight={10}>
+          <SafeResponsiveContainer>
             <PieChart>
               <Pie
                 data={strategyData}
@@ -102,13 +102,13 @@ export function AnalystCharts({ strategies, timestamps, totalTrades }: AnalystCh
               </Pie>
               <Tooltip content={<CustomPieTooltip />} />
             </PieChart>
-          </ResponsiveContainer>
+          </SafeResponsiveContainer>
         </div>
       </div>
       <div>
         <h4 className="text-xs font-semibold text-dark-400 uppercase tracking-wider mb-2">Trades by period</h4>
         <div className="h-[120px]">
-          <ResponsiveContainer width="100%" height="100%" minWidth={10} minHeight={10}>
+          <SafeResponsiveContainer>
             <BarChart data={activityData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="2 2" stroke="#1f2937" opacity={0.4} vertical={false} />
               <XAxis dataKey="time" tick={{ fill: '#6b7280', fontSize: 9 }} interval={0} />
@@ -116,7 +116,7 @@ export function AnalystCharts({ strategies, timestamps, totalTrades }: AnalystCh
               <Tooltip content={<CustomBarTooltip />} cursor={{ fill: 'rgba(6,182,212,0.1)' }} />
               <Bar dataKey="trades" fill="#06b6d4" radius={[2, 2, 0, 0]} maxBarSize={20} />
             </BarChart>
-          </ResponsiveContainer>
+          </SafeResponsiveContainer>
         </div>
       </div>
     </div>
