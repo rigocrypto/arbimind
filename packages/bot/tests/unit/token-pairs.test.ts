@@ -75,4 +75,25 @@ describe('getEffectiveTokenPairs', () => {
 
     expect(pairStrings).toContain('WETH/USDC.e');
   });
+
+  it('warns when SCAN_PAIRS excludes available pairs', async () => {
+    setArbitrumProfile();
+    process.env['SCAN_PAIRS'] = 'WETH/USDC,USDC/DAI'; // missing WETH/USDC.e
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { getEffectiveTokenPairs } = await importTokens();
+    const pairs = getEffectiveTokenPairs();
+
+    expect(pairs.length).toBe(2);
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[SCAN_PAIRS_EXCLUSION]',
+      expect.objectContaining({
+        excluded: ['WETH/USDC.e'],
+        reason: 'not in SCAN_PAIRS env var',
+      }),
+    );
+
+    warnSpy.mockRestore();
+  });
 });
