@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 import { config, type BotConfig } from '../config';
 import { DEX_CONFIG } from '../config';
-import { type DexConfig } from '../config/dexes';
+import { type DexConfig, getEligibleDexesForPair } from '../config/dexes';
 import { getTokenConfig, getEffectiveTokenPairs } from '../config/tokens';
 import { ArbitrageOpportunity, PriceQuote, BotStats } from '../types';
 import { PriceService } from './PriceService';
@@ -454,7 +454,8 @@ export class ArbitrageBot {
     tokenB: string
   ): Promise<{ opportunities: ArbitrageOpportunity[]; quotesOk: number; quotesFailed: number }> {
     const opportunities: ArbitrageOpportunity[] = [];
-    const enabledDexes = Object.entries(DEX_CONFIG).filter(([_, cfg]) => cfg.enabled);
+    const enabledDexes = getEligibleDexesForPair(tokenA, tokenB);
+    this.logger.info(`[DEX_ELIGIBILITY] ${tokenA}/${tokenB} → ${enabledDexes.map(([n]) => n).join(', ')}`);
     let quotesOk = 0;
     let quotesFailed = 0;
 

@@ -47,7 +47,7 @@ describe('ArbitrageBot integration', () => {
     const bot = new ArbitrageBot({
       priceService: new MockPriceService() as any,
       executionService: { executeArbitrage } as any,
-      tokenPairs: [{ tokenA: 'WETH', tokenB: 'USDC' }],
+      tokenPairs: [{ tokenA: 'WETH', tokenB: 'USDC.e' }],
       config: {
         minProfitEth: 0.001,
         maxGasGwei: 200,
