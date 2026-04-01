@@ -12,7 +12,6 @@ import {
 const JUPITER_API_BASES = [
   process.env.SOLANA_JUPITER_API_BASE?.trim() || '',
   'https://lite-api.jup.ag',
-  'https://quote-api.jup.ag',
 ].filter(Boolean);
 
 const SOLANA_RPC_ENDPOINTS = [

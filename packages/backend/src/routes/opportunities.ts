@@ -1,5 +1,8 @@
 import express, { Request, Response, Router } from 'express';
 
+const JUPITER_QUOTE_BASE =
+  process.env.SOLANA_JUPITER_API_BASE?.trim() || 'https://lite-api.jup.ag';
+
 const router: Router = express.Router();
 
 type Chain = 'EVM' | 'SOL';
@@ -205,8 +208,8 @@ router.post('/simulate', async (req: Request, res: Response) => {
     const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
     const SOL_MINT = 'So11111111111111111111111111111111111111112';
 
-    // Leg 1: USDC → SOL via Jupiter Quote API v6
-    const leg1Url = 'https://quote-api.jup.ag/v6/quote?' +
+    // Leg 1: USDC → SOL via Jupiter Quote API
+    const leg1Url = `${JUPITER_QUOTE_BASE}/swap/v1/quote?` +
       new URLSearchParams({
         inputMint: USDC_MINT,
         outputMint: SOL_MINT,
@@ -224,7 +227,7 @@ router.post('/simulate', async (req: Request, res: Response) => {
     const leg1 = (await leg1Resp.json()) as { outAmount: string; priceImpactPct?: string };
 
     // Leg 2: SOL → USDC (reverse leg)
-    const leg2Url = 'https://quote-api.jup.ag/v6/quote?' +
+    const leg2Url = `${JUPITER_QUOTE_BASE}/swap/v1/quote?` +
       new URLSearchParams({
         inputMint: SOL_MINT,
         outputMint: USDC_MINT,
