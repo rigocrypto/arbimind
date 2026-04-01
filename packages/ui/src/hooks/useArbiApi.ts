@@ -9,6 +9,9 @@ import { apiUrl } from '@/lib/apiConfig';
 const ENABLE_API_CALLS = process.env.NEXT_PUBLIC_ENABLE_API === 'true';
 // Enable public metrics/strategies only when backend exposes endpoints.
 const ENABLE_PUBLIC_METRICS = process.env.NEXT_PUBLIC_PUBLIC_METRICS === 'true';
+// Gate engine-mutating actions (start/stop/scan). When false, the UI
+// can still read engine status but cannot POST to engine endpoints.
+const ENABLE_ENGINE_UI = process.env.NEXT_PUBLIC_SIM_ENGINE_UI === 'true';
 
 // Types
 export interface HealthStatus {
@@ -471,6 +474,7 @@ export function useEngine() {
   }, [fetchStatus]);
 
   const start = useCallback(async (strategy: string = 'arbitrage') => {
+    if (!ENABLE_ENGINE_UI) return;
     setLoading(true);
     try {
       const referrer =
@@ -507,6 +511,7 @@ export function useEngine() {
   }, [getLocalWalletContext]);
 
   const stop = useCallback(async () => {
+    if (!ENABLE_ENGINE_UI) return;
     setLoading(true);
     try {
       const response = await fetch(apiUrl('/engine/stop'), {
@@ -526,6 +531,7 @@ export function useEngine() {
   }, []);
 
   const singleScan = useCallback(async (strategy?: string) => {
+    if (!ENABLE_ENGINE_UI) return false;
     try {
       const response = await fetch(apiUrl('/engine/single-scan'), {
         method: 'POST',
@@ -540,6 +546,7 @@ export function useEngine() {
   }, [activeStrategy]);
 
   const reloadPrices = useCallback(async () => {
+    if (!ENABLE_ENGINE_UI) return false;
     try {
       const response = await fetch(apiUrl('/engine/reload-prices'), {
         method: 'POST',
