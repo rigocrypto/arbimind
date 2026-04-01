@@ -249,3 +249,65 @@ export function getDexRouter(dexName: string): string {
 export function getDexFee(dexName: string): number {
   return getDexConfig(dexName).fee;
 }
+
+// --- Pair-specific DEX eligibility ---
+
+const ARBITRUM_DEX_ELIGIBILITY: Record<string, string[]> = {
+  'WETH/USDC':   ['UNISWAP_V3'],
+  'WETH/USDC.e': ['UNISWAP_V3', 'SUSHISWAP'],
+  'USDC/DAI':    ['UNISWAP_V3'],
+};
+
+function parseEnvDexOverrides(): Record<string, string[]> {
+  const raw = normalizeEnvValue(process.env['PAIR_DEX_OVERRIDE']);
+  if (!raw) return {};
+  const result: Record<string, string[]> = {};
+  for (const entry of raw.split(';')) {
+    const trimmed = entry.trim();
+    if (!trimmed) continue;
+    const colonIdx = trimmed.indexOf(':');
+    if (colonIdx < 0) continue;
+    const pair = trimmed.slice(0, colonIdx).trim();
+    const dexes = trimmed.slice(colonIdx + 1).split(',').map((d) => d.trim()).filter(Boolean);
+    if (pair && dexes.length > 0) result[pair] = dexes;
+  }
+  return result;
+}
+
+function getPairDexPolicy(): Record<string, string[]> | null {
+  if (!isArbitrumProfile()) return null;
+  const overrides = parseEnvDexOverrides();
+  return { ...ARBITRUM_DEX_ELIGIBILITY, ...overrides };
+}
+
+/**
+ * Returns enabled DEXes for a specific pair. On Arbitrum, applies pair-level
+ * eligibility rules to avoid quoting on DEXes with known-bad liquidity.
+ * Falls back to all enabled DEXes if no pair policy exists.
+ */
+export function getEligibleDexesForPair(
+  tokenA: string,
+  tokenB: string
+): Array<[string, DexConfig]> {
+  const allEnabled = Object.entries(DEX_CONFIG).filter(([_, cfg]) => cfg.enabled);
+  const policy = getPairDexPolicy();
+  if (!policy) return allEnabled;
+
+  const fwd = `${tokenA}/${tokenB}`;
+  const rev = `${tokenB}/${tokenA}`;
+  const allowed = policy[fwd] ?? policy[rev];
+  if (!allowed) return allEnabled;
+
+  const filtered = allEnabled.filter(([name]) => allowed.includes(name));
+
+  if (filtered.length === 0) {
+    console.warn('[DEX_ELIGIBILITY_EMPTY]', {
+      pair: fwd,
+      allowed,
+      hint: 'No enabled DEXes match pair policy — falling back to all enabled',
+    });
+    return allEnabled;
+  }
+
+  return filtered;
+}
