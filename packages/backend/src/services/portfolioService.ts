@@ -66,6 +66,25 @@ function setCache(key: string, data: unknown, ttlMs: number = CACHE_TTL_MS): voi
   cache.set(key, { data, expires: Date.now() + ttlMs });
 }
 
+// --- In-flight request coalescing ---
+// Prevents concurrent requests for the same wallet from spawning parallel scans.
+// First caller creates the promise; subsequent callers reuse it until it settles.
+const inFlight = new Map<string, Promise<PortfolioSummary | null>>();
+
+function coalesce<T extends PortfolioSummary | null>(
+  key: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const existing = inFlight.get(key);
+  if (existing) {
+    console.log(`[PORTFOLIO_SCAN_COALESCED] ${key}`);
+    return existing as Promise<T>;
+  }
+  const p = fn().finally(() => inFlight.delete(key));
+  inFlight.set(key, p);
+  return p;
+}
+
 const MIN_CHUNK_SIZE = 10;
 const MAX_RETRIES_PER_CHUNK = 3;
 const MAX_CONSECUTIVE_FAILURES = 5;
@@ -156,6 +175,11 @@ export async function getEvmPortfolio(userAddress: string): Promise<PortfolioSum
   const cacheKey = `evm:${userAddress.toLowerCase()}`;
   const cached = getCached<PortfolioSummary>(cacheKey);
   if (cached) return cached;
+
+  return coalesce(cacheKey, async () => {
+    // Re-check cache inside coalesce — a prior coalesced call may have populated it.
+    const inner = getCached<PortfolioSummary>(cacheKey);
+    if (inner) return inner;
 
   try {
     const provider = new ethers.JsonRpcProvider(
@@ -315,6 +339,7 @@ export async function getEvmPortfolio(userAddress: string): Promise<PortfolioSum
     setCache(cacheKey, fallback, 10_000);
     return fallback;
   }
+  });
 }
 
 export async function getEvmTimeseries(
@@ -388,7 +413,12 @@ export async function getSolanaPortfolio(userPubkey: string): Promise<PortfolioS
   const cached = getCached<PortfolioSummary>(cacheKey);
   if (cached) return cached;
 
-  try {
+  return coalesce(cacheKey, async () => {
+    // Re-check cache inside coalesce — a prior coalesced call may have populated it.
+    const inner = getCached<PortfolioSummary>(cacheKey);
+    if (inner) return inner;
+
+    try {
     const cluster = process.env.SOLANA_CLUSTER || 'devnet';
     const solanaFallback =
       cluster === 'mainnet-beta'
@@ -506,6 +536,7 @@ export async function getSolanaPortfolio(userPubkey: string): Promise<PortfolioS
     console.error('Solana portfolio error:', err);
     return null;
   }
+  });
 }
 
 export async function getSolanaTimeseries(
@@ -563,4 +594,10 @@ export async function getSolanaTimeseries(
     };
   }
   return { points, method: 'estimated_linear_ramp_to_current_equity' };
+}
+
+/** @internal Test helper — clear in-flight map and cache. */
+export function _resetPortfolioState(): void {
+  inFlight.clear();
+  cache.clear();
 }
