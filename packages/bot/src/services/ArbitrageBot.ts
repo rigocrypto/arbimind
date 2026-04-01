@@ -43,6 +43,8 @@ export class ArbitrageBot {
   private canaryDailyPnlEth: number = 0;
   private canaryDay: string = new Date().toISOString().slice(0, 10);
   private lastSanityTxAtMs: number = 0;
+  private cachedGasPriceWei: number = 20e9; // fallback 20 gwei, refreshed from provider
+  private lastGasPriceRefreshMs: number = 0;
   // last scan timestamp removed (not currently read anywhere)
 
   constructor(deps: ArbitrageBotDependencies = {}) {
@@ -136,6 +138,24 @@ export class ArbitrageBot {
     this.isRunning = true;
     this.stats.startTime = Date.now();
 
+    // Log RPC/chain diagnostics
+    try {
+      const network = await this.provider.getNetwork();
+      const latestBlock = await this.provider.getBlockNumber();
+      const rpcHost = this.botConfig.ethereumRpcUrl
+        ? new URL(this.botConfig.ethereumRpcUrl).host
+        : 'unknown';
+      console.log('[RPC_BOOT]', {
+        network: this.botConfig.network,
+        evmChain: this.botConfig.evmChain,
+        chainId: Number(network.chainId),
+        rpcHost,
+        latestBlock,
+      });
+    } catch (e) {
+      console.warn('[RPC_BOOT] diagnostics failed:', e instanceof Error ? e.message : e);
+    }
+
     // Validate configuration
     this.validateSetup();
 
@@ -178,6 +198,7 @@ export class ArbitrageBot {
   private async runMainLoop(): Promise<void> {
     while (this.isRunning) {
       try {
+        await this.refreshGasPrice();
         await this.maybeRunSanityTransfer();
         await this.scanForOpportunities();
         await this.sleep(this.botConfig.scanIntervalMs);
@@ -662,21 +683,37 @@ export class ArbitrageBot {
    */
   private estimateGasCost(): { totalCost: string } {
     const gasLimit = 300000; // Conservative estimate
-    const gasPrice = this.getCurrentGasPrice();
+    const gasPrice = this.cachedGasPriceWei;
     const totalCost = gasLimit * gasPrice;
-    
+
     return {
       totalCost: totalCost.toString()
     };
   }
 
   /**
-   * Get current gas price in wei
+   * Get current gas price in wei (cached, refreshed from provider)
    */
   private getCurrentGasPrice(): number {
-    // This would typically come from a gas price oracle
-    // For now, return a conservative estimate
-    return 20 * 1e9; // 20 gwei in wei
+    return this.cachedGasPriceWei;
+  }
+
+  /**
+   * Refresh gas price from provider (call periodically, e.g. each scan tick)
+   */
+  private async refreshGasPrice(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastGasPriceRefreshMs < 15_000) return; // refresh at most every 15s
+    try {
+      const feeData = await this.provider.getFeeData();
+      const price = feeData.maxFeePerGas ?? feeData.gasPrice;
+      if (price && price > 0n) {
+        this.cachedGasPriceWei = Number(price);
+        this.lastGasPriceRefreshMs = now;
+      }
+    } catch {
+      // keep cached value on failure
+    }
   }
 
   /**
