@@ -66,6 +66,11 @@ function setCache(key: string, data: unknown, ttlMs: number = CACHE_TTL_MS): voi
   cache.set(key, { data, expires: Date.now() + ttlMs });
 }
 
+const MIN_CHUNK_SIZE = 10;
+const MAX_RETRIES_PER_CHUNK = 3;
+const MAX_CONSECUTIVE_FAILURES = 5;
+const RETRY_DELAY_MS = 500;
+
 async function queryFilterChunked(
   contract: ethers.Contract,
   filter: unknown,
@@ -76,26 +81,56 @@ async function queryFilterChunked(
   const events: ethers.EventLog[] = [];
   let start = fromBlock;
   let currentChunk = chunkSize;
+  let retriesForCurrentChunk = 0;
+  let consecutiveFailures = 0;
 
   while (start <= toBlock) {
+    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      console.warn(
+        `[queryFilterChunked] ${MAX_CONSECUTIVE_FAILURES} consecutive failures — aborting. Returning ${events.length} partial results (stopped at block ${start}).`
+      );
+      break;
+    }
+
     const end = Math.min(start + currentChunk - 1, toBlock);
     try {
       const chunk = (await contract.queryFilter(filter as never, start, end)) as ethers.EventLog[];
       events.push(...chunk);
       start = end + 1;
-      // Restore original chunk size on success
       currentChunk = chunkSize;
+      retriesForCurrentChunk = 0;
+      consecutiveFailures = 0;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      // If block range exceeds provider limit, halve the chunk and retry
-      if (msg.includes('block range') || msg.includes('exceed') || msg.includes('Log response size exceeded')) {
-        const halved = Math.max(50, Math.floor(currentChunk / 2));
-        console.warn(`[queryFilterChunked] block range error at ${start}-${end}, halving chunk to ${halved}`);
+      const isRangeError =
+        msg.includes('block range') || msg.includes('exceed') || msg.includes('Log response size exceeded');
+
+      if (isRangeError) {
+        retriesForCurrentChunk++;
+
+        if (retriesForCurrentChunk > MAX_RETRIES_PER_CHUNK || currentChunk <= MIN_CHUNK_SIZE) {
+          console.warn(
+            `[queryFilterChunked] skipping blocks ${start}-${end} after ${retriesForCurrentChunk} retries (chunk=${currentChunk})`
+          );
+          consecutiveFailures++;
+          start = end + 1;
+          currentChunk = chunkSize;
+          retriesForCurrentChunk = 0;
+          continue;
+        }
+
+        const halved = Math.max(MIN_CHUNK_SIZE, Math.floor(currentChunk / 2));
+        if (retriesForCurrentChunk === 1) {
+          console.warn(`[queryFilterChunked] block range error at ${start}-${end}, reducing chunk to ${halved}`);
+        }
         currentChunk = halved;
-        continue; // retry same start with smaller chunk
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+        continue;
       }
+
       // Non-recoverable error — log and skip this chunk
       console.error(`[queryFilterChunked] non-recoverable error at ${start}-${end}:`, msg);
+      consecutiveFailures++;
       start = end + 1;
     }
   }
