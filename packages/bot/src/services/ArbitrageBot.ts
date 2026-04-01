@@ -444,9 +444,20 @@ export class ArbitrageBot {
     const amountOut2Big = ethers.getBigInt(quote2.amountOut);
 
     // Calculate profit (assuming we buy on DEX1 and sell on DEX2)
-    const profit = amountOut2Big > amountOut1Big ? amountOut2Big - amountOut1Big : ethers.getBigInt(0);
-    
-    if (profit <= 0) {
+    let buyQuote: PriceQuote;
+    let sellQuote: PriceQuote;
+    let profit: bigint;
+    if (amountOut2Big > amountOut1Big) {
+      // DEX2 gives more output — buy on DEX1 (cheaper), sell on DEX2 (pricier)
+      buyQuote = quote1;
+      sellQuote = quote2;
+      profit = amountOut2Big - amountOut1Big;
+    } else if (amountOut1Big > amountOut2Big) {
+      // DEX1 gives more output — buy on DEX2, sell on DEX1
+      buyQuote = quote2;
+      sellQuote = quote1;
+      profit = amountOut1Big - amountOut2Big;
+    } else {
       return null;
     }
 
@@ -461,18 +472,18 @@ export class ArbitrageBot {
     const profitPercent = (Number(profit) / Number(amountInBig)) * 100;
 
     return {
-      tokenA: quote1.tokenIn,
-      tokenB: quote1.tokenOut,
-      dex1: quote1.dex,
-      dex2: quote2.dex,
+      tokenA: buyQuote.tokenIn,
+      tokenB: buyQuote.tokenOut,
+      dex1: buyQuote.dex,
+      dex2: sellQuote.dex,
       amountIn,
-      amountOut1: quote1.amountOut,
-      amountOut2: quote2.amountOut,
+      amountOut1: buyQuote.amountOut,
+      amountOut2: sellQuote.amountOut,
       profit: profit.toString(),
       profitPercent,
       gasEstimate: gasEstimate.totalCost,
       netProfit: netProfit.toString(),
-      route: `${quote1.dex} -> ${quote2.dex}`,
+      route: `${buyQuote.dex} -> ${sellQuote.dex}`,
       timestamp: Date.now()
     };
   }
