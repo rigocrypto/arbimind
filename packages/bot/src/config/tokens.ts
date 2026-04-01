@@ -281,6 +281,21 @@ export function getEffectiveTokenPairs(): Array<{ tokenA: string; tokenB: string
       })
     : basePairs;
 
+  if (requestedPairs.size > 0) {
+    const excluded = basePairs.filter((p) => {
+      const fwd = `${p.tokenA}/${p.tokenB}`.toUpperCase();
+      const rev = `${p.tokenB}/${p.tokenA}`.toUpperCase();
+      return !requestedPairs.has(fwd) && !requestedPairs.has(rev);
+    });
+    if (excluded.length > 0) {
+      console.warn('[SCAN_PAIRS_EXCLUSION]', {
+        excluded: excluded.map((p) => `${p.tokenA}/${p.tokenB}`),
+        reason: 'not in SCAN_PAIRS env var',
+        hint: 'Add to SCAN_PAIRS or remove env var to scan all pairs',
+      });
+    }
+  }
+
   const isSepolia = isEthereumSepoliaProfile();
   console.log('[EFFECTIVE_PAIRS]', {
     count: pairs.length,
