@@ -1,3 +1,5 @@
+import { getAddress } from 'ethers';
+
 export interface DexConfig {
   name: string;
   router: string;
@@ -196,10 +198,30 @@ const DEFAULT_DEX_CONFIG: Record<string, DexConfig> = {
   }
 };
 
+/** Validate all non-empty DEX addresses are valid EIP-55 checksummed. */
+function validateDexAddresses(dexConfig: Record<string, DexConfig>, label: string): Record<string, DexConfig> {
+  for (const [name, dex] of Object.entries(dexConfig)) {
+    for (const field of ['router', 'factory', 'quoter'] as const) {
+      const addr = dex[field];
+      if (!addr) continue;
+      try {
+        const checksummed = getAddress(addr);
+        if (checksummed !== addr) {
+          console.warn(`[CONFIG_WARN] ${label} DEX ${name}.${field} auto-corrected to checksummed form`);
+          (dex as unknown as Record<string, string>)[field] = checksummed;
+        }
+      } catch {
+        throw new Error(`[CONFIG_FATAL] ${label} DEX ${name}.${field} has invalid address: ${addr}`);
+      }
+    }
+  }
+  return dexConfig;
+}
+
 function resolveDexConfig(): Record<string, DexConfig> {
-  if (isArbitrumProfile()) return buildArbitrumDexConfig();
-  if (isEthereumSepoliaProfile()) return buildSepoliaDexConfig();
-  return DEFAULT_DEX_CONFIG;
+  if (isArbitrumProfile()) return validateDexAddresses(buildArbitrumDexConfig(), 'Arbitrum');
+  if (isEthereumSepoliaProfile()) return validateDexAddresses(buildSepoliaDexConfig(), 'Sepolia');
+  return validateDexAddresses(DEFAULT_DEX_CONFIG, 'Ethereum');
 }
 
 export const DEX_CONFIG: Record<string, DexConfig> = resolveDexConfig();

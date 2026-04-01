@@ -1,6 +1,7 @@
 import { ethers } from 'ethers';
 import { config, type BotConfig } from '../config';
 import { DEX_CONFIG } from '../config';
+import { type DexConfig } from '../config/dexes';
 import { getTokenConfig, getEffectiveTokenPairs } from '../config/tokens';
 import { ArbitrageOpportunity, PriceQuote, BotStats } from '../types';
 import { PriceService } from './PriceService';
@@ -8,6 +9,16 @@ import { ExecutionService } from './ExecutionService';
 import { Logger } from '../utils/Logger';
 import { AiScoringService } from './AiScoringService';
 // AI orchestrator imports removed (not used in current flow)
+
+/** Tokens considered stablecoins for quote sanity filtering */
+const STABLE_TOKENS = new Set(['USDC', 'USDT', 'DAI']);
+
+/** Maximum spread (bps) before a cross-DEX pair is flagged as suspicious */
+const MAX_SANE_SPREAD_BPS = 1000; // 10%
+
+/** Stable/stable price must be within this range to be considered valid */
+const STABLE_PAIR_MIN_PRICE = 0.95;
+const STABLE_PAIR_MAX_PRICE = 1.05;
 
 export interface ArbitrageBotDependencies {
   config?: Partial<BotConfig>;
@@ -326,6 +337,116 @@ export class ArbitrageBot {
   }
 
   /**
+   * Check if a pair is a stable/stable pair (both tokens are stablecoins)
+   */
+  private isStablePair(tokenA: string, tokenB: string): boolean {
+    return STABLE_TOKENS.has(tokenA) && STABLE_TOKENS.has(tokenB);
+  }
+
+  /**
+   * Sanity-check a quote's normalized price.
+   * Returns true if the quote should be kept, false if it should be rejected.
+   */
+  private isQuoteSane(
+    tokenA: string,
+    tokenB: string,
+    normalizedPrice: number,
+    dex: string
+  ): boolean {
+    // Stable/stable guard — price must be near 1:1
+    if (this.isStablePair(tokenA, tokenB)) {
+      if (normalizedPrice < STABLE_PAIR_MIN_PRICE || normalizedPrice > STABLE_PAIR_MAX_PRICE) {
+        console.log('[QUOTE_SANITY_REJECT]', {
+          pair: `${tokenA}/${tokenB}`,
+          dex,
+          normalizedPrice,
+          reason: 'stable_pair_out_of_range',
+          range: `${STABLE_PAIR_MIN_PRICE}-${STABLE_PAIR_MAX_PRICE}`,
+        });
+        return false;
+      }
+    }
+
+    // Reject obviously implausible quotes (zero or negative)
+    if (normalizedPrice <= 0 || !isFinite(normalizedPrice)) {
+      console.log('[QUOTE_SANITY_REJECT]', {
+        pair: `${tokenA}/${tokenB}`,
+        dex,
+        normalizedPrice,
+        reason: 'invalid_price',
+      });
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Log diagnostic info for a V2/SushiSwap pair when spread seems suspicious.
+   * Attempts to fetch on-chain reserves from the pair contract.
+   */
+  private async logPairDiagnostics(
+    tokenA: string,
+    tokenB: string,
+    dexName: string,
+    dexConfig: DexConfig,
+    spreadBps: number
+  ): Promise<void> {
+    // Only run diagnostics for V2-style DEXes with a factory
+    if (dexConfig.version !== 'v2' || !dexConfig.factory) return;
+
+    try {
+      const tokenAAddr = getTokenConfig(tokenA).address;
+      const tokenBAddr = getTokenConfig(tokenB).address;
+      const factoryAbi = ['function getPair(address,address) view returns (address)'];
+      const factory = new ethers.Contract(dexConfig.factory, factoryAbi, this.provider);
+      const pairAddress: string = await factory.getPair(tokenAAddr, tokenBAddr);
+
+      if (!pairAddress || pairAddress === ethers.ZeroAddress) {
+        console.log('[PAIR_DIAGNOSTIC]', {
+          dex: dexName,
+          pair: `${tokenA}/${tokenB}`,
+          pairAddress: 'NO_PAIR',
+          note: 'No direct pair exists — quote may route through intermediary',
+        });
+        return;
+      }
+
+      const pairAbi = [
+        'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+        'function token0() view returns (address)',
+        'function token1() view returns (address)',
+      ];
+      const pairContract = new ethers.Contract(pairAddress, pairAbi, this.provider);
+      const [reserves, token0] = await Promise.all([
+        pairContract.getReserves(),
+        pairContract.token0(),
+      ]);
+
+      const isToken0A = token0.toLowerCase() === tokenAAddr.toLowerCase();
+      const decimalsA = getTokenConfig(tokenA).decimals;
+      const decimalsB = getTokenConfig(tokenB).decimals;
+
+      console.log('[PAIR_DIAGNOSTIC]', {
+        dex: dexName,
+        pair: `${tokenA}/${tokenB}`,
+        pairAddress,
+        token0: isToken0A ? tokenA : tokenB,
+        token1: isToken0A ? tokenB : tokenA,
+        reserve0: ethers.formatUnits(reserves[0], isToken0A ? decimalsA : decimalsB),
+        reserve1: ethers.formatUnits(reserves[1], isToken0A ? decimalsB : decimalsA),
+        spreadBps: spreadBps.toFixed(2),
+      });
+    } catch (error) {
+      console.log('[PAIR_DIAGNOSTIC]', {
+        dex: dexName,
+        pair: `${tokenA}/${tokenB}`,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
    * Find arbitrage opportunities for a specific token pair
    */
   private async findOpportunitiesForPair(
@@ -354,16 +475,25 @@ export class ArbitrageBot {
           dexName
         );
         if (quote) {
-          quotes.push(quote);
-          quotesOk++;
-          this.logger.debug('[QUOTE]', {
-            pair: `${tokenA}/${tokenB}`,
-            dex: quote.dex,
-            fee: quote.fee,
-            amountIn: amountIn.toString(),
-            amountOut: quote.amountOut,
-            price: Number(quote.amountOut) / Number(amountIn),
-          });
+          // Sanity-check the normalized price before accepting the quote
+          const normalizedPrice =
+            (Number(quote.amountOut) / 10 ** decimalsOut) /
+            (Number(amountIn) / 10 ** decimalsIn);
+
+          if (this.isQuoteSane(tokenA, tokenB, normalizedPrice, quote.dex)) {
+            quotes.push(quote);
+            quotesOk++;
+            this.logger.debug('[QUOTE]', {
+              pair: `${tokenA}/${tokenB}`,
+              dex: quote.dex,
+              fee: quote.fee,
+              amountIn: amountIn.toString(),
+              amountOut: quote.amountOut,
+              normalizedPrice,
+            });
+          } else {
+            quotesFailed++;
+          }
         } else {
           quotesFailed++;
         }
@@ -416,6 +546,27 @@ export class ArbitrageBot {
         });
 
         if (spreadBps < minEdgeBps) continue;
+
+        // Reject suspiciously large spreads — likely bad quote or thin liquidity
+        if (spreadBps > MAX_SANE_SPREAD_BPS) {
+          console.log('[SPREAD_SANITY_REJECT]', {
+            pair: `${tokenA}/${tokenB}`,
+            spreadBps: spreadBps.toFixed(2),
+            maxSaneBps: MAX_SANE_SPREAD_BPS,
+            dex1: quote1.dex,
+            dex2: quote2.dex,
+          });
+
+          // Fire diagnostics for V2-style DEXes to log on-chain reserves
+          for (const q of [quote1, quote2]) {
+            const dexCfg = DEX_CONFIG[q.dex];
+            if (dexCfg) {
+              // Fire-and-forget — don't block the scan loop
+              this.logPairDiagnostics(tokenA, tokenB, q.dex, dexCfg, spreadBps).catch(() => {});
+            }
+          }
+          continue;
+        }
 
         const opportunity = this.calculateArbitrageOpportunity(quote1, quote2, amountIn.toString());
         if (opportunity) {
@@ -571,13 +722,14 @@ export class ArbitrageBot {
       console.log(
         `[EXECUTE_SKIP_LOG_ONLY] route=${opportunity.route} tokenA=${opportunity.tokenA} tokenB=${opportunity.tokenB} netProfitEth=${ethers.formatEther(opportunity.netProfit)}`
       );
-      this.logger.info('Testnet mode: skipping real execution', {
+      this.logger.info('Dry-run mode: skipping real execution (LOG_ONLY=true)', {
         tokenA: opportunity.tokenA,
         tokenB: opportunity.tokenB,
         dex1: opportunity.dex1,
         dex2: opportunity.dex2,
         profit: ethers.formatEther(opportunity.profit),
-        netProfit: ethers.formatEther(opportunity.netProfit)
+        netProfit: ethers.formatEther(opportunity.netProfit),
+        evmChainId: this.botConfig.evmChainId,
       });
       return true;
     }

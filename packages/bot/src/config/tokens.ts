@@ -1,3 +1,5 @@
+import { getAddress } from 'ethers';
+
 export interface TokenConfig {
   address: string;
   symbol: string;
@@ -171,7 +173,7 @@ const ARBITRUM_ALLOWLISTED_TOKENS: Record<string, TokenConfig> = {
     logoURI: DEFAULT_ALLOWLISTED_TOKENS['DAI']?.logoURI,
   },
   WBTC: {
-    address: '0x2f2a2543B6822d9a882063fDA12032f94A611C5d',
+    address: '0x2f2a2543b6822D9A882063FDA12032f94A611C5d',
     symbol: 'WBTC',
     name: 'Wrapped Bitcoin (Arbitrum)',
     decimals: 8,
@@ -219,10 +221,27 @@ function buildTokenPairs(tokens: Record<string, TokenConfig>): Array<{ tokenA: s
   return pairs;
 }
 
+/** Validate all token addresses are valid EIP-55 checksummed addresses. Fail fast on bad config. */
+function validateTokenAddresses(tokens: Record<string, TokenConfig>, label: string): Record<string, TokenConfig> {
+  for (const [symbol, token] of Object.entries(tokens)) {
+    if (!token.address) continue; // Skip empty (e.g. Sepolia tokens not set)
+    try {
+      const checksummed = getAddress(token.address);
+      if (checksummed !== token.address) {
+        console.warn(`[CONFIG_WARN] ${label} token ${symbol} address auto-corrected to checksummed form`);
+        token.address = checksummed;
+      }
+    } catch {
+      throw new Error(`[CONFIG_FATAL] ${label} token ${symbol} has invalid address: ${token.address}`);
+    }
+  }
+  return tokens;
+}
+
 function resolveTokens(): Record<string, TokenConfig> {
-  if (isArbitrumProfile()) return ARBITRUM_ALLOWLISTED_TOKENS;
-  if (isEthereumSepoliaProfile()) return buildSepoliaTokens();
-  return DEFAULT_ALLOWLISTED_TOKENS;
+  if (isArbitrumProfile()) return validateTokenAddresses(ARBITRUM_ALLOWLISTED_TOKENS, 'Arbitrum');
+  if (isEthereumSepoliaProfile()) return validateTokenAddresses(buildSepoliaTokens(), 'Sepolia');
+  return validateTokenAddresses(DEFAULT_ALLOWLISTED_TOKENS, 'Ethereum');
 }
 
 export const ALLOWLISTED_TOKENS: Record<string, TokenConfig> = resolveTokens();
