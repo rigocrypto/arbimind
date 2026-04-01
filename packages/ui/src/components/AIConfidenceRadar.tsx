@@ -1,6 +1,7 @@
 'use client';
 
-import { Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts';
+import { Radar, RadarChart, PolarGrid, PolarAngleAxis } from 'recharts';
+import { SafeResponsiveContainer } from '@/components/Charts/SafeResponsiveContainer';
 
 export interface ConfidenceRadarData {
   confidence: number;
@@ -39,7 +40,7 @@ export function AIConfidenceRadar({ data }: AIConfidenceRadarProps) {
       </div>
 
       <div className="h-52 w-full">
-        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+        <SafeResponsiveContainer>
           <RadarChart data={chartData} outerRadius="70%">
             <PolarGrid stroke="rgba(148, 163, 184, 0.25)" />
             <PolarAngleAxis
@@ -57,7 +58,7 @@ export function AIConfidenceRadar({ data }: AIConfidenceRadarProps) {
               isAnimationActive
             />
           </RadarChart>
-        </ResponsiveContainer>
+        </SafeResponsiveContainer>
       </div>
     </section>
   );

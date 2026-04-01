@@ -1,6 +1,7 @@
 'use client';
 
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
+import { SafeResponsiveContainer } from '@/components/Charts/SafeResponsiveContainer';
 
 interface HitRateChartProps {
   data: Array<Record<string, number | string | null>>;
@@ -17,7 +18,7 @@ export function HitRateChart({ data, models }: HitRateChartProps) {
         <div className="text-sm text-dark-400">No accuracy data yet.</div>
       ) : (
         <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+          <SafeResponsiveContainer>
             <BarChart data={data} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid stroke="#374151" strokeDasharray="3 3" opacity={0.4} />
               <XAxis dataKey="horizon" tick={{ fill: '#9ca3af', fontSize: 10 }} axisLine={{ stroke: '#374151' }} tickLine={{ stroke: '#374151' }} />
@@ -31,7 +32,7 @@ export function HitRateChart({ data, models }: HitRateChartProps) {
                 <Bar key={model} dataKey={model} fill={COLORS[idx % COLORS.length]} radius={[4, 4, 0, 0]} />
               ))}
             </BarChart>
-          </ResponsiveContainer>
+          </SafeResponsiveContainer>
         </div>
       )}
       <div className="mt-3 text-xs text-dark-400">

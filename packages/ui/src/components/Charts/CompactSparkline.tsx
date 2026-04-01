@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo } from 'react';
-import { AreaChart, Area, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area } from 'recharts';
+import { SafeResponsiveContainer } from '@/components/Charts/SafeResponsiveContainer';
 
 const GRADIENT_COLORS: Record<string, { stroke: string; fill: string }> = {
   green: { stroke: '#00ff88', fill: '#00ff88' },
@@ -41,7 +42,7 @@ export function CompactSparkline({
 
   return (
     <div className="w-full overflow-hidden" style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+      <SafeResponsiveContainer>
         <AreaChart
           data={chartData}
           margin={{ top: 2, right: 2, left: 2, bottom: 2 }}
@@ -62,7 +63,7 @@ export function CompactSparkline({
             animationDuration={600}
           />
         </AreaChart>
-      </ResponsiveContainer>
+      </SafeResponsiveContainer>
     </div>
   );
 }

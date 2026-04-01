@@ -9,8 +9,8 @@ import {
   CartesianGrid,
   Tooltip,
   Brush,
-  ResponsiveContainer,
 } from 'recharts';
+import { SafeResponsiveContainer } from './SafeResponsiveContainer';
 import { formatETH, formatPercent } from '@/utils/format';
 
 const MOCK_PNL_DATA = [
@@ -73,7 +73,7 @@ export function PNLChart({ data, timestamps }: PNLChartProps) {
 
   return (
     <div className="relative w-full h-full min-h-[140px]">
-      <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+      <SafeResponsiveContainer width="100%" height="100%">
         <AreaChart
           data={chartData}
           margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
@@ -132,7 +132,7 @@ export function PNLChart({ data, timestamps }: PNLChartProps) {
             tickFormatter={(v) => v}
           />
         </AreaChart>
-      </ResponsiveContainer>
+      </SafeResponsiveContainer>
 
       {/* Current value badge */}
       <div className="absolute top-2 right-2 flex items-center gap-2">
