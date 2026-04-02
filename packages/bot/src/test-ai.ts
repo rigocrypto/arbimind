@@ -30,6 +30,8 @@ async function testAI() {
       profitPercent: 2.8,
       gasEstimate: '250000',
       netProfit: '50000000',
+      decimalsIn: 18,  // WETH
+      decimalsOut: 6,  // USDC
       route: 'UNISWAP_V2 -> UNISWAP_V3',
       timestamp: Date.now()
     };
