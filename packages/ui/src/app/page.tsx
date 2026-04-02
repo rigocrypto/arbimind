@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
 import { MetricCard } from '@/components/MetricCard';
@@ -84,7 +84,26 @@ export default function HomePage() {
   const { opportunities, loading: opportunitiesLoading } = useOpportunities();
   const { start, stop, singleScan, reloadPrices, activeStrategy, isRunning, checkBalance } = useEngineContext();
   const [strategyMode, setStrategyMode] = useState<StrategyMode>('dex');
-  const [autoModeEnabled, setAutoModeEnabled] = useState(false);
+  const [autoModeEnabled, setAutoModeEnabled] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try { return window.localStorage.getItem('arbimind:autoTrade') === '1'; } catch { return false; }
+  });
+
+  // Sync local toggle with backend engine state (polled every 10s)
+  const isRunningPrev = useRef(isRunning);
+  useEffect(() => {
+    if (isRunning !== isRunningPrev.current) {
+      isRunningPrev.current = isRunning;
+      setAutoModeEnabled(isRunning);
+    }
+  }, [isRunning]);
+
+  // Persist toggle to localStorage
+  const setAutoModeEnabledPersisted = useCallback((next: boolean) => {
+    setAutoModeEnabled(next);
+    try { window.localStorage.setItem('arbimind:autoTrade', next ? '1' : '0'); } catch { /* private mode */ }
+  }, []);
+
   const [maxRiskPct, setMaxRiskPct] = useState(2);
   const [maxTradeSizeEth, setMaxTradeSizeEth] = useState(0.35);
   const [timelineStep, setTimelineStep] = useState<ExecutionTimelineStep>(0);
@@ -205,7 +224,7 @@ export default function HomePage() {
       if (!checkBalance()) return;
 
       await start(strategyForMode);
-      setAutoModeEnabled(true);
+      setAutoModeEnabledPersisted(true);
       setTimelineStatus('running');
       setTimelineStep(0);
       toast.success('Auto mode enabled');
@@ -217,7 +236,7 @@ export default function HomePage() {
     }
 
     await stop();
-    setAutoModeEnabled(false);
+    setAutoModeEnabledPersisted(false);
     setTimelineStatus('idle');
     setTimelineStep(0);
     toast.success('Auto mode disabled');
