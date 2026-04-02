@@ -84,10 +84,15 @@ export default function HomePage() {
   const { opportunities, loading: opportunitiesLoading } = useOpportunities();
   const { start, stop, singleScan, reloadPrices, activeStrategy, isRunning, checkBalance } = useEngineContext();
   const [strategyMode, setStrategyMode] = useState<StrategyMode>('dex');
-  const [autoModeEnabled, setAutoModeEnabled] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    try { return window.localStorage.getItem('arbimind:autoTrade') === '1'; } catch { return false; }
-  });
+  const [autoModeEnabled, setAutoModeEnabled] = useState(false);
+
+  // Hydration-safe: read persisted value only on client after mount
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem('arbimind:autoTrade');
+      if (saved === '1') setAutoModeEnabled(true);
+    } catch { /* private/SSR */ }
+  }, []);
 
   // Sync local toggle with backend engine state (polled every 10s)
   const isRunningPrev = useRef(isRunning);
