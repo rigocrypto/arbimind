@@ -32,7 +32,7 @@
     "decimal.js": "^10.4.3",
     "dotenv": "^17.3.1",
     "ethers": "^6.8.1",
-    "lodash": "^4.17.23",
+    "lodash": "^4.18.1",
     "ml-matrix": "^6.10.4",
     "ml-regression": "^6.3.0",
     "natural": "^6.10.4",
