@@ -6,12 +6,16 @@ import { ResponsiveContainer } from 'recharts';
 type Props = ComponentProps<typeof ResponsiveContainer>;
 
 /**
- * Wrapper around Recharts ResponsiveContainer that defers rendering
- * until the container has measurable (> 0) dimensions.
+ * Wrapper around Recharts ResponsiveContainer that blocks rendering
+ * until the container has confirmed positive dimensions.
  *
- * Prevents the "width(-1) height(-1) should be greater than 0" warning
- * that fires when ResponsiveContainer mounts before the browser paints
- * (SSR hydration, dynamic imports with ssr:false, framer-motion entrance).
+ * Three-tier strategy:
+ *  1. Synchronous getBoundingClientRect() check on mount
+ *  2. ResizeObserver for async layout changes
+ *  3. Polling fallback for hidden containers (inactive tabs, accordions)
+ *
+ * Never sets ready without verifying dimensions > 0, which permanently
+ * prevents the "width(-1) height(-1) should be greater than 0" warning.
  */
 export function SafeResponsiveContainer({
   children,
@@ -28,30 +32,42 @@ export function SafeResponsiveContainer({
     const el = ref.current;
     if (!el) return;
 
-    // Always go through ResizeObserver — calling setReady synchronously
-    // in the effect body triggers react-hooks/set-state-in-effect.
-    // ResizeObserver fires its callback on the first frame if the element
-    // already has size, so there is no extra delay.
+    // 1. Immediate synchronous check — covers the common case where the
+    //    container already has layout by the time the effect runs.
+    const rect = el.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      setReady(true);
+      return;
+    }
+
+    // 2. ResizeObserver for when layout arrives after mount.
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width: w, height: h } = entry.contentRect;
         if (w > 0 && h > 0) {
           setReady(true);
           ro.disconnect();
+          clearInterval(poll);
           return;
         }
       }
     });
 
-    // Fallback: if parent is in a hidden container (inactive tab, collapsed
-    // accordion) the ResizeObserver may never fire. Force render after a
-    // short delay so the chart isn't permanently invisible once the user
-    // switches back. Recharts will re-measure on visibility change.
-    const timer = setTimeout(() => setReady(true), 1000);
+    // 3. Polling fallback — hidden containers (inactive tabs, collapsed
+    //    accordions) may never trigger ResizeObserver. Poll every 500ms
+    //    but *only* set ready when dimensions are actually positive.
+    const poll = setInterval(() => {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) {
+        setReady(true);
+        clearInterval(poll);
+        ro.disconnect();
+      }
+    }, 500);
 
     ro.observe(el);
     return () => {
-      clearTimeout(timer);
+      clearInterval(poll);
       ro.disconnect();
     };
   }, []);
