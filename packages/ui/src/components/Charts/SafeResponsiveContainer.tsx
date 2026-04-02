@@ -25,20 +25,28 @@ export function SafeResponsiveContainer({
   minHeight = 1,
   ...rest
 }: Props) {
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLDivElement | null>(null);
   const [ready, setReady] = useState(false);
 
+  // 1. Synchronous check on first render via ref callback — if the
+  //    container already has layout we mark ready immediately without
+  //    waiting for an effect, avoiding the lint issue with setState
+  //    inside useEffect.
+  const refCallback = (el: HTMLDivElement | null) => {
+    ref.current = el;
+    if (el && !ready) {
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        setReady(true);
+      }
+    }
+  };
+
   useEffect(() => {
+    if (ready) return;
+
     const el = ref.current;
     if (!el) return;
-
-    // 1. Immediate synchronous check — covers the common case where the
-    //    container already has layout by the time the effect runs.
-    const rect = el.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      setReady(true);
-      return;
-    }
 
     // 2. ResizeObserver for when layout arrives after mount.
     const ro = new ResizeObserver((entries) => {
@@ -70,10 +78,10 @@ export function SafeResponsiveContainer({
       clearInterval(poll);
       ro.disconnect();
     };
-  }, []);
+  }, [ready]);
 
   return (
-    <div ref={ref} style={{ width: '100%', height: '100%', minWidth, minHeight }}>
+    <div ref={refCallback} style={{ width: '100%', height: '100%', minWidth, minHeight }}>
       {ready ? (
         <ResponsiveContainer
           width={width}
