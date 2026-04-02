@@ -1,7 +1,7 @@
 'use client';
 
 import type { ComponentType } from 'react';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Activity, Server, Wifi, Database, Zap, CheckCircle2, AlertCircle, XCircle, ChevronDown, ChevronUp, Globe } from 'lucide-react';
 import { useHealth } from '@/hooks/useArbiApi';
 import { useRelativeTime } from '@/hooks/useRelativeTime';
@@ -26,35 +26,38 @@ const CHAIN_LABELS: Record<string, string> = {
 
 function useRpcHealth() {
   const [chains, setChains] = useState<ChainHealth[]>([]);
-  const [lastCheck, setLastCheck] = useState(Date.now());
-
-  const fetchRpcHealth = useCallback(async () => {
-    if (!ENABLE_API_CALLS) return;
-    try {
-      const res = await fetch(apiUrl('/rpc/health'));
-      if (!res.ok) return;
-      const data = (await res.json()) as {
-        details?: Record<string, { status: string; latencyMs?: number; error?: string }>;
-      };
-      if (!data.details) return;
-      const results: ChainHealth[] = Object.entries(data.details).map(([chain, info]) => ({
-        chain,
-        status: info.status === 'healthy' ? 'healthy' : 'unavailable',
-        latencyMs: info.latencyMs,
-        error: info.error,
-      }));
-      setChains(results);
-      setLastCheck(Date.now());
-    } catch {
-      // Backend unreachable — keep last known state
-    }
-  }, []);
+  const [lastCheck, setLastCheck] = useState(0);
 
   useEffect(() => {
-    fetchRpcHealth();
-    const id = setInterval(fetchRpcHealth, 30_000);
-    return () => clearInterval(id);
-  }, [fetchRpcHealth]);
+    if (!ENABLE_API_CALLS) return;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(apiUrl('/rpc/health'));
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as {
+          details?: Record<string, { status: string; latencyMs?: number; error?: string }>;
+        };
+        if (!data.details || cancelled) return;
+        const results: ChainHealth[] = Object.entries(data.details).map(([chain, info]) => ({
+          chain,
+          status: info.status === 'healthy' ? 'healthy' : 'unavailable',
+          latencyMs: info.latencyMs,
+          error: info.error,
+        }));
+        setChains(results);
+        setLastCheck(Date.now());
+      } catch {
+        // Backend unreachable — keep last known state
+      }
+    };
+
+    const id = setInterval(poll, 30_000);
+    // subscribe callback handles initial + recurring fetches
+    poll();
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
 
   return { chains, lastCheck };
 }
@@ -107,32 +110,31 @@ export function SystemStatus() {
   const { health } = useHealth();
   const { chains: rpcChains, lastCheck: rpcLastCheck } = useRpcHealth();
   const [showDiagnostics, setShowDiagnostics] = useState(false);
-  const now = Date.now();
 
   const coreServices: ServiceStatus[] = [
     {
       name: 'Backend API',
       status: health.status === 'ok' ? 'healthy' : health.status === 'degraded' ? 'degraded' : 'down',
       latency: 145,
-      lastCheck: now,
+      lastCheck: rpcLastCheck,
     },
     {
       name: 'Bot Engine',
       status: health.status === 'ok' ? 'healthy' : 'degraded',
       latency: 120,
-      lastCheck: now - 5000,
+      lastCheck: rpcLastCheck,
     },
     {
       name: 'WebSocket',
       status: 'healthy',
       latency: 45,
-      lastCheck: now - 2000,
+      lastCheck: rpcLastCheck,
     },
     {
       name: 'Strategy Manager',
       status: 'healthy',
       latency: 89,
-      lastCheck: now - 3000,
+      lastCheck: rpcLastCheck,
     },
   ];
 
