@@ -113,6 +113,10 @@ function isValidSolanaAddress(s: string): boolean {
   return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s);
 }
 
+function safeRpcHost(connection: { rpcEndpoint?: string }): string {
+  try { return new URL(connection.rpcEndpoint ?? '').host; } catch { return 'unknown'; }
+}
+
 /**
  * GET /api/solana/balance?address=<pubkey>&cluster=<cluster>
  * Returns SOL balance for the given address.
@@ -126,6 +130,7 @@ router.get('/balance', async (req: Request, res: Response) => {
   try {
     const cluster = getRequestCluster(req);
     const connection = getConnection(cluster);
+    console.log('[SOLANA_PROXY]', { endpoint: 'balance', cluster, rpcHost: safeRpcHost(connection) });
     const pubkey = new PublicKey(address);
     const lamports = await connection.getBalance(pubkey);
 
@@ -153,6 +158,7 @@ router.get('/token-accounts', async (req: Request, res: Response) => {
   try {
     const cluster = getRequestCluster(req);
     const connection = getConnection(cluster);
+    console.log('[SOLANA_PROXY]', { endpoint: 'token-accounts', cluster, rpcHost: safeRpcHost(connection) });
     const pubkey = new PublicKey(address);
 
     const tokenAccounts = await connection.getParsedTokenAccountsByOwner(pubkey, {
