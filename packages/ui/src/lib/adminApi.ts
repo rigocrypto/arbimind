@@ -139,6 +139,12 @@ export interface AIPredictionAccuracyRow {
   avg_return_pct?: number | null;
   median_return_pct?: number | null;
   avg_confidence?: number | null;
+  // camelCase aliases used by the admin dashboard normalizer
+  horizonSec?: number;
+  hitRate?: number | null;
+  avg_return?: number | null;
+  avgReturnPct?: number | null;
+  medianReturnPct?: number | null;
 }
 
 export interface AIWatchlistItem {
@@ -243,6 +249,14 @@ export const adminApi = {
       }>;
       window: string;
       timestamp?: string;
+      meta?: {
+        returnedPoints: number;
+        totalPointsForPair: number;
+        samplingSeconds: number;
+        retentionHours: number;
+        newestTs?: number;
+        oldestTs?: number;
+      };
     }>(`/admin/ai-dashboard/dex/history?${sp.toString()}`);
   },
   async getAIPredictions(pairAddress: string, window: '6h' | '24h' | '7d', limit = 200) {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { useAccount, useBalance } from 'wagmi';
+import { formatUnits } from 'viem';
 
 import type { FeedMode, Opportunity } from '@/lib/feed/types';
 import { WALLET_STATE_UPDATED_EVENT } from '@/lib/walletState';
@@ -83,7 +84,7 @@ export function useFeedWalletCta(opportunity: Opportunity | null, mode: FeedMode
       opportunity.chain !== 'EVM'
         ? true
         : evmNativeBalance
-          ? Number(evmNativeBalance.formatted) >= minEth
+          ? Number(formatUnits(evmNativeBalance.value, evmNativeBalance.decimals)) >= minEth
           : true;
 
     if (!chainConnected) {
@@ -127,7 +128,7 @@ export function useFeedWalletCta(opportunity: Opportunity | null, mode: FeedMode
     switch (opportunity.status) {
       case 'NEEDS_APPROVAL':
         return {
-          action: 'APPROVE',
+          action: 'APPROVE' as const,
           label: 'Approve tokens',
           hint: 'Approval step is required before simulation/execution.',
         };
@@ -139,19 +140,19 @@ export function useFeedWalletCta(opportunity: Opportunity | null, mode: FeedMode
         };
       case 'HIGH_RISK':
         return {
-          action: 'REVIEW_RISK',
+          action: 'REVIEW_RISK' as const,
           label: 'Review risk',
           hint: 'High volatility/MEV risk detected. Inspect details before action.',
         };
       case 'STALE':
         return {
-          action: 'INSPECT',
+          action: 'INSPECT' as const,
           label: 'Inspect',
           hint: 'Route is stale. Wait for the next live refresh before executing.',
         };
       default:
         return {
-          action: 'SIMULATE',
+          action: 'SIMULATE' as const,
           label: 'Simulate route',
           hint: 'Wallet-connected and ready for simulation.',
         };

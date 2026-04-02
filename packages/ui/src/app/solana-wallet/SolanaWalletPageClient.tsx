@@ -34,6 +34,10 @@ function solscanSuffixFor(cluster: SolanaCluster): string {
   return cluster === 'mainnet-beta' ? '' : `?cluster=${cluster}`;
 }
 
+function isValidSolanaAddress(s: string): boolean {
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s);
+}
+
 const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const SOLANA_TREASURY_ADDRESS =
   process.env.NEXT_PUBLIC_SOLANA_ARB_ACCOUNT || '6wmAm8uoPQTx9jEnGx4aDKwVFRSfdhKJfL2LJzwCmE6s';

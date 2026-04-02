@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
-import { useAccount, useBalance } from 'wagmi';
-import { parseEther } from 'viem';
+import { useAccount, useBalance, useReadContract } from 'wagmi';
+import { parseEther, erc20Abi } from 'viem';
 import toast from 'react-hot-toast';
 import { notifyWalletStateUpdated } from '@/lib/walletState';
 
@@ -27,9 +27,12 @@ export function useBalanceGuard() {
 
   const { data: ethBalance } = useBalance({ address });
   const usdcToken = address && chainId ? USDC_BY_CHAIN[chainId] : null;
-  const { data: usdcBalance } = useBalance({
-    address: address ?? undefined,
-    token: usdcToken ?? undefined,
+  const { data: usdcBalanceRaw } = useReadContract({
+    address: usdcToken ?? undefined,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: { enabled: Boolean(usdcToken && address) },
   });
 
   const checkBalance = useCallback((): boolean => {
@@ -39,11 +42,11 @@ export function useBalanceGuard() {
     const minUsdcRaw = BigInt(Math.floor(MIN_USDC * 1e6)); // USDC 6 decimals
 
     const ethOk = ethBalance?.value !== undefined && ethBalance.value >= minEthWei;
-    const usdcOk = usdcBalance?.value !== undefined && usdcBalance.value >= minUsdcRaw;
+    const usdcOk = usdcBalanceRaw != null && usdcBalanceRaw >= minUsdcRaw;
 
     // If we have no balance data yet, allow (don't block)
     const hasEthData = ethBalance?.value !== undefined;
-    const hasUsdcData = usdcBalance?.value !== undefined;
+    const hasUsdcData = usdcBalanceRaw != null;
     if (!hasEthData && !hasUsdcData) return true;
 
     if (ethOk || usdcOk) return true;
@@ -53,7 +56,7 @@ export function useBalanceGuard() {
       { duration: 5000 }
     );
     return false;
-  }, [isConnected, address, ethBalance?.value, usdcBalance?.value]);
+  }, [isConnected, address, ethBalance?.value, usdcBalanceRaw]);
 
   // Run balance check after wallet connects (delayed to avoid hydration/setState race with ConnectModal)
   useEffect(() => {
@@ -83,5 +86,5 @@ export function useBalanceGuard() {
     return () => clearTimeout(t);
   }, [isConnected, address, checkBalance]);
 
-  return { checkBalance, ethBalance, usdcBalance, minEth: MIN_ETH, minUsdc: MIN_USDC };
+  return { checkBalance, ethBalance, usdcBalance: usdcBalanceRaw, minEth: MIN_ETH, minUsdc: MIN_USDC };
 }
