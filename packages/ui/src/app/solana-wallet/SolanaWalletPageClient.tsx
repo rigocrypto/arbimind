@@ -40,7 +40,7 @@ function isValidSolanaAddress(s: string): boolean {
 
 const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const SOLANA_TREASURY_ADDRESS =
-  process.env.NEXT_PUBLIC_SOLANA_ARB_ACCOUNT || '6wmAm8uoPQTx9jEnGx4aDKwVFRSfdhKJfL2LJzwCmE6s';
+  process.env.NEXT_PUBLIC_SOLANA_ARB_ACCOUNT || '9FxVFhrdWMj4ptKoBJjUmS1R24JGh4dMZu6eiPynf7z3';
 // Override only the states that display the CTA text so it never regresses to "Select Wallet".
 const SOLANA_WALLET_BUTTON_LABELS = {
   'has-wallet': 'Manage Solana',
