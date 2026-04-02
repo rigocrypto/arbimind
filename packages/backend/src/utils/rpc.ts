@@ -4,6 +4,7 @@ export interface RpcHealthResult {
   chain: string;
   status: HealthStatus;
   rpcUrl: string | null;
+  latencyMs?: number;
   error?: string;
 }
 
@@ -111,17 +112,20 @@ export async function checkRpcHealth(chain: string): Promise<RpcHealthResult> {
   }
 
   try {
+    const start = Date.now();
+
     if (normalized === 'solana') {
       const response = await postJsonWithTimeout(rpcUrl, {
         jsonrpc: '2.0',
         id: 1,
         method: 'getHealth',
       });
+      const latencyMs = Date.now() - start;
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = (await response.json()) as { result?: string; error?: { message?: string } };
       if (payload.error) throw new Error(payload.error.message || 'RPC error');
       if (payload.result !== 'ok') throw new Error('Unexpected Solana health response');
-      return { chain: normalized, status: 'healthy', rpcUrl };
+      return { chain: normalized, status: 'healthy', rpcUrl, latencyMs };
     }
 
     const response = await postJsonWithTimeout(rpcUrl, {
@@ -130,12 +134,13 @@ export async function checkRpcHealth(chain: string): Promise<RpcHealthResult> {
       method: 'eth_chainId',
       params: [],
     });
+    const latencyMs = Date.now() - start;
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = (await response.json()) as { result?: string; error?: { message?: string } };
     if (payload.error) throw new Error(payload.error.message || 'RPC error');
     if (!payload.result) throw new Error('Missing eth_chainId result');
 
-    return { chain: normalized, status: 'healthy', rpcUrl };
+    return { chain: normalized, status: 'healthy', rpcUrl, latencyMs };
   } catch (error) {
     return {
       chain: normalized,
