@@ -14,7 +14,7 @@ function normalizeCluster(raw?: string | null): SolanaCluster {
   if (raw === 'devnet' || raw === 'testnet' || raw === 'mainnet-beta') return raw;
   const fromEnv = process.env.NEXT_PUBLIC_SOLANA_CLUSTER;
   if (fromEnv === 'devnet' || fromEnv === 'testnet' || fromEnv === 'mainnet-beta') return fromEnv;
-  return 'devnet';
+  return 'mainnet-beta';
 }
 
 function resolveRpcOverride(cluster: SolanaCluster): string {
