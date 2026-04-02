@@ -43,8 +43,17 @@ export function SafeResponsiveContainer({
       }
     });
 
+    // Fallback: if parent is in a hidden container (inactive tab, collapsed
+    // accordion) the ResizeObserver may never fire. Force render after a
+    // short delay so the chart isn't permanently invisible once the user
+    // switches back. Recharts will re-measure on visibility change.
+    const timer = setTimeout(() => setReady(true), 1000);
+
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      clearTimeout(timer);
+      ro.disconnect();
+    };
   }, []);
 
   return (

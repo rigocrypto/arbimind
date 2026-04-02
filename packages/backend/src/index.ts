@@ -9,6 +9,7 @@ import adminRoutes from './routes/admin';
 import opportunitiesRoutes from './routes/opportunities';
 import executeRoutes from './routes/execute';
 import solanaRoutes from './routes/solana';
+import { parseTreasuryDiagnostics } from './routes/solanaTx';
 import portfolioRoutes from './routes/portfolio';
 import snapshotsRoutes from './routes/snapshots';
 import rpcRoutes from './routes/rpc';
@@ -34,6 +35,18 @@ if (!process.env.ADMIN_KEY?.trim() && !process.env.ADMIN_API_KEY?.trim()) {
     };
   });
   console.log('[BACKEND_RPC_BOOT]', JSON.stringify(rpcStatus));
+}
+
+// Solana treasury key boot diagnostics — safe to log (no secrets, only status + pubkey)
+{
+  const td = parseTreasuryDiagnostics();
+  console.log('[TREASURY_BOOT]', JSON.stringify({
+    configured: td.configured,
+    reason: td.reason,
+    envVarSeen: td.envVarSeen,
+    formatDetected: td.formatDetected,
+    publicKey: td.publicKeyDerived,
+  }));
 }
 
 const app = express();
