@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import dynamic from 'next/dynamic';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
 import { MetricCard } from '@/components/MetricCard';
@@ -75,6 +75,27 @@ function makeNotification(type: NotificationItem['type'], message: string): Noti
   };
 }
 
+const AUTO_TRADE_KEY = 'arbimind:autoTrade';
+const AUTO_TRADE_EVENT = 'arbimind:autoTradeChanged';
+
+function subscribeAutoTrade(callback: () => void) {
+  window.addEventListener('storage', callback);
+  window.addEventListener(AUTO_TRADE_EVENT, callback);
+  return () => {
+    window.removeEventListener('storage', callback);
+    window.removeEventListener(AUTO_TRADE_EVENT, callback);
+  };
+}
+
+function getAutoTradeSnapshot(): boolean {
+  try { return window.localStorage.getItem(AUTO_TRADE_KEY) === '1'; }
+  catch { return false; }
+}
+
+function getAutoTradeServerSnapshot(): boolean {
+  return false;
+}
+
 export default function HomePage() {
   const { isConnected } = useAccount();
   const ctaVariant = useMemo(() => getPersistentCtaVariant(), []);
@@ -84,7 +105,29 @@ export default function HomePage() {
   const { opportunities, loading: opportunitiesLoading } = useOpportunities();
   const { start, stop, singleScan, reloadPrices, activeStrategy, isRunning, checkBalance } = useEngineContext();
   const [strategyMode, setStrategyMode] = useState<StrategyMode>('dex');
-  const [autoModeEnabled, setAutoModeEnabled] = useState(false);
+
+  // SSR-safe localStorage-backed toggle via useSyncExternalStore
+  const autoModeEnabled = useSyncExternalStore(
+    subscribeAutoTrade, getAutoTradeSnapshot, getAutoTradeServerSnapshot
+  );
+
+  // Write helper: updates localStorage and notifies useSyncExternalStore
+  const setAutoModeEnabledPersisted = useCallback((next: boolean) => {
+    try {
+      window.localStorage.setItem(AUTO_TRADE_KEY, next ? '1' : '0');
+      window.dispatchEvent(new Event(AUTO_TRADE_EVENT));
+    } catch { /* private mode */ }
+  }, []);
+
+  // Sync backend engine state → localStorage (no setState in effect)
+  const isRunningPrev = useRef(isRunning);
+  useEffect(() => {
+    if (isRunning !== isRunningPrev.current) {
+      isRunningPrev.current = isRunning;
+      setAutoModeEnabledPersisted(isRunning);
+    }
+  }, [isRunning, setAutoModeEnabledPersisted]);
+
   const [maxRiskPct, setMaxRiskPct] = useState(2);
   const [maxTradeSizeEth, setMaxTradeSizeEth] = useState(0.35);
   const [timelineStep, setTimelineStep] = useState<ExecutionTimelineStep>(0);
@@ -205,7 +248,7 @@ export default function HomePage() {
       if (!checkBalance()) return;
 
       await start(strategyForMode);
-      setAutoModeEnabled(true);
+      setAutoModeEnabledPersisted(true);
       setTimelineStatus('running');
       setTimelineStep(0);
       toast.success('Auto mode enabled');
@@ -217,7 +260,7 @@ export default function HomePage() {
     }
 
     await stop();
-    setAutoModeEnabled(false);
+    setAutoModeEnabledPersisted(false);
     setTimelineStatus('idle');
     setTimelineStep(0);
     toast.success('Auto mode disabled');
