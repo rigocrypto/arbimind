@@ -27,7 +27,7 @@ function normalizeSolanaCluster(raw?: string | null): SolanaCluster {
   if (raw === 'devnet' || raw === 'testnet' || raw === 'mainnet-beta') return raw;
   const fromEnv = process.env.NEXT_PUBLIC_SOLANA_CLUSTER;
   if (fromEnv === 'devnet' || fromEnv === 'testnet' || fromEnv === 'mainnet-beta') return fromEnv;
-  return 'devnet';
+  return 'mainnet-beta';
 }
 
 function solscanSuffixFor(cluster: SolanaCluster): string {
@@ -1065,6 +1065,7 @@ export default function SolanaWalletPageClient() {
           <span className="text-dark-600">|</span>
           <span className="text-sm font-medium text-cyan-400">Solana</span>
         </div>
+        {process.env.NODE_ENV !== 'production' && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs uppercase tracking-wide text-dark-400">Cluster</span>
           {SOLANA_CLUSTERS.map((cluster) => {
@@ -1088,6 +1089,7 @@ export default function SolanaWalletPageClient() {
             API: <span className="font-mono">{API_BASE}</span>
           </span>
         </div>
+        )}
 
         {/* Hero Section with Solana Logo and Parallax */}
         <motion.div
