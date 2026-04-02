@@ -10,6 +10,10 @@ export interface ArbitrageOpportunity {
   profitPercent: number;
   gasEstimate: string;
   netProfit: string;
+  /** Decimals of the input token — used to interpret netProfit/amountIn correctly */
+  decimalsIn: number;
+  /** Decimals of the output token — used to interpret profit correctly */
+  decimalsOut: number;
   route: string;
   timestamp: number;
 }

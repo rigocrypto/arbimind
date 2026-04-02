@@ -142,6 +142,8 @@ export class SolanaScanner {
           profitPercent: 0.5,
           gasEstimate: '0',
           netProfit: '0',
+          decimalsIn: 9,  // SOL = 9 decimals
+          decimalsOut: 6, // USDC = 6 decimals
           route: 'SOLANA',
           timestamp: Date.now(),
         },
