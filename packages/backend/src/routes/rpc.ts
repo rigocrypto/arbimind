@@ -22,13 +22,14 @@ router.get('/health', async (req: Request, res: Response) => {
 
   const checks = await Promise.all(chains.map((chain) => checkRpcHealth(chain)));
   const health: Record<string, string> = {};
-  const details: Record<string, { status: string; rpcUrl: string | null; error?: string }> = {};
+  const details: Record<string, { status: string; rpcUrl: string | null; latencyMs?: number; error?: string }> = {};
 
   for (const result of checks) {
     health[result.chain] = result.status;
     details[result.chain] = {
       status: result.status,
       rpcUrl: result.rpcUrl,
+      ...(result.latencyMs !== undefined ? { latencyMs: result.latencyMs } : {}),
       ...(result.error ? { error: result.error } : {}),
     };
   }

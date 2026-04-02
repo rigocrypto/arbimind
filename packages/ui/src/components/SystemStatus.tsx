@@ -1,10 +1,66 @@
 'use client';
 
 import type { ComponentType } from 'react';
-import { useState } from 'react';
-import { Activity, Server, Wifi, Database, Zap, CheckCircle2, AlertCircle, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Activity, Server, Wifi, Database, Zap, CheckCircle2, AlertCircle, XCircle, ChevronDown, ChevronUp, Globe } from 'lucide-react';
 import { useHealth } from '@/hooks/useArbiApi';
 import { useRelativeTime } from '@/hooks/useRelativeTime';
+import { apiUrl } from '@/lib/apiConfig';
+
+const ENABLE_API_CALLS = process.env.NEXT_PUBLIC_ENABLE_API === 'true';
+
+// ---- Per-chain RPC health hook ----
+
+interface ChainHealth {
+  chain: string;
+  status: 'healthy' | 'unavailable';
+  latencyMs?: number;
+  error?: string;
+}
+
+const CHAIN_LABELS: Record<string, string> = {
+  evm: 'EVM (Polygon)',
+  solana: 'Solana',
+  worldchain_sepolia: 'Worldchain',
+};
+
+function useRpcHealth() {
+  const [chains, setChains] = useState<ChainHealth[]>([]);
+  const [lastCheck, setLastCheck] = useState(0);
+
+  useEffect(() => {
+    if (!ENABLE_API_CALLS) return;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(apiUrl('/rpc/health'));
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as {
+          details?: Record<string, { status: string; latencyMs?: number; error?: string }>;
+        };
+        if (!data.details || cancelled) return;
+        const results: ChainHealth[] = Object.entries(data.details).map(([chain, info]) => ({
+          chain,
+          status: info.status === 'healthy' ? 'healthy' : 'unavailable',
+          latencyMs: info.latencyMs,
+          error: info.error,
+        }));
+        setChains(results);
+        setLastCheck(Date.now());
+      } catch {
+        // Backend unreachable — keep last known state
+      }
+    };
+
+    const id = setInterval(poll, 30_000);
+    // subscribe callback handles initial + recurring fetches
+    poll();
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  return { chains, lastCheck };
+}
 
 // Component to display service time (avoids hydration errors)
 function ServiceTime({ timestamp, latency }: { timestamp: number; latency: number }) {
@@ -48,54 +104,37 @@ const serviceIcons: Record<string, ComponentType<{ className?: string }>> = {
   'Bot Engine': Activity,
   'WebSocket': Wifi,
   'Strategy Manager': Zap,
-  'Blockchain RPC': Database,
 };
-
-const MOCK_BASE_TIME_MS = Date.parse('2026-01-01T00:00:00.000Z');
-
-const mockLogEntries = [
-  { offsetMs: 0, message: 'Backend API: Connected' },
-  { offsetMs: 5000, message: 'Bot Engine: Running' },
-  { offsetMs: 10000, message: 'WebSocket: 127 connections' },
-  { offsetMs: 15000, message: 'Strategy Manager: 3 strategies active' },
-  { offsetMs: 20000, message: 'RPC: Ethereum mainnet synced' },
-] as const;
 
 export function SystemStatus() {
   const { health } = useHealth();
+  const { chains: rpcChains, lastCheck: rpcLastCheck } = useRpcHealth();
   const [showDiagnostics, setShowDiagnostics] = useState(false);
 
-  // Mock services based on health status
-  const services: ServiceStatus[] = [
+  const coreServices: ServiceStatus[] = [
     {
       name: 'Backend API',
       status: health.status === 'ok' ? 'healthy' : health.status === 'degraded' ? 'degraded' : 'down',
       latency: 145,
-      lastCheck: MOCK_BASE_TIME_MS,
+      lastCheck: rpcLastCheck,
     },
     {
       name: 'Bot Engine',
       status: health.status === 'ok' ? 'healthy' : 'degraded',
       latency: 120,
-      lastCheck: MOCK_BASE_TIME_MS - 5000,
+      lastCheck: rpcLastCheck,
     },
     {
       name: 'WebSocket',
       status: 'healthy',
       latency: 45,
-      lastCheck: MOCK_BASE_TIME_MS - 2000,
+      lastCheck: rpcLastCheck,
     },
     {
       name: 'Strategy Manager',
       status: 'healthy',
       latency: 89,
-      lastCheck: MOCK_BASE_TIME_MS - 3000,
-    },
-    {
-      name: 'Blockchain RPC',
-      status: 'healthy',
-      latency: 234,
-      lastCheck: MOCK_BASE_TIME_MS - 1000,
+      lastCheck: rpcLastCheck,
     },
   ];
 
@@ -117,7 +156,7 @@ export function SystemStatus() {
       </div>
 
       <div className="space-y-2 sm:space-y-3">
-        {services.map((service) => {
+        {coreServices.map((service) => {
           const config = statusConfig[service.status];
           const Icon = serviceIcons[service.name] || Activity;
           const StatusIcon = config.icon;
@@ -149,16 +188,63 @@ export function SystemStatus() {
             </div>
           );
         })}
+
+        {/* Per-chain RPC status */}
+        <div className="pt-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-dark-400 mb-1.5 flex items-center gap-1.5">
+            <Globe className="w-3 h-3" /> Blockchain RPC
+          </p>
+          {rpcChains.length === 0 ? (
+            <div className="flex items-center justify-between p-3 sm:p-4 rounded-lg bg-green-500/20 border border-green-500/30">
+              <div className="flex items-center space-x-2 sm:space-x-3">
+                <Database className="w-4 h-4 sm:w-5 sm:h-5 text-green-400" />
+                <p className="text-xs sm:text-sm font-medium text-white">RPC</p>
+              </div>
+              <span className="text-xs text-dark-400">Loading…</span>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {rpcChains.map((rpc) => {
+                const healthy = rpc.status === 'healthy';
+                const config = statusConfig[healthy ? 'healthy' : 'down'];
+                const StatusIcon = config.icon;
+                return (
+                  <div
+                    key={rpc.chain}
+                    className={`flex items-center justify-between p-2.5 sm:p-3 rounded-lg ${config.bg} border ${config.border} transition-all duration-200`}
+                  >
+                    <div className="flex items-center space-x-2 min-w-0 flex-1">
+                      <Database className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${config.color} flex-shrink-0`} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs sm:text-sm font-medium text-white truncate">{CHAIN_LABELS[rpc.chain] ?? rpc.chain}</p>
+                        {healthy && rpc.latencyMs !== undefined ? (
+                          <p className="text-[11px] text-dark-400">{rpc.latencyMs}ms</p>
+                        ) : rpc.error ? (
+                          <p className="text-[11px] text-red-400 truncate">{rpc.error}</p>
+                        ) : null}
+                      </div>
+                    </div>
+                    <StatusIcon className={`w-4 h-4 ${config.color} flex-shrink-0`} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Diagnostics panel */}
       {showDiagnostics && (
         <div className="mt-6 p-4 rounded-lg bg-dark-800/50 border border-dark-700">
-          <h4 className="text-sm font-medium text-white mb-3">System Logs</h4>
+          <h4 className="text-sm font-medium text-white mb-3">RPC Diagnostics</h4>
           <div className="space-y-2 font-mono text-xs text-dark-400">
-            {mockLogEntries.map((entry) => (
-              <div key={entry.message}>
-                [{new Date(MOCK_BASE_TIME_MS - entry.offsetMs).toISOString()}] {entry.message}
+            <div>[{new Date(rpcLastCheck).toISOString()}] RPC health check completed</div>
+            {rpcChains.map((rpc) => (
+              <div key={rpc.chain}>
+                [{new Date(rpcLastCheck).toISOString()}] {CHAIN_LABELS[rpc.chain] ?? rpc.chain}:{' '}
+                {rpc.status === 'healthy'
+                  ? `OK${rpc.latencyMs !== undefined ? ` (${rpc.latencyMs}ms)` : ''}`
+                  : `FAIL — ${rpc.error ?? 'unavailable'}`}
               </div>
             ))}
           </div>
