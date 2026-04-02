@@ -20,7 +20,7 @@ import type { TimeseriesPoint } from '@/hooks/usePortfolio';
 interface PerformanceChartsProps {
   points: TimeseriesPoint[];
   /** When set, charts show "Est." to indicate approximated values */
-  method?: 'estimated_linear_ramp_to_current_equity';
+  method?: string;
   isLoading: boolean;
 }
 
