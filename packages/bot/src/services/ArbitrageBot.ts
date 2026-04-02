@@ -704,7 +704,7 @@ export class ArbitrageBot {
       return null;
     }
 
-    const profitPercent = (Number(profit) / Number(amountInBig)) * 100;
+    const profitPercent = (Number(profitInInputUnits) / Number(amountInBig)) * 100;
 
     return {
       tokenA: buyQuote.tokenIn,
