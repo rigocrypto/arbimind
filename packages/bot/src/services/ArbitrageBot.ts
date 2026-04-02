@@ -115,6 +115,15 @@ export class ArbitrageBot {
       pairsLoaded: this.tokenPairs.length,
       pairs: this.tokenPairs.map((p) => `${p.tokenA}/${p.tokenB}`),
     });
+
+    console.log('[PROFITABILITY_CONFIG]', {
+      swapAmountEth: this.botConfig.swapAmountEth,
+      minProfitEth: this.botConfig.minProfitEth,
+      minEdgeBps: this.botConfig.minEdgeBps,
+      maxGasGwei: this.botConfig.maxGasGwei,
+      maxSlippageBps: this.botConfig.maxSlippageBps,
+      logOnly: this.botConfig.logOnly,
+    });
     
     this.stats = {
       totalOpportunities: 0,
@@ -618,6 +627,18 @@ export class ArbitrageBot {
     const netProfit = profit - ethers.getBigInt(gasEstimate.totalCost);
 
     if (netProfit <= 0) {
+      console.log('[OPP_REJECTED_GAS]', {
+        pair: `${buyQuote.tokenIn}/${buyQuote.tokenOut}`,
+        route: `${buyQuote.dex} -> ${sellQuote.dex}`,
+        grossProfitWei: profit.toString(),
+        grossProfitEth: ethers.formatEther(profit),
+        gasCostWei: gasEstimate.totalCost,
+        gasCostEth: ethers.formatEther(gasEstimate.totalCost),
+        netProfitWei: netProfit.toString(),
+        amountIn,
+        swapAmountEth: this.botConfig.swapAmountEth,
+        cachedGasPriceGwei: (this.cachedGasPriceWei / 1e9).toFixed(4),
+      });
       return null;
     }
 
@@ -648,6 +669,13 @@ export class ArbitrageBot {
     const minProfitEth = this.botConfig.minProfitEth;
 
     if (parseFloat(netProfitEth) < minProfitEth) {
+      console.log('[OPP_REJECTED_MIN_PROFIT]', {
+        pair: `${opportunity.tokenA}/${opportunity.tokenB}`,
+        route: opportunity.route,
+        netProfitEth,
+        minProfitEth,
+        shortfall: (minProfitEth - parseFloat(netProfitEth)).toFixed(6),
+      });
       return false;
     }
 
@@ -655,7 +683,11 @@ export class ArbitrageBot {
     const currentGasPrice = this.getCurrentGasPrice();
     const currentGasGwei = currentGasPrice / 1e9;
     if (currentGasGwei > this.botConfig.maxGasGwei) {
-      this.logger.debug('Gas price too high, skipping opportunity');
+      console.log('[OPP_REJECTED_GAS_PRICE]', {
+        pair: `${opportunity.tokenA}/${opportunity.tokenB}`,
+        currentGasGwei: currentGasGwei.toFixed(4),
+        maxGasGwei: this.botConfig.maxGasGwei,
+      });
       return false;
     }
 
