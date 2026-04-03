@@ -152,10 +152,24 @@ async function queryFilterChunked(
       lastSuccessfulChunk = currentChunk;
       // Gradually grow chunk back toward original size after success
       currentChunk = Math.min(chunkSize, Math.ceil(currentChunk * 1.5));
-    } catch (err) {
+    } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      const errObj = err as { code?: string | number; body?: string; reason?: string; error?: { body?: string; message?: string } };
       const isRangeError =
         msg.includes('block range') || msg.includes('exceed') || msg.includes('Log response size exceeded');
+
+      // Log raw RPC error on first failure or at MIN_CHUNK_SIZE to diagnose provider rejections
+      if (consecutiveFailures === 0 || currentChunk <= MIN_CHUNK_SIZE) {
+        console.error('[queryFilterChunked] RAW ERROR:', JSON.stringify({
+          message: msg.slice(0, 400),
+          code: errObj.code,
+          reason: errObj.reason,
+          body: (errObj.body ?? errObj.error?.body ?? '').slice(0, 300),
+          innerMessage: errObj.error?.message?.slice(0, 200),
+          chunk: currentChunk,
+          blocks: `${start}-${end}`,
+        }));
+      }
 
       if (isRangeError && currentChunk > MIN_CHUNK_SIZE) {
         // Keep halving — no retry cap; let it reach MIN_CHUNK_SIZE naturally
@@ -194,6 +208,11 @@ const USDC_BY_CHAIN: Record<number, string> = {
 };
 
 export async function getEvmPortfolio(userAddress: string): Promise<PortfolioSummary | null> {
+  if (process.env.EVM_PORTFOLIO_SCAN_ENABLED === 'false') {
+    console.log('[PORTFOLIO] EVM scan disabled by config (EVM_PORTFOLIO_SCAN_ENABLED=false)');
+    return null;
+  }
+
   const arbAddress = process.env.EVM_ARB_ACCOUNT?.trim();
   if (!arbAddress || !/^0x[a-fA-F0-9]{40}$/.test(arbAddress)) return null;
   if (!/^0x[a-fA-F0-9]{40}$/.test(userAddress)) return null;
