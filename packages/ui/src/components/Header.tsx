@@ -7,10 +7,10 @@ import Image from 'next/image';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAccount, useConnect } from 'wagmi';
+import { useWallet } from '@solana/wallet-adapter-react';
 import { Menu, Wallet2, X } from 'lucide-react';
 import { NAV_ITEMS } from '@/config/nav';
 import { getPersistentCtaVariant, trackEvent } from '@/lib/analytics';
-import { WALLET_STATE_UPDATED_EVENT } from '@/lib/walletState';
 
 function truncateAddress(address?: string | null): string {
   if (!address) return '';
@@ -20,13 +20,6 @@ function truncateAddress(address?: string | null): string {
 function isActivePath(pathname: string, href: string): boolean {
   if (href === '/') return pathname === '/';
   return pathname === href || pathname.startsWith(`${href}/`);
-}
-
-function readSolanaWalletAddress(): string | null {
-  if (typeof window === 'undefined') return null;
-  const connected = window.localStorage.getItem('arbimind:wallet:solanaConnected') === '1';
-  const address = window.localStorage.getItem('arbimind:wallet:solanaAddress');
-  return connected && address ? address : null;
 }
 
 function isMetaMaskInAppBrowser() {
@@ -58,24 +51,12 @@ export function Header() {
   const pathname = usePathname();
   const { isConnected, address } = useAccount();
   const { connectAsync, connectors, isPending: isConnectPending } = useConnect();
+  const { publicKey, connected: solanaConnected } = useWallet();
+  const solanaAddress = publicKey?.toBase58() ?? null;
   const ctaVariant = useMemo(() => getPersistentCtaVariant(), []);
   const wasConnectedRef = useRef(isConnected);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
-  const [solanaAddress, setSolanaAddress] = useState<string | null>(() => readSolanaWalletAddress());
-
-  useEffect(() => {
-    const sync = () => setSolanaAddress(readSolanaWalletAddress());
-    window.addEventListener(WALLET_STATE_UPDATED_EVENT, sync);
-    window.addEventListener('storage', sync);
-    window.addEventListener('focus', sync);
-
-    return () => {
-      window.removeEventListener(WALLET_STATE_UPDATED_EVENT, sync);
-      window.removeEventListener('storage', sync);
-      window.removeEventListener('focus', sync);
-    };
-  }, []);
 
   useEffect(() => {
     if (!wasConnectedRef.current && isConnected) {
@@ -88,7 +69,6 @@ export function Header() {
   }, [isConnected, ctaVariant]);
 
   const ctaLabel = ctaVariant === 'A' ? 'Start in 60s' : 'Unlock live opportunities';
-  const solanaConnected = Boolean(solanaAddress);
   const evmLabel = isConnected ? truncateAddress(address) : 'EVM Wallet';
   const solLabel = solanaConnected ? truncateAddress(solanaAddress) : 'Solana Wallet';
   const isMetaMaskBrowser = useMemo(() => isMetaMaskInAppBrowser(), []);
