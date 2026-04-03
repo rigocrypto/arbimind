@@ -112,6 +112,25 @@ async function main(): Promise<void> {
       });
     }
 
+    // Structured boot summary for observability
+    console.log('[BOOT_SUMMARY]', JSON.stringify({
+      ts: new Date().toISOString(),
+      network: config.network,
+      evmChain: config.evmChain,
+      chainId: config.evmChainId,
+      mode: config.logOnly ? 'LOG_ONLY' : 'LIVE',
+      canary: config.canaryEnabled,
+      v3Enabled: !isEnvTrue(process.env['ENABLE_V3_QUOTES'] === 'false' ? 'false' : undefined),
+      scanIntervalMs: config.scanIntervalMs,
+      minProfitEth: config.minProfitEth,
+      minProfitUsd: config.minProfitUsd,
+      maxGasPriceGwei: config.maxGasPriceGwei,
+      maxSlippageBps: config.maxSlippageBps,
+      minEdgeBps: config.minEdgeBps,
+      swapAmountEth: config.swapAmountEth,
+      solanaEnabled: Boolean(process.env['SOLANA_SCANNER_ENABLED'] === 'true'),
+    }));
+
     // Create and start the arbitrage bot
     const bot = new ArbitrageBot();
     

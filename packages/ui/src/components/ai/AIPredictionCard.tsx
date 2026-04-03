@@ -39,9 +39,9 @@ interface AIPredictionCardProps {
 export default function AIPredictionCard({ prediction, tokenPair, isLoading = false }: AIPredictionCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const formatPercentage = (value: number) => `${(value * 100).toFixed(1)}%`;
-  const formatEth = (value: number) => `${value.toFixed(6)} ETH`;
-  const formatGwei = (value: number) => `${value.toFixed(0)} gwei`;
+  const formatPercentage = (value: number) => `${((value ?? 0) * 100).toFixed(1)}%`;
+  const formatEth = (value: number) => `${(value ?? 0).toFixed(6)} ETH`;
+  const formatGwei = (value: number) => `${(value ?? 0).toFixed(0)} gwei`;
 
   const getActionColor = (action: string) => {
     switch (action) {
@@ -149,7 +149,7 @@ export default function AIPredictionCard({ prediction, tokenPair, isLoading = fa
               </div>
               <div>
                 <span className="text-dark-400">Slippage:</span>
-                <span className="ml-2">{prediction.risk.recommendedSlippage.toFixed(2)}%</span>
+                <span className="ml-2">{(prediction.risk.recommendedSlippage ?? 0).toFixed(2)}%</span>
               </div>
               <div>
                 <span className="text-dark-400">Gas Price:</span>

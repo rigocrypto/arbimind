@@ -7,15 +7,23 @@ import { useHydrated } from './useHydrated';
  * Hook to format relative time that avoids hydration errors
  * Returns a stable value during SSR and updates on client
  */
-export function useRelativeTime(timestamp: number | string | Date): string {
+export function useRelativeTime(timestamp: number | string | Date | undefined | null): string {
   const [relativeTime, setRelativeTime] = useState('Just now');
   const mounted = useHydrated();
 
   useEffect(() => {
+    if (timestamp === undefined || timestamp === null) return;
+
     const updateTime = () => {
       const date = typeof timestamp === 'string' || typeof timestamp === 'number'
         ? new Date(timestamp)
         : timestamp;
+
+      if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+        setRelativeTime('Just now');
+        return;
+      }
+
       const now = new Date();
       const diffMs = now.getTime() - date.getTime();
       const diffSec = Math.floor(diffMs / 1000);

@@ -95,7 +95,7 @@ export function StrategySettingsModal({
               onChange={(e) => setMinProfit(parseFloat(e.target.value))}
               className="w-full h-3 sm:h-2 rounded-lg appearance-none cursor-pointer accent-cyan-500 bg-dark-700 touch-manipulation"
             />
-            <div className="text-xs text-dark-400 mt-1">{minProfit.toFixed(3)} ETH</div>
+            <div className="text-xs text-dark-400 mt-1">{(minProfit ?? 0).toFixed(3)} ETH</div>
           </div>
 
           <div>

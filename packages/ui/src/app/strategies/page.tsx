@@ -200,7 +200,7 @@ export default function StrategiesPage() {
           <div className="glass-card p-4">
             <div className="text-xs text-dark-400 mb-1">Total Profit</div>
             <div className="text-2xl font-bold text-white">
-              {displayStrategies.reduce((a, s) => a + Math.max(0, s.lastPnl), 0).toFixed(2)} ETH
+              {displayStrategies.reduce((a, s) => a + Math.max(0, s.lastPnl ?? 0), 0).toFixed(2)} ETH
             </div>
           </div>
           <div className="glass-card p-4">

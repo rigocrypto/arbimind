@@ -10,7 +10,6 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
-      - dependabot
     commit-message:
       prefix: "deps"
       include: scope
@@ -26,8 +25,22 @@ updates:
           - "next"
           - "react"
           - "react-dom"
-      dev-dependencies:
+      dev-dependencies-minor-patch:
         dependency-type: development
+        update-types:
+          - "minor"
+          - "patch"
+      dev-dependencies-major:
+        dependency-type: development
+        update-types:
+          - "major"
+    ignore:
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "lucide-react"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: "/"
@@ -39,7 +52,6 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
-      - dependabot
     commit-message:
       prefix: "deps"
       include: scope

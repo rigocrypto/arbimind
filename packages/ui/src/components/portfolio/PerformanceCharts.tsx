@@ -12,15 +12,15 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
 } from 'recharts';
+import { SafeResponsiveContainer } from '@/components/Charts/SafeResponsiveContainer';
 import { formatUSD, formatPercent } from '@/utils/format';
 import type { TimeseriesPoint } from '@/hooks/usePortfolio';
 
 interface PerformanceChartsProps {
   points: TimeseriesPoint[];
   /** When set, charts show "Est." to indicate approximated values */
-  method?: 'estimated_linear_ramp_to_current_equity';
+  method?: string;
   isLoading: boolean;
 }
 
@@ -82,7 +82,7 @@ export function PerformanceCharts({ points, method, isLoading }: PerformanceChar
           Equity curve {isEstimated && <span className="text-dark-500">(Est.)</span>}
         </div>
         <div className="h-48">
-          <ResponsiveContainer width="100%" height="100%">
+          <SafeResponsiveContainer>
             <LineChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.5} />
               <XAxis
@@ -107,7 +107,7 @@ export function PerformanceCharts({ points, method, isLoading }: PerformanceChar
                 dot={false}
               />
             </LineChart>
-          </ResponsiveContainer>
+          </SafeResponsiveContainer>
         </div>
       </div>
 
@@ -117,7 +117,7 @@ export function PerformanceCharts({ points, method, isLoading }: PerformanceChar
           Daily P&L {isEstimated && <span className="text-dark-500">(Est.)</span>}
         </div>
         <div className="h-40">
-          <ResponsiveContainer width="100%" height="100%">
+          <SafeResponsiveContainer>
             <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.5} />
               <XAxis
@@ -159,7 +159,7 @@ export function PerformanceCharts({ points, method, isLoading }: PerformanceChar
                 fillOpacity={0.7}
               />
             </BarChart>
-          </ResponsiveContainer>
+          </SafeResponsiveContainer>
         </div>
       </div>
 
@@ -169,7 +169,7 @@ export function PerformanceCharts({ points, method, isLoading }: PerformanceChar
           Drawdown {isEstimated && <span className="text-dark-500">(Est.)</span>}
         </div>
         <div className="h-40">
-          <ResponsiveContainer width="100%" height="100%">
+          <SafeResponsiveContainer>
             <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="ddGrad" x1="0" y1="0" x2="0" y2="1">
@@ -214,7 +214,7 @@ export function PerformanceCharts({ points, method, isLoading }: PerformanceChar
                 strokeWidth={1.5}
               />
             </AreaChart>
-          </ResponsiveContainer>
+          </SafeResponsiveContainer>
         </div>
       </div>
     </div>

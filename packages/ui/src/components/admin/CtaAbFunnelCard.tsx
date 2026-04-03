@@ -8,7 +8,7 @@ interface CtaAbFunnelCardProps {
 }
 
 function formatPct(value: number): string {
-  return `${value.toFixed(1)}%`;
+  return `${(value ?? 0).toFixed(1)}%`;
 }
 
 export function CtaAbFunnelCard({ report, range }: CtaAbFunnelCardProps) {

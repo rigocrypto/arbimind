@@ -6,7 +6,9 @@ import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
-import { useAccount, useBalance, useConnect, useDisconnect, useEnsName } from 'wagmi';
+import { useAccount, useBalance, useConnect, useDisconnect, useEnsName, useReadContract } from 'wagmi';
+import { formatUnits } from 'viem';
+import { erc20Abi } from 'viem';
 import {
   Wallet,
   Copy,
@@ -105,9 +107,12 @@ export default function WalletPage() {
   const { disconnect } = useDisconnect();
   const { data: ethBalance } = useBalance({ address });
   const usdcToken = address && chainId ? USDC_BY_CHAIN[chainId] : null;
-  const { data: usdcBalance } = useBalance({
-    address: address ?? undefined,
-    token: usdcToken ?? undefined,
+  const { data: usdcBalanceRaw } = useReadContract({
+    address: usdcToken ?? undefined,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: { enabled: Boolean(usdcToken && address) },
   });
   const { data: ensName } = useEnsName({ address });
   const [withdrawOpen, setWithdrawOpen] = useState(false);
@@ -138,8 +143,8 @@ export default function WalletPage() {
     }
   };
 
-  const ethVal = ethBalance ? parseFloat(ethBalance.formatted) : 0;
-  const usdcVal = usdcBalance ? Number(usdcBalance.formatted) / 1e6 : 0;
+  const ethVal = ethBalance ? parseFloat(formatUnits(ethBalance.value, ethBalance.decimals)) : 0;
+  const usdcVal = usdcBalanceRaw != null ? Number(formatUnits(usdcBalanceRaw, 6)) : 0;
   const totalUsd = ethVal * 3000 + usdcVal;
   const isLowBalance = ethVal < MIN_ETH && usdcVal < MIN_USDC;
   const explorerUrl = chain?.blockExplorers?.default?.url ?? '';
@@ -290,7 +295,7 @@ export default function WalletPage() {
                   <div>
                     <p className="text-xs uppercase tracking-[0.18em] text-dark-400">Available funds</p>
                     <p className="mt-1 text-lg font-bold text-white">{formatUSD(totalUsd)}</p>
-                    <p className="text-xs text-dark-400">{formatETH(ethVal)} ETH + {usdcVal.toFixed(2)} USDC</p>
+                    <p className="text-xs text-dark-400">{formatETH(ethVal)} ETH + {(usdcVal ?? 0).toFixed(2)} USDC</p>
                   </div>
                   <div>
                     <p className="text-xs uppercase tracking-[0.18em] text-dark-400">Bot activation</p>
@@ -437,7 +442,7 @@ export default function WalletPage() {
                     <Banknote className="w-4 h-4 text-green-400" />
                     <span className="text-xs text-dark-400">USDC</span>
                   </div>
-                  <div className="text-xl font-bold text-white">{usdcVal.toFixed(2)}</div>
+                  <div className="text-xl font-bold text-white">{(usdcVal ?? 0).toFixed(2)}</div>
                   <div className="text-xs text-dark-400 mt-1">≈ {formatUSD(usdcVal)}</div>
                 </div>
                 <div className="p-4 rounded-lg bg-dark-800/50 border border-dark-700">
@@ -465,6 +470,7 @@ export default function WalletPage() {
                 isError={portfolioError}
                 errorDetails={portfolioErrorDetails}
                 onRefresh={() => refetchPortfolio()}
+                scanSkipped={portfolio?.scanSkipped}
               />
             </motion.div>
 

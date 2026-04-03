@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const res = NextResponse.next();
 
   try {
@@ -95,7 +95,7 @@ export function middleware(req: NextRequest) {
 
     return res;
   } catch (e) {
-    console.error('CSP middleware error', e);
+    console.error('CSP proxy error', e);
     return res;
   }
 }

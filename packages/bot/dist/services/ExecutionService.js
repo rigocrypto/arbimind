@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ExecutionService = exports.ensureApproval = void 0;
+exports.ExecutionService = void 0;
+exports.ensureApproval = ensureApproval;
 const ethers_1 = require("ethers");
 const Logger_1 = require("../utils/Logger");
 const config_1 = require("../config");
@@ -39,7 +40,6 @@ async function ensureApproval(tokenAddress, spender, amount, wallet) {
         console.log('[APPROVED]', { token: tokenAddress, spender });
     }
 }
-exports.ensureApproval = ensureApproval;
 class ExecutionService {
     wallet;
     executorAddress;

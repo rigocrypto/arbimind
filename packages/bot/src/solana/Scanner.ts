@@ -65,6 +65,11 @@ export class SolanaScanner {
       return;
     }
 
+    if (!solanaConfig.enabled) {
+      logger.info('📭 Solana scanner disabled (set SOLANA_SCANNER_ENABLED=true to enable)');
+      return;
+    }
+
     if (solanaConfig.watchedPools.length === 0) {
       logger.info('📭 No Solana pools to watch; skipping scanner');
       return;
@@ -137,6 +142,8 @@ export class SolanaScanner {
           profitPercent: 0.5,
           gasEstimate: '0',
           netProfit: '0',
+          decimalsIn: 9,  // SOL = 9 decimals
+          decimalsOut: 6, // USDC = 6 decimals
           route: 'SOLANA',
           timestamp: Date.now(),
         },

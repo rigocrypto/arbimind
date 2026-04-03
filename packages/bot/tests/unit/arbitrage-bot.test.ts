@@ -5,12 +5,12 @@ import { ethers } from 'ethers';
 
 class MockPriceService {
   async getQuote(tokenIn: string, tokenOut: string, amountIn: string, dex: string): Promise<PriceQuote | null> {
-    if (dex === 'UNISWAP_V2') {
+    if (dex === 'UNISWAP_V2' || dex === 'SUSHISWAP') {
       return {
         tokenIn,
         tokenOut,
         amountIn,
-        amountOut: ethers.parseEther('1.0').toString(),
+        amountOut: ethers.parseUnits('2000', 6).toString(), // 2000 USDC.e (6 decimals)
         dex,
         fee: 0.003,
         timestamp: Date.now()
@@ -22,7 +22,7 @@ class MockPriceService {
         tokenIn,
         tokenOut,
         amountIn,
-        amountOut: ethers.parseEther('1.02').toString(),
+        amountOut: ethers.parseUnits('2040', 6).toString(), // 2040 USDC.e — 2% edge
         dex,
         fee: 0.003,
         timestamp: Date.now()
@@ -47,10 +47,11 @@ describe('ArbitrageBot (DI)', () => {
     const bot = new ArbitrageBot({
       priceService: new MockPriceService() as any,
       executionService: { executeArbitrage } as any,
-      tokenPairs: [{ tokenA: 'WETH', tokenB: 'USDC' }],
+      tokenPairs: [{ tokenA: 'WETH', tokenB: 'USDC.e' }],
       config: {
         minProfitEth: 0.001,
         maxGasGwei: 200,
+        swapAmountEth: 1,
         arbExecutorAddress: '0x0000000000000000000000000000000000000001',
         treasuryAddress: '0x0000000000000000000000000000000000000002',
         privateKey: '0x' + '11'.repeat(32)

@@ -1,6 +1,7 @@
 'use client';
 
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { SafeResponsiveContainer } from '@/components/Charts/SafeResponsiveContainer';
 
 export interface PricePoint {
   name: string;
@@ -16,7 +17,7 @@ export function PriceChart({ data }: PriceChartProps) {
     <div className="card">
       <div className="text-white font-semibold mb-3">Price (USD)</div>
       <div className="h-56">
-        <ResponsiveContainer width="100%" height="100%">
+        <SafeResponsiveContainer>
           <LineChart data={data} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
             <CartesianGrid stroke="#374151" strokeDasharray="3 3" opacity={0.4} />
             <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 10 }} axisLine={{ stroke: '#374151' }} tickLine={{ stroke: '#374151' }} />
@@ -24,7 +25,7 @@ export function PriceChart({ data }: PriceChartProps) {
             <Tooltip contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: 8 }} />
             <Line type="monotone" dataKey="priceUsd" stroke="#10b981" strokeWidth={2} dot={false} />
           </LineChart>
-        </ResponsiveContainer>
+        </SafeResponsiveContainer>
       </div>
     </div>
   );

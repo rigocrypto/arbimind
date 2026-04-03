@@ -1,6 +1,7 @@
 import { ethers } from 'ethers';
 import { config, type BotConfig } from '../config';
 import { DEX_CONFIG } from '../config';
+import { type DexConfig, getEligibleDexesForPair } from '../config/dexes';
 import { getTokenConfig, getEffectiveTokenPairs } from '../config/tokens';
 import { ArbitrageOpportunity, PriceQuote, BotStats } from '../types';
 import { PriceService } from './PriceService';
@@ -8,6 +9,16 @@ import { ExecutionService } from './ExecutionService';
 import { Logger } from '../utils/Logger';
 import { AiScoringService } from './AiScoringService';
 // AI orchestrator imports removed (not used in current flow)
+
+/** Tokens considered stablecoins for quote sanity filtering */
+const STABLE_TOKENS = new Set(['USDC', 'USDT', 'DAI']);
+
+/** Maximum spread (bps) before a cross-DEX pair is flagged as suspicious */
+const MAX_SANE_SPREAD_BPS = 1000; // 10%
+
+/** Stable/stable price must be within this range to be considered valid */
+const STABLE_PAIR_MIN_PRICE = 0.95;
+const STABLE_PAIR_MAX_PRICE = 1.05;
 
 export interface ArbitrageBotDependencies {
   config?: Partial<BotConfig>;
@@ -43,6 +54,11 @@ export class ArbitrageBot {
   private canaryDailyPnlEth: number = 0;
   private canaryDay: string = new Date().toISOString().slice(0, 10);
   private lastSanityTxAtMs: number = 0;
+  private cachedGasPriceWei: number = 20e9; // fallback 20 gwei, refreshed from provider
+  private lastGasPriceRefreshMs: number = 0;
+  /** Cached ETH/USD price derived from WETH/USDC quotes. Used to convert gas
+   *  costs when the input token is not ETH (e.g. USDC/USDT stable pairs). */
+  private cachedEthPriceUsd: number = 2000; // conservative fallback
   // last scan timestamp removed (not currently read anywhere)
 
   constructor(deps: ArbitrageBotDependencies = {}) {
@@ -102,6 +118,15 @@ export class ArbitrageBot {
       pairsLoaded: this.tokenPairs.length,
       pairs: this.tokenPairs.map((p) => `${p.tokenA}/${p.tokenB}`),
     });
+
+    console.log('[PROFITABILITY_CONFIG]', {
+      swapAmountEth: this.botConfig.swapAmountEth,
+      minProfitEth: this.botConfig.minProfitEth,
+      minEdgeBps: this.botConfig.minEdgeBps,
+      maxGasGwei: this.botConfig.maxGasGwei,
+      maxSlippageBps: this.botConfig.maxSlippageBps,
+      logOnly: this.botConfig.logOnly,
+    });
     
     this.stats = {
       totalOpportunities: 0,
@@ -135,6 +160,24 @@ export class ArbitrageBot {
     this.logger.info('Starting ArbiMind arbitrage bot...');
     this.isRunning = true;
     this.stats.startTime = Date.now();
+
+    // Log RPC/chain diagnostics
+    try {
+      const network = await this.provider.getNetwork();
+      const latestBlock = await this.provider.getBlockNumber();
+      const rpcHost = this.botConfig.ethereumRpcUrl
+        ? new URL(this.botConfig.ethereumRpcUrl).host
+        : 'unknown';
+      console.log('[RPC_BOOT]', {
+        network: this.botConfig.network,
+        evmChain: this.botConfig.evmChain,
+        chainId: Number(network.chainId),
+        rpcHost,
+        latestBlock,
+      });
+    } catch (e) {
+      console.warn('[RPC_BOOT] diagnostics failed:', e instanceof Error ? e.message : e);
+    }
 
     // Validate configuration
     this.validateSetup();
@@ -178,6 +221,7 @@ export class ArbitrageBot {
   private async runMainLoop(): Promise<void> {
     while (this.isRunning) {
       try {
+        await this.refreshGasPrice();
         await this.maybeRunSanityTransfer();
         await this.scanForOpportunities();
         await this.sleep(this.botConfig.scanIntervalMs);
@@ -305,6 +349,116 @@ export class ArbitrageBot {
   }
 
   /**
+   * Check if a pair is a stable/stable pair (both tokens are stablecoins)
+   */
+  private isStablePair(tokenA: string, tokenB: string): boolean {
+    return STABLE_TOKENS.has(tokenA) && STABLE_TOKENS.has(tokenB);
+  }
+
+  /**
+   * Sanity-check a quote's normalized price.
+   * Returns true if the quote should be kept, false if it should be rejected.
+   */
+  private isQuoteSane(
+    tokenA: string,
+    tokenB: string,
+    normalizedPrice: number,
+    dex: string
+  ): boolean {
+    // Stable/stable guard — price must be near 1:1
+    if (this.isStablePair(tokenA, tokenB)) {
+      if (normalizedPrice < STABLE_PAIR_MIN_PRICE || normalizedPrice > STABLE_PAIR_MAX_PRICE) {
+        console.log('[QUOTE_SANITY_REJECT]', {
+          pair: `${tokenA}/${tokenB}`,
+          dex,
+          normalizedPrice,
+          reason: 'stable_pair_out_of_range',
+          range: `${STABLE_PAIR_MIN_PRICE}-${STABLE_PAIR_MAX_PRICE}`,
+        });
+        return false;
+      }
+    }
+
+    // Reject obviously implausible quotes (zero or negative)
+    if (normalizedPrice <= 0 || !isFinite(normalizedPrice)) {
+      console.log('[QUOTE_SANITY_REJECT]', {
+        pair: `${tokenA}/${tokenB}`,
+        dex,
+        normalizedPrice,
+        reason: 'invalid_price',
+      });
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Log diagnostic info for a V2/SushiSwap pair when spread seems suspicious.
+   * Attempts to fetch on-chain reserves from the pair contract.
+   */
+  private async logPairDiagnostics(
+    tokenA: string,
+    tokenB: string,
+    dexName: string,
+    dexConfig: DexConfig,
+    spreadBps: number
+  ): Promise<void> {
+    // Only run diagnostics for V2-style DEXes with a factory
+    if (dexConfig.version !== 'v2' || !dexConfig.factory) return;
+
+    try {
+      const tokenAAddr = getTokenConfig(tokenA).address;
+      const tokenBAddr = getTokenConfig(tokenB).address;
+      const factoryAbi = ['function getPair(address,address) view returns (address)'];
+      const factory = new ethers.Contract(dexConfig.factory, factoryAbi, this.provider);
+      const pairAddress: string = await factory.getPair(tokenAAddr, tokenBAddr);
+
+      if (!pairAddress || pairAddress === ethers.ZeroAddress) {
+        console.log('[PAIR_DIAGNOSTIC]', {
+          dex: dexName,
+          pair: `${tokenA}/${tokenB}`,
+          pairAddress: 'NO_PAIR',
+          note: 'No direct pair exists — quote may route through intermediary',
+        });
+        return;
+      }
+
+      const pairAbi = [
+        'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+        'function token0() view returns (address)',
+        'function token1() view returns (address)',
+      ];
+      const pairContract = new ethers.Contract(pairAddress, pairAbi, this.provider);
+      const [reserves, token0] = await Promise.all([
+        pairContract.getReserves(),
+        pairContract.token0(),
+      ]);
+
+      const isToken0A = token0.toLowerCase() === tokenAAddr.toLowerCase();
+      const decimalsA = getTokenConfig(tokenA).decimals;
+      const decimalsB = getTokenConfig(tokenB).decimals;
+
+      console.log('[PAIR_DIAGNOSTIC]', {
+        dex: dexName,
+        pair: `${tokenA}/${tokenB}`,
+        pairAddress,
+        token0: isToken0A ? tokenA : tokenB,
+        token1: isToken0A ? tokenB : tokenA,
+        reserve0: ethers.formatUnits(reserves[0], isToken0A ? decimalsA : decimalsB),
+        reserve1: ethers.formatUnits(reserves[1], isToken0A ? decimalsB : decimalsA),
+        spreadBps: spreadBps.toFixed(2),
+      });
+    } catch (error) {
+      console.log('[PAIR_DIAGNOSTIC]', {
+        dex: dexName,
+        pair: `${tokenA}/${tokenB}`,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
    * Find arbitrage opportunities for a specific token pair
    */
   private async findOpportunitiesForPair(
@@ -312,16 +466,18 @@ export class ArbitrageBot {
     tokenB: string
   ): Promise<{ opportunities: ArbitrageOpportunity[]; quotesOk: number; quotesFailed: number }> {
     const opportunities: ArbitrageOpportunity[] = [];
-    const enabledDexes = Object.entries(DEX_CONFIG).filter(([_, cfg]) => cfg.enabled);
+    const enabledDexes = getEligibleDexesForPair(tokenA, tokenB);
+    this.logger.info(`[DEX_ELIGIBILITY] ${tokenA}/${tokenB} → ${enabledDexes.map(([n]) => n).join(', ')}`);
     let quotesOk = 0;
     let quotesFailed = 0;
 
     const quotes: PriceQuote[] = [];
-    const amountIn = ethers.parseEther(
-      String(this.botConfig.swapAmountEth ?? 0.001)
-    );
     const decimalsIn = getTokenConfig(tokenA).decimals;
     const decimalsOut = getTokenConfig(tokenB).decimals;
+    const amountIn = ethers.parseUnits(
+      String(this.botConfig.swapAmountEth ?? 0.001),
+      decimalsIn
+    );
 
     for (const [dexName] of enabledDexes) {
       try {
@@ -332,16 +488,25 @@ export class ArbitrageBot {
           dexName
         );
         if (quote) {
-          quotes.push(quote);
-          quotesOk++;
-          this.logger.debug('[QUOTE]', {
-            pair: `${tokenA}/${tokenB}`,
-            dex: quote.dex,
-            fee: quote.fee,
-            amountIn: amountIn.toString(),
-            amountOut: quote.amountOut,
-            price: Number(quote.amountOut) / Number(amountIn),
-          });
+          // Sanity-check the normalized price before accepting the quote
+          const normalizedPrice =
+            (Number(quote.amountOut) / 10 ** decimalsOut) /
+            (Number(amountIn) / 10 ** decimalsIn);
+
+          if (this.isQuoteSane(tokenA, tokenB, normalizedPrice, quote.dex)) {
+            quotes.push(quote);
+            quotesOk++;
+            this.logger.debug('[QUOTE]', {
+              pair: `${tokenA}/${tokenB}`,
+              dex: quote.dex,
+              fee: quote.fee,
+              amountIn: amountIn.toString(),
+              amountOut: quote.amountOut,
+              normalizedPrice,
+            });
+          } else {
+            quotesFailed++;
+          }
         } else {
           quotesFailed++;
         }
@@ -365,6 +530,16 @@ export class ArbitrageBot {
         ? (Number(v2Quote.amountOut) / 10 ** decimalsOut) / (amountInNum / 10 ** decimalsIn)
         : 'null',
     });
+
+    // Update cached ETH/USD price from WETH→stablecoin quotes
+    if (tokenA === 'WETH' && STABLE_TOKENS.has(tokenB) && quotes.length > 0) {
+      const bestQuote = quotes[0]!;
+      const ethPrice = (Number(bestQuote.amountOut) / 10 ** decimalsOut) /
+                        (amountInNum / 10 ** decimalsIn);
+      if (ethPrice > 0 && isFinite(ethPrice)) {
+        this.cachedEthPriceUsd = ethPrice;
+      }
+    }
 
     // Find arbitrage opportunities between different DEXes (with spread threshold)
     const minEdgeBps = this.botConfig.minEdgeBps ?? 10;
@@ -395,7 +570,30 @@ export class ArbitrageBot {
 
         if (spreadBps < minEdgeBps) continue;
 
-        const opportunity = this.calculateArbitrageOpportunity(quote1, quote2, amountIn.toString());
+        // Reject suspiciously large spreads — likely bad quote or thin liquidity
+        if (spreadBps > MAX_SANE_SPREAD_BPS) {
+          console.log('[SPREAD_SANITY_REJECT]', {
+            pair: `${tokenA}/${tokenB}`,
+            spreadBps: spreadBps.toFixed(2),
+            maxSaneBps: MAX_SANE_SPREAD_BPS,
+            dex1: quote1.dex,
+            dex2: quote2.dex,
+          });
+
+          // Fire diagnostics for V2-style DEXes to log on-chain reserves
+          for (const q of [quote1, quote2]) {
+            const dexCfg = DEX_CONFIG[q.dex];
+            if (dexCfg) {
+              // Fire-and-forget — don't block the scan loop
+              this.logPairDiagnostics(tokenA, tokenB, q.dex, dexCfg, spreadBps).catch(() => {});
+            }
+          }
+          continue;
+        }
+
+        const opportunity = this.calculateArbitrageOpportunity(
+          quote1, quote2, amountIn.toString(), decimalsIn, decimalsOut
+        );
         if (opportunity) {
           opportunities.push(opportunity);
         }
@@ -410,59 +608,157 @@ export class ArbitrageBot {
   }
 
   /**
-   * Calculate arbitrage opportunity between two quotes
+   * Calculate arbitrage opportunity between two quotes.
+   *
+   * `profit` (amountOut difference) is denominated in the **output token** (tokenB)
+   * which may have different decimals than ETH (e.g. USDC = 6).  Gas cost is always
+   * in wei (18 decimals).  To compare them we convert profit to ETH-equivalent wei
+   * using the quote's implied price: profitEthWei = profit * amountIn / amountOut
+   * (since amountIn is in the input token which for WETH pairs is already in wei).
    */
   private calculateArbitrageOpportunity(
     quote1: PriceQuote,
     quote2: PriceQuote,
-    amountIn: string
+    amountIn: string,
+    decimalsIn: number,
+    decimalsOut: number
   ): ArbitrageOpportunity | null {
     const amountInBig = ethers.getBigInt(amountIn);
     const amountOut1Big = ethers.getBigInt(quote1.amountOut);
     const amountOut2Big = ethers.getBigInt(quote2.amountOut);
 
     // Calculate profit (assuming we buy on DEX1 and sell on DEX2)
-    const profit = amountOut2Big > amountOut1Big ? amountOut2Big - amountOut1Big : ethers.getBigInt(0);
-    
-    if (profit <= 0) {
+    let buyQuote: PriceQuote;
+    let sellQuote: PriceQuote;
+    let profit: bigint;
+    if (amountOut2Big > amountOut1Big) {
+      // DEX2 gives more output — buy on DEX1 (cheaper), sell on DEX2 (pricier)
+      buyQuote = quote1;
+      sellQuote = quote2;
+      profit = amountOut2Big - amountOut1Big;
+    } else if (amountOut1Big > amountOut2Big) {
+      // DEX1 gives more output — buy on DEX2, sell on DEX1
+      buyQuote = quote2;
+      sellQuote = quote1;
+      profit = amountOut1Big - amountOut2Big;
+    } else {
       return null;
     }
 
-    // Estimate gas costs
+    // Convert profit from output-token units to input-token units using the
+    // average of the two quotes as the conversion rate.
+    // profitInInputUnits = profit * amountIn / avgAmountOut
+    // This gives us a like-for-like comparison with gas cost (both in input-token units,
+    // which for WETH pairs is wei).
+    const avgAmountOut = (amountOut1Big + amountOut2Big) / 2n;
+    let profitInInputUnits: bigint;
+    if (decimalsIn === decimalsOut) {
+      // Same decimals (e.g. USDC/USDT) — profit is already directly comparable
+      profitInInputUnits = profit;
+    } else if (avgAmountOut > 0n) {
+      profitInInputUnits = (profit * amountInBig) / avgAmountOut;
+    } else {
+      return null;
+    }
+
+    // Estimate gas costs — always computed in wei.
+    // For WETH-input pairs, profitInInputUnits is already in wei → direct comparison.
+    // For non-ETH input (e.g. USDC/USDT), convert gas from wei → input-token units
+    // using cachedEthPriceUsd.
     const gasEstimate = this.estimateGasCost();
-    const netProfit = profit - ethers.getBigInt(gasEstimate.totalCost);
+    const gasCostWei = ethers.getBigInt(gasEstimate.totalCost);
+    let gasCostInInputUnits: bigint;
 
-    if (netProfit <= 0) {
+    const inputIsEth = decimalsIn === 18 && buyQuote.tokenIn === 'WETH';
+    if (inputIsEth) {
+      gasCostInInputUnits = gasCostWei;
+    } else {
+      // Convert gas (wei) → ETH → USD → input-token raw units
+      const gasCostEth = Number(gasCostWei) / 1e18;
+      const gasCostUsd = gasCostEth * this.cachedEthPriceUsd;
+      // For stablecoins 1 USD ≈ 1 token unit; scale to raw units
+      gasCostInInputUnits = BigInt(Math.ceil(gasCostUsd * 10 ** decimalsIn));
+    }
+    const netProfit = profitInInputUnits - gasCostInInputUnits;
+
+    if (netProfit <= 0n) {
+      console.log('[OPP_REJECTED_GAS]', {
+        pair: `${buyQuote.tokenIn}/${buyQuote.tokenOut}`,
+        route: `${buyQuote.dex} -> ${sellQuote.dex}`,
+        grossProfitOutputUnits: profit.toString(),
+        grossProfitOutput: Number(profit) / 10 ** decimalsOut,
+        profitInInputUnits: profitInInputUnits.toString(),
+        profitInInputFormatted: ethers.formatUnits(profitInInputUnits, decimalsIn),
+        gasCostWei: gasEstimate.totalCost,
+        gasCostEth: ethers.formatEther(gasEstimate.totalCost),
+        gasCostInInputUnits: gasCostInInputUnits.toString(),
+        inputIsEth,
+        cachedEthPriceUsd: this.cachedEthPriceUsd,
+        netProfitInputUnits: netProfit.toString(),
+        amountIn,
+        swapAmountEth: this.botConfig.swapAmountEth,
+        cachedGasPriceGwei: (this.cachedGasPriceWei / 1e9).toFixed(4),
+        decimalsIn,
+        decimalsOut,
+      });
       return null;
     }
 
-    const profitPercent = (Number(profit) / Number(amountInBig)) * 100;
+    const profitPercent = (Number(profitInInputUnits) / Number(amountInBig)) * 100;
 
     return {
-      tokenA: quote1.tokenIn,
-      tokenB: quote1.tokenOut,
-      dex1: quote1.dex,
-      dex2: quote2.dex,
+      tokenA: buyQuote.tokenIn,
+      tokenB: buyQuote.tokenOut,
+      dex1: buyQuote.dex,
+      dex2: sellQuote.dex,
       amountIn,
-      amountOut1: quote1.amountOut,
-      amountOut2: quote2.amountOut,
+      amountOut1: buyQuote.amountOut,
+      amountOut2: sellQuote.amountOut,
       profit: profit.toString(),
       profitPercent,
       gasEstimate: gasEstimate.totalCost,
       netProfit: netProfit.toString(),
-      route: `${quote1.dex} -> ${quote2.dex}`,
+      decimalsIn,
+      decimalsOut,
+      route: `${buyQuote.dex} -> ${sellQuote.dex}`,
       timestamp: Date.now()
     };
   }
 
   /**
-   * Check if an opportunity is profitable enough to execute
+   * Check if an opportunity is profitable enough to execute.
+   *
+   * `netProfit` is denominated in input-token units (wei for WETH pairs,
+   * raw token units for others).  We convert to ETH-equivalent before
+   * comparing against `minProfitEth`.
    */
   private isProfitable(opportunity: ArbitrageOpportunity): boolean {
-    const netProfitEth = ethers.formatEther(opportunity.netProfit);
+    const decimals = opportunity.decimalsIn;
+    const inputIsEth = decimals === 18 && opportunity.tokenA === 'WETH';
+
+    let netProfitEth: number;
+    if (inputIsEth) {
+      netProfitEth = parseFloat(ethers.formatEther(opportunity.netProfit));
+    } else {
+      // Convert input-token profit → ETH via cached ETH/USD price
+      const profitInTokenUnits = parseFloat(ethers.formatUnits(opportunity.netProfit, decimals));
+      // For stablecoins, 1 token ≈ $1
+      netProfitEth = profitInTokenUnits / this.cachedEthPriceUsd;
+    }
+
     const minProfitEth = this.botConfig.minProfitEth;
 
-    if (parseFloat(netProfitEth) < minProfitEth) {
+    if (netProfitEth < minProfitEth) {
+      console.log('[OPP_REJECTED_MIN_PROFIT]', {
+        pair: `${opportunity.tokenA}/${opportunity.tokenB}`,
+        route: opportunity.route,
+        netProfitEth: netProfitEth.toFixed(8),
+        minProfitEth,
+        shortfall: (minProfitEth - netProfitEth).toFixed(6),
+        decimalsIn: decimals,
+        inputIsEth,
+        cachedEthPriceUsd: this.cachedEthPriceUsd,
+      });
       return false;
     }
 
@@ -470,7 +766,11 @@ export class ArbitrageBot {
     const currentGasPrice = this.getCurrentGasPrice();
     const currentGasGwei = currentGasPrice / 1e9;
     if (currentGasGwei > this.botConfig.maxGasGwei) {
-      this.logger.debug('Gas price too high, skipping opportunity');
+      console.log('[OPP_REJECTED_GAS_PRICE]', {
+        pair: `${opportunity.tokenA}/${opportunity.tokenB}`,
+        currentGasGwei: currentGasGwei.toFixed(4),
+        maxGasGwei: this.botConfig.maxGasGwei,
+      });
       return false;
     }
 
@@ -523,7 +823,9 @@ export class ArbitrageBot {
         return false;
       }
 
-      const amountInEth = parseFloat(ethers.formatEther(opportunity.amountIn));
+      const amountInFormatted = parseFloat(ethers.formatUnits(opportunity.amountIn, opportunity.decimalsIn));
+      // For non-ETH input, convert to ETH-equivalent for canary comparison
+      const amountInEth = opportunity.tokenA === 'WETH' ? amountInFormatted : amountInFormatted / this.cachedEthPriceUsd;
       if (amountInEth > this.botConfig.canaryNotionalEth) {
         this.logger.info('🧪 Canary skip: opportunity exceeds max notional', {
           amountInEth,
@@ -536,15 +838,16 @@ export class ArbitrageBot {
 
     if (this.botConfig.logOnly) {
       console.log(
-        `[EXECUTE_SKIP_LOG_ONLY] route=${opportunity.route} tokenA=${opportunity.tokenA} tokenB=${opportunity.tokenB} netProfitEth=${ethers.formatEther(opportunity.netProfit)}`
+        `[EXECUTE_SKIP_LOG_ONLY] route=${opportunity.route} tokenA=${opportunity.tokenA} tokenB=${opportunity.tokenB} netProfit=${ethers.formatUnits(opportunity.netProfit, opportunity.decimalsIn)} profit=${ethers.formatUnits(opportunity.profit, opportunity.decimalsOut)}`
       );
-      this.logger.info('Testnet mode: skipping real execution', {
+      this.logger.info('Dry-run mode: skipping real execution (LOG_ONLY=true)', {
         tokenA: opportunity.tokenA,
         tokenB: opportunity.tokenB,
         dex1: opportunity.dex1,
         dex2: opportunity.dex2,
-        profit: ethers.formatEther(opportunity.profit),
-        netProfit: ethers.formatEther(opportunity.netProfit)
+        profit: ethers.formatUnits(opportunity.profit, opportunity.decimalsOut),
+        netProfit: ethers.formatUnits(opportunity.netProfit, opportunity.decimalsIn),
+        evmChainId: this.botConfig.evmChainId,
       });
       return true;
     }
@@ -554,8 +857,8 @@ export class ArbitrageBot {
       tokenB: opportunity.tokenB,
       dex1: opportunity.dex1,
       dex2: opportunity.dex2,
-      profit: ethers.formatEther(opportunity.profit),
-      netProfit: ethers.formatEther(opportunity.netProfit)
+      profit: ethers.formatUnits(opportunity.profit, opportunity.decimalsOut),
+      netProfit: ethers.formatUnits(opportunity.netProfit, opportunity.decimalsIn)
     });
 
     if (!this.executionService) {
@@ -568,7 +871,7 @@ export class ArbitrageBot {
 
     try {
       console.log(
-        `[EXECUTE_ATTEMPT] ts=${new Date().toISOString()} route=${opportunity.route} tokenA=${opportunity.tokenA} tokenB=${opportunity.tokenB} netProfitEth=${ethers.formatEther(opportunity.netProfit)}`
+        `[EXECUTE_ATTEMPT] ts=${new Date().toISOString()} route=${opportunity.route} tokenA=${opportunity.tokenA} tokenB=${opportunity.tokenB} netProfit=${ethers.formatUnits(opportunity.netProfit, opportunity.decimalsIn)}`
       );
       const result = await this.executionService.executeArbitrage(opportunity);
       
@@ -580,11 +883,11 @@ export class ArbitrageBot {
         
         this.logger.info('Arbitrage executed successfully', {
           hash: result.hash,
-          profit: ethers.formatEther(result.profit),
+          profit: ethers.formatUnits(result.profit, opportunity.decimalsOut),
           gasUsed: result.gasUsed
         });
         console.log(
-          `[EXECUTE_OK] hash=${result.hash} gasUsed=${result.gasUsed} profitEth=${ethers.formatEther(result.profit)}`
+          `[EXECUTE_OK] hash=${result.hash} gasUsed=${result.gasUsed} profit=${ethers.formatUnits(result.profit, opportunity.decimalsOut)} ${opportunity.tokenB}`
         );
         this.updateCanaryPnl(result);
         this.updateStats();
@@ -661,21 +964,37 @@ export class ArbitrageBot {
    */
   private estimateGasCost(): { totalCost: string } {
     const gasLimit = 300000; // Conservative estimate
-    const gasPrice = this.getCurrentGasPrice();
+    const gasPrice = this.cachedGasPriceWei;
     const totalCost = gasLimit * gasPrice;
-    
+
     return {
       totalCost: totalCost.toString()
     };
   }
 
   /**
-   * Get current gas price in wei
+   * Get current gas price in wei (cached, refreshed from provider)
    */
   private getCurrentGasPrice(): number {
-    // This would typically come from a gas price oracle
-    // For now, return a conservative estimate
-    return 20 * 1e9; // 20 gwei in wei
+    return this.cachedGasPriceWei;
+  }
+
+  /**
+   * Refresh gas price from provider (call periodically, e.g. each scan tick)
+   */
+  private async refreshGasPrice(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastGasPriceRefreshMs < 15_000) return; // refresh at most every 15s
+    try {
+      const feeData = await this.provider.getFeeData();
+      const price = feeData.maxFeePerGas ?? feeData.gasPrice;
+      if (price && price > 0n) {
+        this.cachedGasPriceWei = Number(price);
+        this.lastGasPriceRefreshMs = now;
+      }
+    } catch {
+      // keep cached value on failure
+    }
   }
 
   /**

@@ -70,12 +70,40 @@ function runLoop(): void {
     });
 }
 
+/**
+ * Guard: block simulated engine unless SIMULATED_ENGINE_ENABLED=true.
+ * Default-deny — does NOT depend on NODE_ENV being set correctly.
+ */
+function isEngineAllowed(): boolean {
+  return process.env.SIMULATED_ENGINE_ENABLED === 'true';
+}
+
 router.post('/start', (req: Request, res: Response): Response => {
+  if (!isEngineAllowed()) {
+    console.warn('[ENGINE_BLOCKED] Simulated engine denied (SIMULATED_ENGINE_ENABLED !== "true")');
+    return res.status(403).json({ status: 'blocked', message: 'Simulated engine disabled. Set SIMULATED_ENGINE_ENABLED=true to enable.' });
+  }
   try {
     const { strategy = 'arbitrage', referrer, walletAddress, walletChain } = req.body || {};
     if (!VALID_STRATEGIES.has(strategy)) {
       return res.status(400).json({ status: 'error', message: `Invalid strategy. Must be one of: ${[...VALID_STRATEGIES].join(', ')}` });
     }
+
+    // Idempotency: if same strategy is already running, return success without restarting
+    if (activeStrategy === strategy && scanInterval !== null) {
+      console.log(`[ENGINE_IDEMPOTENT] ${strategy} already running — no-op`);
+      return res.json({
+        status: 'success',
+        strategy,
+        active: true,
+        idempotent: true,
+        referrer: currentReferrer ?? undefined,
+        walletChain: activeWalletChain ?? undefined,
+        walletAddress: activeWalletAddress ?? undefined,
+        timestamp: Date.now(),
+      });
+    }
+
     activeStrategy = strategy;
     currentReferrer = typeof referrer === 'string' && /^0x[a-fA-F0-9]{40}$/.test(referrer) ? referrer : null;
     const normalizedChain = walletChain === 'solana' || walletChain === 'evm' ? walletChain : null;

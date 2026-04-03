@@ -16,6 +16,7 @@ interface ArbAccountCardProps {
   errorDetails?: PortfolioErrorDetails | null;
   onRefresh?: () => void;
   arbAddressDisplay?: string;
+  scanSkipped?: boolean;
 }
 
 export function ArbAccountCard({
@@ -25,6 +26,7 @@ export function ArbAccountCard({
   errorDetails,
   onRefresh,
   arbAddressDisplay,
+  scanSkipped,
 }: ArbAccountCardProps) {
   const arbAddr = arbAddressDisplay ?? summary?.arbAddress ?? '';
   const totalDeposited = summary?.totals.depositedUsd ?? 0;
@@ -128,13 +130,19 @@ export function ArbAccountCard({
         </div>
       )}
 
+      {scanSkipped && (
+        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-200">
+          EVM portfolio scanning is paused. Data shown may be stale.
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
         <div className="p-3 rounded-lg bg-dark-800/50 border border-dark-700">
           <div className="text-xs text-dark-400">Deposited</div>
           <div className="text-sm font-bold text-white">
             {formatUSD(totalDeposited)}
             {depositedSolEquivalent !== null && (
-              <span className="text-dark-300"> · {depositedSolEquivalent.toFixed(SOL_EQUIV_DECIMALS)} SOL</span>
+              <span className="text-dark-300"> · {(depositedSolEquivalent ?? 0).toFixed(SOL_EQUIV_DECIMALS)} SOL</span>
             )}
           </div>
           <div className="text-[10px] text-dark-500 mt-0.5">Est. (static price)</div>
@@ -144,7 +152,7 @@ export function ArbAccountCard({
           <div className="text-sm font-bold text-white">
             {formatUSD(totalWithdrawn)}
             {withdrawnSolEquivalent !== null && (
-              <span className="text-dark-300"> · {withdrawnSolEquivalent.toFixed(SOL_EQUIV_DECIMALS)} SOL</span>
+              <span className="text-dark-300"> · {(withdrawnSolEquivalent ?? 0).toFixed(SOL_EQUIV_DECIMALS)} SOL</span>
             )}
           </div>
           <div className="text-[10px] text-dark-500 mt-0.5">Est. (static price)</div>
@@ -177,7 +185,7 @@ export function ArbAccountCard({
                 : 'text-dark-400'
             }`}
           >
-            {roiPct !== undefined ? `${roiPct >= 0 ? '+' : ''}${roiPct.toFixed(2)}%` : '—'}
+            {roiPct !== undefined ? `${roiPct >= 0 ? '+' : ''}${(roiPct ?? 0).toFixed(2)}%` : '—'}
           </div>
         </div>
       </div>

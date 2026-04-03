@@ -8,6 +8,7 @@ import type { TimeseriesPoint } from '../services/portfolioService';
 
 let pool: Pool | null = null;
 let schemaInitialized = false;
+let schemaInitPromise: Promise<void> | null = null;
 
 const SCHEMA_INIT_MAX_RETRIES = 3;
 const SCHEMA_INIT_RETRY_DELAY_MS = 2000;
@@ -113,32 +114,38 @@ on funnel_events (event_ts desc);
 export async function initSchema(): Promise<void> {
   const p = getPool();
   if (!p || schemaInitialized) return;
-  for (let attempt = 1; attempt <= SCHEMA_INIT_MAX_RETRIES; attempt++) {
-    try {
-      await p.query(SCHEMA_SQL);
-      schemaInitialized = true;
-      console.log('[portfolioDb] Schema initialized');
-      return;
-    } catch (err) {
-      const code =
-        typeof err === 'object' && err !== null && 'code' in err
-          ? String((err as { code?: string }).code ?? '')
-          : '';
-      const shouldRetry =
-        TRANSIENT_SCHEMA_INIT_CODES.has(code) && attempt < SCHEMA_INIT_MAX_RETRIES;
+  if (schemaInitPromise) return schemaInitPromise;
 
-      if (shouldRetry) {
-        console.warn(
-          `[portfolioDb] Schema init transient failure (code=${code}), retry ${attempt}/${SCHEMA_INIT_MAX_RETRIES} in ${SCHEMA_INIT_RETRY_DELAY_MS}ms`
-        );
-        await new Promise((resolve) => setTimeout(resolve, SCHEMA_INIT_RETRY_DELAY_MS));
-        continue;
+  schemaInitPromise = (async () => {
+    for (let attempt = 1; attempt <= SCHEMA_INIT_MAX_RETRIES; attempt++) {
+      try {
+        await p.query(SCHEMA_SQL);
+        schemaInitialized = true;
+        console.log('[portfolioDb] Schema initialized');
+        return;
+      } catch (err) {
+        const code =
+          typeof err === 'object' && err !== null && 'code' in err
+            ? String((err as { code?: string }).code ?? '')
+            : '';
+        const shouldRetry =
+          TRANSIENT_SCHEMA_INIT_CODES.has(code) && attempt < SCHEMA_INIT_MAX_RETRIES;
+
+        if (shouldRetry) {
+          console.warn(
+            `[portfolioDb] Schema init transient failure (code=${code}), retry ${attempt}/${SCHEMA_INIT_MAX_RETRIES} in ${SCHEMA_INIT_RETRY_DELAY_MS}ms`
+          );
+          await new Promise((resolve) => setTimeout(resolve, SCHEMA_INIT_RETRY_DELAY_MS));
+          continue;
+        }
+
+        console.error('[portfolioDb] Schema init failed:', err);
+        return;
       }
-
-      console.error('[portfolioDb] Schema init failed:', err);
-      return;
     }
-  }
+  })();
+
+  return schemaInitPromise;
 }
 
 /** Touch user (upsert portfolio_users). Fire-and-forget. */
@@ -873,4 +880,10 @@ export async function getLastSnapshotRun(chain: 'evm' | 'solana'): Promise<Snaps
     console.warn('[portfolioDb] getLastSnapshotRun failed:', err);
     return null;
   }
+}
+
+/** @internal Reset singleton state for tests. */
+export function _resetSchemaState(): void {
+  schemaInitialized = false;
+  schemaInitPromise = null;
 }

@@ -55,18 +55,18 @@ const columns = [
   }),
   columnHelper.accessor('grossProfit', {
     header: 'Gross',
-    cell: (info) => `${info.getValue().toFixed(4)} ETH`,
+    cell: (info) => `${(info.getValue() ?? 0).toFixed(4)} ETH`,
   }),
   columnHelper.accessor('netProfit', {
     header: 'Net',
     cell: (info) => {
       const v = info.getValue();
-      return <span className={v >= 0 ? 'text-green-400' : 'text-red-400'}>{v.toFixed(4)} ETH</span>;
+      return <span className={v >= 0 ? 'text-green-400' : 'text-red-400'}>{(v ?? 0).toFixed(4)} ETH</span>;
     },
   }),
   columnHelper.accessor('gasCost', {
     header: 'Gas',
-    cell: (info) => `${info.getValue().toFixed(4)} ETH`,
+    cell: (info) => `${(info.getValue() ?? 0).toFixed(4)} ETH`,
   }),
   columnHelper.accessor('blockNumber', {
     header: 'Block',
@@ -98,6 +98,8 @@ export function AdminTxTable({
     return out;
   }, [txs, strategyFilter, statusFilter]);
 
+  // columns is module-scoped (stable), data is memoized — TanStack internal pattern triggers false positive
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data: filteredTxs,
     columns,

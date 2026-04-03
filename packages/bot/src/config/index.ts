@@ -81,8 +81,10 @@ export interface BotConfig {
   
   // Risk Management
   maxSlippagePercent: number;
+  maxSlippageBps: number;
   maxGasPriceGwei: number;
   minLiquidityEth: number;
+  minProfitUsd: number;
 
   // AI Scoring (optional)
   aiPredictUrl?: string | undefined;
@@ -277,8 +279,10 @@ function createConfig(): BotConfig {
     
     // Risk Management
     maxSlippagePercent: parseFloat(process.env['MAX_SLIPPAGE_PERCENT'] || '1.0'),
+    maxSlippageBps: parseInt(process.env['MAX_SLIPPAGE_BPS'] || '100', 10),
     maxGasPriceGwei: parseFloat(process.env['MAX_GAS_PRICE_GWEI'] || '100'),
     minLiquidityEth: parseFloat(process.env['MIN_LIQUIDITY_ETH'] || '10'),
+    minProfitUsd: parseFloat(process.env['MIN_PROFIT_USD'] || '1.0'),
 
     // AI Scoring (optional)
     aiPredictUrl: process.env['AI_PREDICT_URL'],

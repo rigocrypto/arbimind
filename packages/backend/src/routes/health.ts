@@ -7,7 +7,9 @@ router.get('/', (req: Request, res: Response) => {
     success: true,
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    network: process.env['NETWORK'] || 'mainnet',
+    evmChain: process.env['EVM_CHAIN'] || 'arbitrum',
   });
 });
 

@@ -68,6 +68,10 @@ function getPortfolioFallbackDiagnostic(reason: string, fix: string): PortfolioF
   };
 }
 
+function isEvmScanDisabled(): boolean {
+  return process.env.EVM_PORTFOLIO_SCAN_ENABLED === 'false';
+}
+
 function getErrorReason(err: unknown): string {
   if (err instanceof Error) return err.message;
   return 'Unknown error';
@@ -95,6 +99,23 @@ router.get('/evm', async (req: Request, res: Response) => {
   if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
     return res.status(400).json({ error: 'Valid EVM address required' });
   }
+
+  if (isEvmScanDisabled()) {
+    console.info('[PORTFOLIO_ROUTE] EVM scan disabled — returning empty 200');
+    return res.json({
+      scanSkipped: true,
+      chain: 'evm',
+      userAddress: address,
+      arbAddress: process.env.EVM_ARB_ACCOUNT?.trim() ?? '',
+      totals: {},
+      balances: [],
+      deposits: [],
+      withdrawals: [],
+      updatedAt: Date.now(),
+    });
+  }
+
+  console.log(`[PORTFOLIO_ROUTE] route=/evm chain=evm wallet=${address.slice(0,8)}`);
   try {
     const summary = await getEvmPortfolio(address);
     if (!summary) {
@@ -129,6 +150,13 @@ router.get('/evm/timeseries', async (req: Request, res: Response) => {
   if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
     return res.status(400).json({ error: 'Valid EVM address required' });
   }
+
+  if (isEvmScanDisabled()) {
+    console.info('[PORTFOLIO_ROUTE] EVM scan disabled — returning empty timeseries 200');
+    return res.json({ points: [], method: 'scan_disabled' as const, scanSkipped: true });
+  }
+
+  console.log(`[PORTFOLIO_ROUTE] route=/evm/timeseries chain=evm wallet=${address.slice(0,8)} range=${range}`);
   try {
     const days = range === '7d' ? 7 : range === '90d' ? 90 : 30;
     const now = Date.now();
@@ -174,6 +202,7 @@ router.get('/solana', async (req: Request, res: Response) => {
   if (!address || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) {
     return res.status(400).json({ error: 'Valid Solana address required' });
   }
+  console.log(`[PORTFOLIO_ROUTE] route=/solana chain=solana wallet=${address.slice(0,8)}`);
   try {
     const summary = await getSolanaPortfolio(address);
     if (!summary) {
@@ -208,6 +237,7 @@ router.get('/solana/timeseries', async (req: Request, res: Response) => {
   if (!address || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) {
     return res.status(400).json({ error: 'Valid Solana address required' });
   }
+  console.log(`[PORTFOLIO_ROUTE] route=/solana/timeseries chain=solana wallet=${address.slice(0,8)} range=${range}`);
   try {
     const days = range === '7d' ? 7 : range === '90d' ? 90 : 30;
     const now = Date.now();

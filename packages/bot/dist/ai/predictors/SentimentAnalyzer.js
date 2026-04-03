@@ -63,7 +63,7 @@ class SentimentAnalyzer {
             const randomFactor = (Math.random() - 0.5) * 0.4;
             return Math.max(-1, Math.min(1, popularityScore + randomFactor));
         }
-        catch (error) {
+        catch {
             this.logger.debug('Twitter sentiment analysis failed', { tokenSymbol });
             return 0;
         }
@@ -90,7 +90,7 @@ class SentimentAnalyzer {
             const randomFactor = (Math.random() - 0.5) * 0.3;
             return Math.max(-1, Math.min(1, baseSentiment + randomFactor));
         }
-        catch (error) {
+        catch {
             this.logger.debug('Reddit sentiment analysis failed', { tokenSymbol });
             return 0;
         }
@@ -117,7 +117,7 @@ class SentimentAnalyzer {
             const randomFactor = (Math.random() - 0.5) * 0.2;
             return Math.max(-1, Math.min(1, baseSentiment + randomFactor));
         }
-        catch (error) {
+        catch {
             this.logger.debug('News sentiment analysis failed', { tokenSymbol });
             return 0;
         }
@@ -135,7 +135,7 @@ class SentimentAnalyzer {
             const randomFactor = (Math.random() - 0.5) * 0.4;
             return Math.max(-1, Math.min(1, baseSentiment + randomFactor));
         }
-        catch (error) {
+        catch {
             this.logger.debug('Telegram sentiment analysis failed', { tokenSymbol });
             return 0;
         }
