@@ -470,6 +470,7 @@ export default function WalletPage() {
                 isError={portfolioError}
                 errorDetails={portfolioErrorDetails}
                 onRefresh={() => refetchPortfolio()}
+                scanSkipped={portfolio?.scanSkipped}
               />
             </motion.div>
 
