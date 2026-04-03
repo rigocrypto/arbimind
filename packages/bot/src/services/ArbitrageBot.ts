@@ -351,6 +351,8 @@ export class ArbitrageBot {
           const { approved, scored } = await this.isAiApproved(opportunity);
           if (scored) scoredOpps++;
 
+          // Gate 1: isProfitable() — loose ETH-denominated sanity check (MIN_PROFIT_ETH)
+          // Gate 2: passesTradeGuards() — authoritative USD floor (MIN_PROFIT_USD)
           if (this.isProfitable(opportunity) && this.passesTradeGuards(opportunity) && approved) {
             const success = await this.executeArbitrage(opportunity);
             if (success) executed++;

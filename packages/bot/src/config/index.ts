@@ -270,7 +270,8 @@ function createConfig(): BotConfig {
     allowTestnetTrades,
     
     // Bot Configuration
-    minProfitEth: parseFloat(process.env['MIN_PROFIT_ETH'] || '0.01'),
+    // Loose sanity filter — the real profit floor is MIN_PROFIT_USD in passesTradeGuards()
+    minProfitEth: parseFloat(process.env['MIN_PROFIT_ETH'] || '0.0001'),
     maxGasGwei: parseFloat(process.env['MAX_GAS_GWEI'] || '50'),
     minProfitThreshold: parseFloat(process.env['MIN_PROFIT_THRESHOLD'] || '0.005'),
     scanIntervalMs: parseInt(process.env['SCAN_INTERVAL_MS'] || (isTestnet ? '5000' : '200'), 10),
