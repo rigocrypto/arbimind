@@ -86,27 +86,58 @@ function coalesce<T extends PortfolioSummary | null>(
 }
 
 const MIN_CHUNK_SIZE = 10;
-const MAX_RETRIES_PER_CHUNK = 3;
-const MAX_CONSECUTIVE_FAILURES = 5;
-const RETRY_DELAY_MS = 500;
+const MAX_CONSECUTIVE_FAILURES = 8;
+const RETRY_DELAY_MS = 300;
+
+/** Approximate blocks/day by chain — used for lookback and default chunk sizing. */
+function blocksPerDay(chainId: number): number {
+  switch (chainId) {
+    case 42161: return 345_600;   // Arbitrum One (~250ms blocks)
+    case 8453:  return 43_200;    // Base (~2s blocks)
+    default:    return 7_200;     // Ethereum mainnet (~12s blocks)
+  }
+}
+
+/** Sensible default eth_getLogs chunk size by chain (unless env-overridden). */
+function defaultLogChunkSize(chainId: number): number {
+  if (EVM_LOG_CHUNK_BLOCKS !== 900) return EVM_LOG_CHUNK_BLOCKS; // env override
+  switch (chainId) {
+    case 42161: return 20_000;  // Arbitrum: fast blocks, many per range
+    case 8453:  return 5_000;   // Base
+    default:    return 900;     // Ethereum
+  }
+}
+
+// --- Deposit scan progress cache (per wallet:chain:token → avoids re-scanning) ---
+interface DepositScanProgress {
+  lastBlock: number;
+  deposits: Array<{ tx: string; ts: number; symbol: string; amount: string; usd?: number }>;
+  totalRaw: string; // bigint serialised as decimal string
+  updatedAt: number;
+}
+const depositScanCache = new Map<string, DepositScanProgress>();
+const DEPOSIT_CACHE_TTL_MS = 5 * 60 * 1000;
 
 async function queryFilterChunked(
   contract: ethers.Contract,
   filter: unknown,
   fromBlock: number,
   toBlock: number,
-  chunkSize: number = EVM_LOG_CHUNK_BLOCKS
+  chunkSize: number = EVM_LOG_CHUNK_BLOCKS,
 ): Promise<ethers.EventLog[]> {
   const events: ethers.EventLog[] = [];
   let start = fromBlock;
   let currentChunk = chunkSize;
-  let retriesForCurrentChunk = 0;
   let consecutiveFailures = 0;
+  let lastSuccessfulChunk = chunkSize;
+  const totalBlocks = toBlock - fromBlock + 1;
+  let scannedBlocks = 0;
 
   while (start <= toBlock) {
     if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
       console.warn(
-        `[queryFilterChunked] ${MAX_CONSECUTIVE_FAILURES} consecutive failures — aborting. Returning ${events.length} partial results (stopped at block ${start}).`
+        `[queryFilterChunked] ${MAX_CONSECUTIVE_FAILURES} consecutive failures — aborting. ` +
+        `Scanned ${scannedBlocks}/${totalBlocks} blocks, returning ${events.length} partial results (stopped at block ${start}).`,
       );
       break;
     }
@@ -115,42 +146,37 @@ async function queryFilterChunked(
     try {
       const chunk = (await contract.queryFilter(filter as never, start, end)) as ethers.EventLog[];
       events.push(...chunk);
+      scannedBlocks += end - start + 1;
       start = end + 1;
-      currentChunk = chunkSize;
-      retriesForCurrentChunk = 0;
       consecutiveFailures = 0;
+      lastSuccessfulChunk = currentChunk;
+      // Gradually grow chunk back toward original size after success
+      currentChunk = Math.min(chunkSize, Math.ceil(currentChunk * 1.5));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const isRangeError =
         msg.includes('block range') || msg.includes('exceed') || msg.includes('Log response size exceeded');
 
-      if (isRangeError) {
-        retriesForCurrentChunk++;
-
-        if (retriesForCurrentChunk > MAX_RETRIES_PER_CHUNK || currentChunk <= MIN_CHUNK_SIZE) {
-          console.warn(
-            `[queryFilterChunked] skipping blocks ${start}-${end} after ${retriesForCurrentChunk} retries (chunk=${currentChunk})`
-          );
-          consecutiveFailures++;
-          start = end + 1;
-          currentChunk = chunkSize;
-          retriesForCurrentChunk = 0;
-          continue;
-        }
-
+      if (isRangeError && currentChunk > MIN_CHUNK_SIZE) {
+        // Keep halving — no retry cap; let it reach MIN_CHUNK_SIZE naturally
         const halved = Math.max(MIN_CHUNK_SIZE, Math.floor(currentChunk / 2));
-        if (retriesForCurrentChunk === 1) {
-          console.warn(`[queryFilterChunked] block range error at ${start}-${end}, reducing chunk to ${halved}`);
-        }
+        console.warn(
+          `[queryFilterChunked] range error at ${start}-${end} (chunk=${currentChunk}), reducing to ${halved}`,
+        );
         currentChunk = halved;
         await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
         continue;
       }
 
-      // Non-recoverable error — log and skip this chunk
-      console.error(`[queryFilterChunked] non-recoverable error at ${start}-${end}:`, msg);
+      // At MIN_CHUNK_SIZE with range error, or non-recoverable — skip this small range
+      console.warn(
+        `[queryFilterChunked] skipping blocks ${start}-${end} ` +
+        `(chunk=${currentChunk}, rangeErr=${isRangeError}, err=${msg.slice(0, 300)})`,
+      );
       consecutiveFailures++;
       start = end + 1;
+      // Recover using last known working chunk size (NOT the original chunkSize)
+      currentChunk = lastSuccessfulChunk > MIN_CHUNK_SIZE ? lastSuccessfulChunk : MIN_CHUNK_SIZE;
     }
   }
 
@@ -199,24 +225,49 @@ export async function getEvmPortfolio(userAddress: string): Promise<PortfolioSum
       ]) ?? 'https://eth.llamarpc.com'
     );
     const chainId = (await provider.getNetwork()).chainId;
+    const chainIdNum = Number(chainId);
+    console.log(`[PORTFOLIO_SCAN] chain=evm chainId=${chainIdNum} wallet=${userAddress.slice(0,8)}`);
 
     const deposits: PortfolioSummary['deposits'] = [];
     const balances: PortfolioSummary['balances'] = [];
     let totalDepositedUsdc = 0n;
 
-    const BLOCKS_PER_DAY = 7200; // ~12s/block
+    const BLOCKS_PER_DAY = blocksPerDay(chainIdNum);
     const lookbackBlocks = 30 * BLOCKS_PER_DAY;
     const currentBlock = await provider.getBlockNumber();
     const fromBlock = Math.max(0, currentBlock - lookbackBlocks);
 
     const ethAbi = ['event Transfer(address indexed from, address indexed to, uint256 value)'];
-    const usdcAddress = USDC_BY_CHAIN[Number(chainId)] ?? USDC_MAINNET;
+    const usdcAddress = USDC_BY_CHAIN[chainIdNum] ?? USDC_MAINNET;
 
     const usdc = new ethers.Contract(usdcAddress, ethAbi, provider);
     const usdcFilter = usdc.filters?.Transfer?.(userAddress, arbAddress) ?? null;
-    const usdcEvents = usdcFilter
-      ? await queryFilterChunked(usdc, usdcFilter, fromBlock, currentBlock)
-      : [];
+
+    // --- Incremental USDC scan with deposit cache ---
+    const effectiveChunkSize = defaultLogChunkSize(chainIdNum);
+    const depositCacheKey = `${userAddress.toLowerCase()}:${chainIdNum}:usdc`;
+    const cachedProgress = depositScanCache.get(depositCacheKey);
+    const hasFreshCache =
+      cachedProgress &&
+      Date.now() - cachedProgress.updatedAt < DEPOSIT_CACHE_TTL_MS &&
+      cachedProgress.lastBlock >= fromBlock;
+
+    const scanFrom = hasFreshCache ? cachedProgress.lastBlock + 1 : fromBlock;
+    console.log(
+      `[PORTFOLIO_SCAN] usdc fromBlock=${fromBlock} scanFrom=${scanFrom} toBlock=${currentBlock} ` +
+      `chunkSize=${effectiveChunkSize} cached=${!!hasFreshCache}`,
+    );
+
+    const usdcEvents =
+      usdcFilter && scanFrom <= currentBlock
+        ? await queryFilterChunked(usdc, usdcFilter, scanFrom, currentBlock, effectiveChunkSize)
+        : [];
+
+    // Merge cached deposits first
+    if (hasFreshCache) {
+      totalDepositedUsdc = BigInt(cachedProgress.totalRaw);
+      deposits.push(...cachedProgress.deposits);
+    }
 
     for (const ev of usdcEvents) {
       const block = await ev.getBlock();
@@ -230,6 +281,14 @@ export async function getEvmPortfolio(userAddress: string): Promise<PortfolioSum
         amount: ethers.formatUnits(amount, 6),
       });
     }
+
+    // Update deposit scan cache for incremental scanning
+    depositScanCache.set(depositCacheKey, {
+      lastBlock: currentBlock,
+      deposits: deposits.filter((d) => d.symbol === 'USDC'),
+      totalRaw: totalDepositedUsdc.toString(),
+      updatedAt: Date.now(),
+    });
 
     // Native ETH deposits (behind env flag to avoid RPC cost surprises)
     let ethDeposited = 0;
