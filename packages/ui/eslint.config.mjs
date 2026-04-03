@@ -9,8 +9,8 @@ const config = [
     rules: {
       'react-hooks/static-components': 'off',
       'react-hooks/set-state-in-effect': 'error',
-      'react-hooks/preserve-manual-memoization': 'off',
-      'react-hooks/incompatible-library': 'off',
+      'react-hooks/preserve-manual-memoization': 'warn',
+      'react-hooks/incompatible-library': 'warn',
       'react-hooks/purity': 'error',
       '@typescript-eslint/no-require-imports': 'off'
     }
