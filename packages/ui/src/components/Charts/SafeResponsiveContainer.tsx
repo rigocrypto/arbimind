@@ -26,7 +26,18 @@ export function SafeResponsiveContainer({
   ...rest
 }: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [ready, setReady] = useState(false);
+  // null = not ready; { width, height } = measured and ready to render.
+  // Using state (not a ref) so the value is safe to read during render.
+  const [measured, setMeasured] = useState<{ width: number; height: number } | null>(null);
+
+  const tryMeasure = (el: HTMLDivElement): boolean => {
+    const rect = el.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      setMeasured({ width: Math.round(rect.width), height: Math.round(rect.height) });
+      return true;
+    }
+    return false;
+  };
 
   // 1. Synchronous check on first render via ref callback — if the
   //    container already has layout we mark ready immediately without
@@ -34,30 +45,22 @@ export function SafeResponsiveContainer({
   //    inside useEffect.
   const refCallback = (el: HTMLDivElement | null) => {
     ref.current = el;
-    if (el && !ready) {
-      const rect = el.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        setReady(true);
-      }
+    if (el && !measured) {
+      tryMeasure(el);
     }
   };
 
   useEffect(() => {
-    if (ready) return;
+    if (measured) return;
 
     const el = ref.current;
     if (!el) return;
 
     // 2. ResizeObserver for when layout arrives after mount.
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width: w, height: h } = entry.contentRect;
-        if (w > 0 && h > 0) {
-          setReady(true);
-          ro.disconnect();
-          clearInterval(poll);
-          return;
-        }
+    const ro = new ResizeObserver(() => {
+      if (tryMeasure(el)) {
+        ro.disconnect();
+        clearInterval(poll);
       }
     });
 
@@ -65,9 +68,7 @@ export function SafeResponsiveContainer({
     //    accordions) may never trigger ResizeObserver. Poll every 500ms
     //    but *only* set ready when dimensions are actually positive.
     const poll = setInterval(() => {
-      const r = el.getBoundingClientRect();
-      if (r.width > 0 && r.height > 0) {
-        setReady(true);
+      if (tryMeasure(el)) {
         clearInterval(poll);
         ro.disconnect();
       }
@@ -78,16 +79,17 @@ export function SafeResponsiveContainer({
       clearInterval(poll);
       ro.disconnect();
     };
-  }, [ready]);
+  }, [measured]);
 
   return (
     <div ref={refCallback} style={{ width: '100%', height: '100%', minWidth, minHeight }}>
-      {ready ? (
+      {measured ? (
         <ResponsiveContainer
           width={width}
           height={height}
           minWidth={minWidth}
           minHeight={minHeight}
+          initialDimension={measured}
           {...rest}
         >
           {children}
