@@ -98,6 +98,8 @@ export function AdminTxTable({
     return out;
   }, [txs, strategyFilter, statusFilter]);
 
+  // columns is module-scoped (stable), data is memoized — TanStack internal pattern triggers false positive
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data: filteredTxs,
     columns,

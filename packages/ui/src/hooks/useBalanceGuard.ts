@@ -56,7 +56,7 @@ export function useBalanceGuard() {
       { duration: 5000 }
     );
     return false;
-  }, [isConnected, address, ethBalance?.value, usdcBalanceRaw]);
+  }, [isConnected, address, ethBalance, usdcBalanceRaw]);
 
   // Run balance check after wallet connects (delayed to avoid hydration/setState race with ConnectModal)
   useEffect(() => {
