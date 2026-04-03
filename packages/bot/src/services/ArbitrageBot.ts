@@ -325,6 +325,29 @@ export class ArbitrageBot {
         opportunitiesFound += opportunities.length;
 
         for (const opportunity of opportunities) {
+          // TEMP DEBUG — remove after sizing verification
+          const _inputIsEth = opportunity.decimalsIn === 18 && opportunity.tokenA === 'WETH';
+          const _netProfitFormatted = parseFloat(ethers.formatUnits(opportunity.netProfit, opportunity.decimalsIn));
+          const _netProfitUsd = _inputIsEth
+            ? _netProfitFormatted * this.cachedEthPriceUsd
+            : _netProfitFormatted; // stablecoin ≈ $1
+          console.log('[TRADE_SIZING_SANITY]', {
+            swapAmountEth: this.botConfig.swapAmountEth,
+            amountInRaw: opportunity.amountIn,
+            amountInFormatted: ethers.formatUnits(opportunity.amountIn, opportunity.decimalsIn),
+            decimalsIn: opportunity.decimalsIn,
+            tokenA: opportunity.tokenA,
+            tokenB: opportunity.tokenB,
+            route: opportunity.route,
+            grossProfitOutput: ethers.formatUnits(opportunity.profit, opportunity.decimalsOut),
+            netProfitInput: ethers.formatUnits(opportunity.netProfit, opportunity.decimalsIn),
+            netProfitUsd: _netProfitUsd.toFixed(4),
+            gasEstimateWei: opportunity.gasEstimate,
+            gasEstimateEth: ethers.formatEther(opportunity.gasEstimate),
+            cachedEthPriceUsd: this.cachedEthPriceUsd,
+            profitPercent: opportunity.profitPercent.toFixed(4),
+          });
+
           const { approved, scored } = await this.isAiApproved(opportunity);
           if (scored) scoredOpps++;
 

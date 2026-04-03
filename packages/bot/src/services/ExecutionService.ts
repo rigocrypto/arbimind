@@ -176,12 +176,19 @@ export class ExecutionService {
   const gasPrice = await this.wallet.provider?.getFeeData?.();
   if (!gasPrice) throw new Error('Failed to fetch gas price data');
       
-      // Execute transaction
+      // Cap priority fee to limit MEV exposure (2 gwei ceiling)
+      const MAX_PRIORITY_FEE = ethers.parseUnits('2', 'gwei');
+      const cappedPriorityFee = gasPrice?.maxPriorityFeePerGas
+        ? (gasPrice.maxPriorityFeePerGas > MAX_PRIORITY_FEE ? MAX_PRIORITY_FEE : gasPrice.maxPriorityFeePerGas)
+        : MAX_PRIORITY_FEE;
+
+      // Execute transaction (EIP-1559 type 2)
       const tx = await this.wallet.sendTransaction({
         ...txData,
+        type: 2,
         gasLimit: gasEstimate,
         maxFeePerGas: gasPrice?.maxFeePerGas,
-        maxPriorityFeePerGas: gasPrice?.maxPriorityFeePerGas
+        maxPriorityFeePerGas: cappedPriorityFee
       });
 
       this.logger.info('Arbitrage transaction sent', {
