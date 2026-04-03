@@ -8,6 +8,7 @@ import { PriceService } from './PriceService';
 import { ExecutionService } from './ExecutionService';
 import { Logger } from '../utils/Logger';
 import { AiScoringService } from './AiScoringService';
+import { AlertService } from './AlertService';
 // AI orchestrator imports removed (not used in current flow)
 
 /** Tokens considered stablecoins for quote sanity filtering */
@@ -27,6 +28,7 @@ export interface ArbitrageBotDependencies {
   priceService?: PriceService;
   executionService?: ExecutionService;
   aiScoringService?: AiScoringService;
+  alertService?: AlertService;
   logger?: Logger;
   tokenPairs?: Array<{ tokenA: string; tokenB: string }>;
 }
@@ -44,6 +46,7 @@ export class ArbitrageBot {
   private priceService: PriceService;
   private executionService: ExecutionService | undefined;
   private aiScoringService: AiScoringService | undefined;
+  private alertService: AlertService;
   private readonly botConfig: BotConfig;
   private readonly tokenPairs: Array<{ tokenA: string; tokenB: string }>;
   // AI orchestrator currently unused in main loop; keep for future use
@@ -110,6 +113,7 @@ export class ArbitrageBot {
       : undefined;
 
     this.aiScoringService = deps.aiScoringService ?? (aiConfig ? new AiScoringService(aiConfig) : undefined);
+    this.alertService = deps.alertService ?? new AlertService(this.botConfig.alertDiscordWebhook);
     // AI orchestrator initialization deferred until used
     // this.aiOrchestrator = new AIOrchestrator();
     this.tokenPairs = deps.tokenPairs ?? getEffectiveTokenPairs();
@@ -125,6 +129,9 @@ export class ArbitrageBot {
       minEdgeBps: this.botConfig.minEdgeBps,
       maxGasGwei: this.botConfig.maxGasGwei,
       maxSlippageBps: this.botConfig.maxSlippageBps,
+      maxTradeSizeEth: this.botConfig.maxTradeSizeEth,
+      maxGasUsd: this.botConfig.maxGasUsd,
+      minProfitUsd: this.botConfig.minProfitUsd,
       logOnly: this.botConfig.logOnly,
     });
     
@@ -321,7 +328,7 @@ export class ArbitrageBot {
           const { approved, scored } = await this.isAiApproved(opportunity);
           if (scored) scoredOpps++;
 
-          if (this.isProfitable(opportunity) && approved) {
+          if (this.isProfitable(opportunity) && this.passesTradeGuards(opportunity) && approved) {
             const success = await this.executeArbitrage(opportunity);
             if (success) executed++;
           }
@@ -808,6 +815,77 @@ export class ArbitrageBot {
   }
 
   /**
+   * Hard trading guards — block execution if any limit is exceeded.
+   * Runs AFTER isProfitable (which handles min profit ETH / gas price checks).
+   */
+  private passesTradeGuards(opportunity: ArbitrageOpportunity): boolean {
+    const decimals = opportunity.decimalsIn;
+    const inputIsEth = decimals === 18 && opportunity.tokenA === 'WETH';
+    const pair = `${opportunity.tokenA}/${opportunity.tokenB}`;
+
+    // --- Position size cap ---
+    const amountInFormatted = parseFloat(ethers.formatUnits(opportunity.amountIn, decimals));
+    const amountInEth = inputIsEth ? amountInFormatted : amountInFormatted / this.cachedEthPriceUsd;
+    if (amountInEth > this.botConfig.maxTradeSizeEth) {
+      console.log('[GUARD_BLOCK_POSITION_SIZE]', {
+        pair,
+        route: opportunity.route,
+        amountInEth: amountInEth.toFixed(6),
+        maxTradeSizeEth: this.botConfig.maxTradeSizeEth,
+      });
+      this.alertService.guardBlocked({
+        pair,
+        route: opportunity.route,
+        guard: 'MAX_TRADE_SIZE_ETH',
+        reason: `Position ${amountInEth.toFixed(6)} ETH exceeds cap ${this.botConfig.maxTradeSizeEth} ETH`,
+      }).catch(() => {});
+      return false;
+    }
+
+    // --- Gas cost USD cap ---
+    const gasCostWei = parseFloat(opportunity.gasEstimate);
+    const gasCostEth = gasCostWei / 1e18;
+    const gasCostUsd = gasCostEth * this.cachedEthPriceUsd;
+    if (gasCostUsd > this.botConfig.maxGasUsd) {
+      console.log('[GUARD_BLOCK_GAS_USD]', {
+        pair,
+        route: opportunity.route,
+        gasCostUsd: gasCostUsd.toFixed(4),
+        maxGasUsd: this.botConfig.maxGasUsd,
+      });
+      this.alertService.guardBlocked({
+        pair,
+        route: opportunity.route,
+        guard: 'MAX_GAS_USD',
+        reason: `Gas $${gasCostUsd.toFixed(4)} exceeds cap $${this.botConfig.maxGasUsd}`,
+      }).catch(() => {});
+      return false;
+    }
+
+    // --- Min net profit USD ---
+    let netProfitUsd: number;
+    if (inputIsEth) {
+      const netProfitEth = parseFloat(ethers.formatEther(opportunity.netProfit));
+      netProfitUsd = netProfitEth * this.cachedEthPriceUsd;
+    } else {
+      // Stablecoin input: 1 token ≈ $1
+      netProfitUsd = parseFloat(ethers.formatUnits(opportunity.netProfit, decimals));
+    }
+    if (netProfitUsd < this.botConfig.minProfitUsd) {
+      console.log('[GUARD_BLOCK_MIN_PROFIT_USD]', {
+        pair,
+        route: opportunity.route,
+        netProfitUsd: netProfitUsd.toFixed(4),
+        minProfitUsd: this.botConfig.minProfitUsd,
+      });
+      // No alert for this — it's a normal skip, not an anomaly
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
    * Execute an arbitrage opportunity
    */
   private async executeArbitrage(opportunity: ArbitrageOpportunity): Promise<boolean> {
@@ -819,6 +897,9 @@ export class ArbitrageBot {
           dailyPnlEth: this.canaryDailyPnlEth,
           maxDailyLossEth: this.botConfig.canaryMaxDailyLossEth
         });
+        this.alertService.botStopped(
+          `Canary daily loss cap reached: ${this.canaryDailyPnlEth.toFixed(6)} ETH (max ${this.botConfig.canaryMaxDailyLossEth} ETH)`
+        ).catch(() => {});
         this.stop();
         return false;
       }
@@ -889,6 +970,13 @@ export class ArbitrageBot {
         console.log(
           `[EXECUTE_OK] hash=${result.hash} gasUsed=${result.gasUsed} profit=${ethers.formatUnits(result.profit, opportunity.decimalsOut)} ${opportunity.tokenB}`
         );
+        this.alertService.tradeExecuted({
+          pair: `${opportunity.tokenA}/${opportunity.tokenB}`,
+          route: opportunity.route,
+          netProfit: ethers.formatUnits(opportunity.netProfit, opportunity.decimalsIn),
+          hash: result.hash,
+          gasUsed: result.gasUsed,
+        }).catch(() => {});
         this.updateCanaryPnl(result);
         this.updateStats();
         return true;
@@ -901,6 +989,11 @@ export class ArbitrageBot {
         console.error(
           `[EXECUTE_FAIL] error=${result.error || 'unknown'} gasUsed=${result.gasUsed}`
         );
+        this.alertService.tradeFailed({
+          pair: `${opportunity.tokenA}/${opportunity.tokenB}`,
+          route: opportunity.route,
+          error: result.error || 'unknown',
+        }).catch(() => {});
         this.updateCanaryPnl(result);
         this.updateStats();
         return false;
@@ -955,6 +1048,9 @@ export class ArbitrageBot {
         dailyPnlEth: this.canaryDailyPnlEth,
         maxDailyLossEth: this.botConfig.canaryMaxDailyLossEth
       });
+      this.alertService.botStopped(
+        `Canary daily loss cap breached: ${this.canaryDailyPnlEth.toFixed(6)} ETH (max ${this.botConfig.canaryMaxDailyLossEth} ETH)`
+      ).catch(() => {});
       this.stop();
     }
   }

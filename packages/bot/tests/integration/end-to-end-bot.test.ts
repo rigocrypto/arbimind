@@ -52,6 +52,9 @@ describe('ArbitrageBot integration', () => {
         minProfitEth: 0.001,
         maxGasGwei: 200,
         swapAmountEth: 1,
+        maxTradeSizeEth: 10,
+        maxGasUsd: 100,
+        minProfitUsd: 0,
         arbExecutorAddress: '0x0000000000000000000000000000000000000001',
         treasuryAddress: '0x0000000000000000000000000000000000000002',
         privateKey: '0x' + '11'.repeat(32)
