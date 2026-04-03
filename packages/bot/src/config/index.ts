@@ -86,6 +86,13 @@ export interface BotConfig {
   minLiquidityEth: number;
   minProfitUsd: number;
 
+  // Trading Guards
+  maxTradeSizeEth: number;
+  maxGasUsd: number;
+
+  // Alerting
+  alertDiscordWebhook?: string | undefined;
+
   // AI Scoring (optional)
   aiPredictUrl?: string | undefined;
   aiLogUrl?: string | undefined;
@@ -283,6 +290,13 @@ function createConfig(): BotConfig {
     maxGasPriceGwei: parseFloat(process.env['MAX_GAS_PRICE_GWEI'] || '100'),
     minLiquidityEth: parseFloat(process.env['MIN_LIQUIDITY_ETH'] || '10'),
     minProfitUsd: parseFloat(process.env['MIN_PROFIT_USD'] || '1.0'),
+
+    // Trading Guards
+    maxTradeSizeEth: parseFloat(process.env['MAX_TRADE_SIZE_ETH'] || '0.10'),
+    maxGasUsd: parseFloat(process.env['MAX_GAS_USD'] || '2.00'),
+
+    // Alerting
+    alertDiscordWebhook: process.env['ALERT_DISCORD_WEBHOOK'] || undefined,
 
     // AI Scoring (optional)
     aiPredictUrl: process.env['AI_PREDICT_URL'],
