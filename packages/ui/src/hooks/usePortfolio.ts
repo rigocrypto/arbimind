@@ -63,6 +63,7 @@ export interface PortfolioSummary {
   deposits: Array<{ tx: string; ts: number; symbol: string; amount: string; usd?: number }>;
   withdrawals: Array<{ tx: string; ts: number; symbol: string; amount: string; usd?: number }>;
   updatedAt: number;
+  scanSkipped?: boolean;
 }
 
 export interface TimeseriesPoint {
@@ -77,7 +78,8 @@ export interface TimeseriesPoint {
 export interface TimeseriesResponse {
   points: TimeseriesPoint[];
   /** Backend method; use string for forward compatibility when new methods are added */
-  method: 'estimated_linear_ramp_to_current_equity' | 'snapshotted_daily_equity' | string;
+  method: 'estimated_linear_ramp_to_current_equity' | 'snapshotted_daily_equity' | 'scan_disabled' | string;
+  scanSkipped?: boolean;
 }
 
 const REFETCH_INTERVAL_MS = 30_000;

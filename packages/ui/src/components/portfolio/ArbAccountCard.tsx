@@ -16,6 +16,7 @@ interface ArbAccountCardProps {
   errorDetails?: PortfolioErrorDetails | null;
   onRefresh?: () => void;
   arbAddressDisplay?: string;
+  scanSkipped?: boolean;
 }
 
 export function ArbAccountCard({
@@ -25,6 +26,7 @@ export function ArbAccountCard({
   errorDetails,
   onRefresh,
   arbAddressDisplay,
+  scanSkipped,
 }: ArbAccountCardProps) {
   const arbAddr = arbAddressDisplay ?? summary?.arbAddress ?? '';
   const totalDeposited = summary?.totals.depositedUsd ?? 0;
@@ -125,6 +127,12 @@ export function ArbAccountCard({
           >
             <Copy className="w-4 h-4" />
           </button>
+        </div>
+      )}
+
+      {scanSkipped && (
+        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-200">
+          EVM portfolio scanning is paused. Data shown may be stale.
         </div>
       )}
 
