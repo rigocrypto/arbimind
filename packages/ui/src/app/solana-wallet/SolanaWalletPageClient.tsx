@@ -17,7 +17,7 @@ import { API_BASE } from '@/lib/apiConfig';
 import { ArbAccountCard, PerformanceCharts, ActivityTable } from '@/components/portfolio';
 import { getPortfolioErrorDetails, usePortfolioSummary, usePortfolioTimeseries } from '@/hooks/usePortfolio';
 import { SOL_EQUIV_DECIMALS } from '@/utils/format';
-import { notifyWalletStateUpdated } from '@/lib/walletState';
+import { notifyWalletStateUpdated, onCrossTabWalletChange } from '@/lib/walletState';
 
 const SOLSCAN_BASE = 'https://solscan.io';
 const SOLANA_CLUSTERS = ['devnet', 'testnet', 'mainnet-beta'] as const;
@@ -74,12 +74,6 @@ type EngineActivityEvent = {
   txSig?: string;
   meta?: Record<string, unknown>;
 };
-
-const MOCK_BOT_TRADES: BotTrade[] = [
-  { id: 't-1001', pair: 'SOL/USDC', side: 'buy', volumeSol: 0.65, pnlSol: 0.041, status: 'success', at: '2m ago' },
-  { id: 't-1000', pair: 'JUP/SOL', side: 'sell', volumeSol: 0.38, pnlSol: -0.007, status: 'failed', at: '7m ago' },
-  { id: 't-0999', pair: 'RAY/SOL', side: 'buy', volumeSol: 0.51, pnlSol: 0.019, status: 'success', at: '13m ago' },
-];
 
 function isLikelyMobileBrowser() {
   if (typeof window === 'undefined') return false;
@@ -159,7 +153,7 @@ export default function SolanaWalletPageClient() {
   const isSolflareBrowser = useMemo(() => isSolflareInAppBrowser(), []);
   const [userSolBalance, setUserSolBalance] = useState(0);
   const [treasurySolBalance, setTreasurySolBalance] = useState(0);
-  const [botTrades, setBotTrades] = useState<BotTrade[]>(MOCK_BOT_TRADES);
+  const [botTrades, setBotTrades] = useState<BotTrade[]>([]);
   const [loading, setLoading] = useState<string | null>(null);
   const [transferLifecycle, setTransferLifecycle] = useState<TransferLifecycle>('idle');
   const [transferSignature, setTransferSignature] = useState('');
@@ -283,50 +277,76 @@ export default function SolanaWalletPageClient() {
     notifyWalletStateUpdated();
   }, [isSolanaConnected, address]);
 
+  // Solflare auto-reconnect on refresh (mirrors Phantom reconnect above)
+  const attemptedSolflareReconnect = useRef(false);
   useEffect(() => {
-    let cancelled = false;
+    if (attemptedSolflareReconnect.current || isSolanaConnected || connecting) return;
+    if (typeof window === 'undefined') return;
 
-    const refreshBalances = async () => {
-      try {
-        if (publicKey) {
-          const res = await fetch(apiWithCluster(`/solana/balance?address=${publicKey.toBase58()}`), { cache: 'no-store' });
-          if (res.ok) {
-            const body = (await res.json()) as { sol?: number };
-            if (!cancelled) setUserSolBalance(body.sol ?? 0);
-          } else if (!cancelled) {
-            setUserSolBalance(0);
-          }
-        } else if (!cancelled) {
+    const injected = (window as Window & { solflare?: { isSolflare?: boolean; isConnected?: boolean } }).solflare as
+      | { isSolflare?: boolean; isConnected?: boolean }
+      | undefined;
+
+    if (!injected?.isSolflare || !injected.isConnected) return;
+
+    const solflareWallet = wallets.find(
+      (w) => /solflare/i.test(w.adapter.name) && (w.readyState === WalletReadyState.Installed || w.readyState === WalletReadyState.Loadable)
+    );
+    if (!solflareWallet) return;
+
+    attemptedSolflareReconnect.current = true;
+    if (wallet?.adapter.name !== solflareWallet.adapter.name) {
+      select(solflareWallet.adapter.name);
+    }
+
+    const timer = setTimeout(() => {
+      void connect().catch(() => {
+        attemptedSolflareReconnect.current = false;
+      });
+    }, 0);
+
+    return () => { clearTimeout(timer); };
+  }, [isSolanaConnected, connecting, wallets, wallet, select, connect]);
+
+  const refreshSolBalance = useCallback(async () => {
+    try {
+      if (publicKey) {
+        const res = await fetch(apiWithCluster(`/solana/balance?address=${publicKey.toBase58()}`), { cache: 'no-store' });
+        if (res.ok) {
+          const body = (await res.json()) as { sol?: number };
+          setUserSolBalance(body.sol ?? 0);
+        } else {
           setUserSolBalance(0);
         }
+      } else {
+        setUserSolBalance(0);
+      }
 
-        if (treasuryPubkey) {
-          const res = await fetch(apiWithCluster(`/solana/balance?address=${treasuryPubkey.toBase58()}`), { cache: 'no-store' });
-          if (res.ok) {
-            const body = (await res.json()) as { sol?: number };
-            if (!cancelled) setTreasurySolBalance(body.sol ?? 0);
-          } else if (!cancelled) {
-            setTreasurySolBalance(0);
-          }
-        }
-      } catch {
-        if (!cancelled) {
-          setUserSolBalance(0);
+      if (treasuryPubkey) {
+        const res = await fetch(apiWithCluster(`/solana/balance?address=${treasuryPubkey.toBase58()}`), { cache: 'no-store' });
+        if (res.ok) {
+          const body = (await res.json()) as { sol?: number };
+          setTreasurySolBalance(body.sol ?? 0);
+        } else {
           setTreasurySolBalance(0);
         }
       }
-    };
+    } catch {
+      setUserSolBalance(0);
+      setTreasurySolBalance(0);
+    }
+  }, [apiWithCluster, publicKey, treasuryPubkey]);
 
-    void refreshBalances();
+  useEffect(() => {
+    void refreshSolBalance();
     const interval = setInterval(() => {
-      void refreshBalances();
+      void refreshSolBalance();
     }, 15000);
 
     return () => {
-      cancelled = true;
       clearInterval(interval);
     };
-  }, [apiWithCluster, publicKey, treasuryPubkey]);
+  }, [refreshSolBalance]);
 
   useEffect(() => {
     let cancelled = false;
@@ -466,7 +486,7 @@ export default function SolanaWalletPageClient() {
 
         if (!response.ok) {
           if (!cancelled) {
-            setBotTrades(MOCK_BOT_TRADES);
+            setBotTrades([]);
           }
           return;
         }
@@ -496,11 +516,11 @@ export default function SolanaWalletPageClient() {
           }));
 
         if (!cancelled) {
-          setBotTrades(normalized.length > 0 ? normalized : MOCK_BOT_TRADES);
+          setBotTrades(normalized);
         }
       } catch {
         if (!cancelled) {
-          setBotTrades(MOCK_BOT_TRADES);
+          setBotTrades([]);
         }
       }
     };
@@ -720,6 +740,9 @@ export default function SolanaWalletPageClient() {
                 ),
                 { id: 'solana-transfer', duration: 12000 }
               );
+              // Refresh balances after successful transfer
+              void refreshSolBalance();
+              void refetchPortfolio();
             }
           } catch {
             // keep polling until timeout
@@ -865,6 +888,8 @@ export default function SolanaWalletPageClient() {
       setSwapAmount('0.1');
       setSwapQuoteOutAmount(null);
       await refreshUsdcBalance();
+      await refreshSolBalance();
+      void refetchPortfolio();
     } catch (err: unknown) {
       const msg = String(err instanceof Error ? err.message : err ?? 'Swap failed');
       if (msg.includes('disconnected port') || msg.includes('[PHANTOM]')) {
@@ -964,6 +989,16 @@ export default function SolanaWalletPageClient() {
       clearInterval(interval);
     };
   }, [refreshUsdcBalance]);
+
+  // Cross-tab wallet sync — refetch balances + portfolio when another tab updates wallet state
+  useEffect(() => {
+    const unsub = onCrossTabWalletChange(() => {
+      void refreshSolBalance();
+      void refreshUsdcBalance();
+      void refetchPortfolio();
+    });
+    return unsub;
+  }, [refreshSolBalance, refreshUsdcBalance, refetchPortfolio]);
 
   const handleWithdraw = async () => {
     if (!isSolanaConnected || !publicKey) {
@@ -1080,6 +1115,9 @@ export default function SolanaWalletPageClient() {
                   View withdraw on Solscan
                 </a>
               ));
+              // Refresh balances after successful withdraw
+              void refreshSolBalance();
+              void refetchPortfolio();
             }
           } catch {
             // keep polling until timeout
@@ -1385,17 +1423,17 @@ export default function SolanaWalletPageClient() {
               className="grid grid-cols-1 sm:grid-cols-3 gap-4"
             >
               <div className="glass-card p-4 sm:p-5 opacity-90">
-                <h2 className="text-sm font-medium text-dark-300 mb-2">PnL</h2>
+                <h2 className="text-sm font-medium text-dark-300 mb-2">PnL <span className="text-[10px] text-yellow-500/80 ml-1">(Demo)</span></h2>
                 <p className={`text-2xl font-bold ${(tradeStats.totalPnl ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {(tradeStats.totalPnl ?? 0) >= 0 ? '+' : ''}{(tradeStats.totalPnl ?? 0).toFixed(4)} SOL
                 </p>
               </div>
               <div className="glass-card p-4 sm:p-5 opacity-90">
-                <h2 className="text-sm font-medium text-dark-300 mb-2">Volume</h2>
+                <h2 className="text-sm font-medium text-dark-300 mb-2">Volume <span className="text-[10px] text-yellow-500/80 ml-1">(Demo)</span></h2>
                 <p className="text-2xl font-bold text-white">{(tradeStats.totalVolume ?? 0).toFixed(4)} SOL</p>
               </div>
               <div className="glass-card p-4 sm:p-5 opacity-90">
-                <h2 className="text-sm font-medium text-dark-300 mb-2">Success Rate</h2>
+                <h2 className="text-sm font-medium text-dark-300 mb-2">Success Rate <span className="text-[10px] text-yellow-500/80 ml-1">(Demo)</span></h2>
                 <p className="text-2xl font-bold text-cyan-300">{(tradeStats.successRate ?? 0).toFixed(1)}%</p>
               </div>
             </motion.div>
@@ -1405,7 +1443,7 @@ export default function SolanaWalletPageClient() {
               animate={{ opacity: 1, y: 0 }}
               className="glass-card p-4 sm:p-6"
             >
-              <h2 className="text-lg font-bold text-white mb-4">Recent Bot Trades</h2>
+              <h2 className="text-lg font-bold text-white mb-4">Recent Bot Trades <span className="text-xs text-yellow-500/80 font-normal ml-1">(Demo)</span></h2>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -1486,17 +1524,17 @@ export default function SolanaWalletPageClient() {
               className="grid grid-cols-1 sm:grid-cols-3 gap-4"
             >
               <div className="glass-card p-4 sm:p-5">
-                <h2 className="text-sm font-medium text-dark-300 mb-2">PnL</h2>
+                <h2 className="text-sm font-medium text-dark-300 mb-2">PnL <span className="text-[10px] text-yellow-500/80 ml-1">(Demo)</span></h2>
                 <p className={`text-2xl font-bold ${(tradeStats.totalPnl ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {(tradeStats.totalPnl ?? 0) >= 0 ? '+' : ''}{(tradeStats.totalPnl ?? 0).toFixed(4)} SOL
                 </p>
               </div>
               <div className="glass-card p-4 sm:p-5">
-                <h2 className="text-sm font-medium text-dark-300 mb-2">Volume</h2>
+                <h2 className="text-sm font-medium text-dark-300 mb-2">Volume <span className="text-[10px] text-yellow-500/80 ml-1">(Demo)</span></h2>
                 <p className="text-2xl font-bold text-white">{(tradeStats.totalVolume ?? 0).toFixed(4)} SOL</p>
               </div>
               <div className="glass-card p-4 sm:p-5">
-                <h2 className="text-sm font-medium text-dark-300 mb-2">Success Rate</h2>
+                <h2 className="text-sm font-medium text-dark-300 mb-2">Success Rate <span className="text-[10px] text-yellow-500/80 ml-1">(Demo)</span></h2>
                 <p className="text-2xl font-bold text-cyan-300">{(tradeStats.successRate ?? 0).toFixed(1)}%</p>
               </div>
             </motion.div>
@@ -1544,7 +1582,7 @@ export default function SolanaWalletPageClient() {
               animate={{ opacity: 1, y: 0 }}
               className="glass-card p-4 sm:p-6"
             >
-              <h2 className="text-lg font-bold text-white mb-4">Recent Bot Trades</h2>
+              <h2 className="text-lg font-bold text-white mb-4">Recent Bot Trades <span className="text-xs text-yellow-500/80 font-normal ml-1">(Demo)</span></h2>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
