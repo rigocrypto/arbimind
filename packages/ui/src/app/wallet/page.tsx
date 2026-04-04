@@ -311,6 +311,7 @@ function SwapModal({
       setQuote(null);
       setAmount('');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveChainId]); // intentionally only depends on chainId change
 
   // ---- ERC-20 sell-token balance ----
@@ -330,7 +331,7 @@ function SwapModal({
     if (sellToken.isNative) return ethBalance;
     if (erc20BalanceRaw == null) return 0;
     return parseFloat(formatUnits(BigInt(erc20BalanceRaw.toString()), sellToken.decimals));
-  }, [sellToken, ethBalance, erc20BalanceRaw, effectiveChainId]);
+  }, [sellToken, ethBalance, erc20BalanceRaw]);
 
   // ---- Amount validation ----
   const numAmount = parseFloat(amount);

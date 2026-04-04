@@ -47,7 +47,6 @@ export function TokenSelector({
   // Focus search on open
   useEffect(() => {
     if (open) {
-      setQuery('');
       // Delay to let panel render
       requestAnimationFrame(() => inputRef.current?.focus());
     }
@@ -76,7 +75,7 @@ export function TokenSelector({
       {/* Trigger button */}
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => { setQuery(''); setOpen((v) => !v); }}
         className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-dark-900 border border-dark-600 text-white text-sm hover:border-cyan-500/40 transition min-w-[90px]"
       >
         <span className="font-medium">{selected.symbol}</span>

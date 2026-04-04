@@ -133,7 +133,7 @@ export function tokenAddress(token: SwapToken, chainId: number): string {
 }
 
 /** Default sell/buy pair for any chain */
-export function defaultPair(chainId: number): [SwapToken, SwapToken] {
+export function defaultPair(_chainId: number): [SwapToken, SwapToken] {
   return [ETH_TOKEN, USDC_TOKEN];
 }
 
