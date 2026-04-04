@@ -24,7 +24,17 @@ import {
 } from 'lucide-react';
 import { formatETH, formatUSD, formatAddress } from '@/utils/format';
 import { ChainSwitcherModal } from '@/components/ChainSwitcherModal';
+import { TokenSelector } from '@/components/TokenSelector';
 import { ArbAccountCard, PerformanceCharts, ActivityTable } from '@/components/portfolio';
+import {
+  type SwapToken,
+  tokensForChain,
+  tokenAddress,
+  tokenKey,
+  isSameToken,
+  defaultPair,
+  requiresApprovalReset,
+} from '@/lib/evmSwapTokens';
 import { getPortfolioErrorDetails, usePortfolioSummary, usePortfolioTimeseries } from '@/hooks/usePortfolio';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
@@ -260,7 +270,6 @@ function SwapModal({
   isOpen,
   onClose,
   ethBalance,
-  usdcBalance,
   explorerUrl,
   chainId,
   onSwapComplete,
@@ -268,13 +277,16 @@ function SwapModal({
   isOpen: boolean;
   onClose: () => void;
   ethBalance: number;
-  usdcBalance: number;
   explorerUrl: string;
   chainId: number | undefined;
   onSwapComplete?: () => void;
 }) {
-  const [sellToken, setSellToken] = useState<'ETH' | 'USDC'>('ETH');
-  const [buyToken, setBuyToken] = useState<'ETH' | 'USDC'>('USDC');
+  const effectiveChainId = chainId ?? 1;
+  const availableTokens = useMemo(() => tokensForChain(effectiveChainId), [effectiveChainId]);
+  const [defSell, defBuy] = useMemo(() => defaultPair(effectiveChainId), [effectiveChainId]);
+
+  const [sellToken, setSellToken] = useState<SwapToken>(defSell);
+  const [buyToken, setBuyToken] = useState<SwapToken>(defBuy);
   const [amount, setAmount] = useState('');
   const [quote, setQuote] = useState<SwapQuote | null>(null);
   const [step, setStep] = useState<SwapStep>('idle');
@@ -285,38 +297,89 @@ function SwapModal({
   const { writeContractAsync } = useWriteContract();
   const { address: connectedAddress, chain: connectedChain } = useAccount();
 
-  const usdcAddress = chainId ? USDC_BY_CHAIN[chainId] : undefined;
-  const balance = sellToken === 'ETH' ? ethBalance : usdcBalance;
   const chainSupported = chainId != null && SWAP_CHAINS.has(chainId);
 
+  // ---- Revalidate tokens on chain change ----
+  useEffect(() => {
+    const tokens = tokensForChain(effectiveChainId);
+    const sellValid = tokens.some((t) => isSameToken(t, sellToken, effectiveChainId));
+    const buyValid = tokens.some((t) => isSameToken(t, buyToken, effectiveChainId));
+    if (!sellValid || !buyValid) {
+      const [ds, db] = defaultPair(effectiveChainId);
+      setSellToken(ds);
+      setBuyToken(db);
+      setQuote(null);
+      setAmount('');
+    }
+  }, [effectiveChainId]); // intentionally only depends on chainId change
+
+  // ---- ERC-20 sell-token balance ----
+  const sellTokenAddress = sellToken.isNative
+    ? undefined
+    : (sellToken.addresses[effectiveChainId] as `0x${string}` | undefined);
+
+  const { data: erc20BalanceRaw } = useReadContract({
+    address: sellTokenAddress,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: connectedAddress ? [connectedAddress] : undefined,
+    query: { enabled: Boolean(sellTokenAddress && connectedAddress) },
+  });
+
+  const sellBalance = useMemo(() => {
+    if (sellToken.isNative) return ethBalance;
+    if (erc20BalanceRaw == null) return 0;
+    return parseFloat(formatUnits(BigInt(erc20BalanceRaw.toString()), sellToken.decimals));
+  }, [sellToken, ethBalance, erc20BalanceRaw, effectiveChainId]);
+
+  // ---- Amount validation ----
   const numAmount = parseFloat(amount);
   const amountValid = Number.isFinite(numAmount) && numAmount > 0;
-  const amountExceeds = amountValid && numAmount > balance;
+  const amountExceeds = amountValid && numAmount > sellBalance;
 
   // Derive sell amount in smallest unit
   const sellAmountSmallest = useMemo(() => {
     if (!amountValid) return '';
-    if (sellToken === 'ETH') return parseEther(amount).toString();
-    return parseUnits(amount, 6).toString();
-  }, [amount, sellToken, amountValid]);
+    return parseUnits(amount, sellToken.decimals).toString();
+  }, [amount, sellToken.decimals, amountValid]);
 
-  // Read USDC allowance for the swap target
-  const { data: usdcAllowance, refetch: refetchAllowance } = useReadContract({
-    address: usdcAddress as `0x${string}` | undefined,
+  // ---- Allowance for ERC-20 sell tokens ----
+  const { data: tokenAllowance, refetch: refetchAllowance } = useReadContract({
+    address: sellTokenAddress,
     abi: erc20Abi,
     functionName: 'allowance',
-    args: quote?.allowanceTarget
-      ? [usdcAddress as `0x${string}`, quote.allowanceTarget as `0x${string}`]
+    args: quote?.allowanceTarget && connectedAddress
+      ? [connectedAddress, quote.allowanceTarget as `0x${string}`]
       : undefined,
-    query: { enabled: Boolean(usdcAddress && quote?.allowanceTarget && sellToken === 'USDC') },
+    query: { enabled: Boolean(sellTokenAddress && quote?.allowanceTarget && connectedAddress && !sellToken.isNative) },
   });
 
   // Check if approval is needed
   const needsApproval = useMemo(() => {
-    if (sellToken !== 'USDC' || !quote?.allowanceTarget || !sellAmountSmallest) return false;
-    if (usdcAllowance == null) return true; // assume needed if not fetched
-    return BigInt(usdcAllowance.toString()) < BigInt(sellAmountSmallest);
-  }, [sellToken, quote, sellAmountSmallest, usdcAllowance]);
+    if (sellToken.isNative || !quote?.allowanceTarget || !sellAmountSmallest) return false;
+    if (tokenAllowance == null) return true;
+    return BigInt(tokenAllowance.toString()) < BigInt(sellAmountSmallest);
+  }, [sellToken, quote, sellAmountSmallest, tokenAllowance]);
+
+  // ---- Token selection handlers ----
+  const handleSelectSell = useCallback((token: SwapToken) => {
+    if (isSameToken(token, buyToken, effectiveChainId)) {
+      // Swap the pair
+      setBuyToken(sellToken);
+    }
+    setSellToken(token);
+    setQuote(null);
+    setError(null);
+  }, [buyToken, sellToken, effectiveChainId]);
+
+  const handleSelectBuy = useCallback((token: SwapToken) => {
+    if (isSameToken(token, sellToken, effectiveChainId)) {
+      setSellToken(buyToken);
+    }
+    setBuyToken(token);
+    setQuote(null);
+    setError(null);
+  }, [sellToken, buyToken, effectiveChainId]);
 
   // Reverse tokens
   const handleReverse = useCallback(() => {
@@ -327,7 +390,7 @@ function SwapModal({
     setAmount('');
   }, [sellToken, buyToken]);
 
-  // Debounced quote fetching
+  // ---- Debounced quote fetching ----
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setQuote(null);
@@ -343,10 +406,10 @@ function SwapModal({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chainId,
-            sellToken,
-            buyToken,
+            sellToken: tokenAddress(sellToken, effectiveChainId),
+            buyToken: tokenAddress(buyToken, effectiveChainId),
             sellAmount: sellAmountSmallest,
-            takerAddress: '0x0000000000000000000000000000000000000000', // placeholder for quote
+            takerAddress: '0x0000000000000000000000000000000000000000',
             slippageBps: 50,
           }),
         });
@@ -366,17 +429,37 @@ function SwapModal({
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [amount, sellToken, buyToken, chainId, chainSupported, amountExceeds]);
+  }, [amount, tokenKey(sellToken, effectiveChainId), tokenKey(buyToken, effectiveChainId), chainId, chainSupported, amountExceeds]);
 
-  // Handle approval
+  // ---- Handle approval (with USDT reset support) ----
   const handleApprove = useCallback(async () => {
-    if (!usdcAddress || !quote?.allowanceTarget) return;
+    if (!sellTokenAddress || !quote?.allowanceTarget) return;
     if (!connectedAddress || !connectedChain) { setError('Wallet not connected'); return; }
     setStep('approving');
     setError(null);
+    let didResetAllowance = false;
     try {
+      // USDT-style reset: if current allowance > 0 and token requires reset, approve(0) first
+      if (
+        requiresApprovalReset(sellToken, effectiveChainId) &&
+        tokenAllowance != null &&
+        BigInt(tokenAllowance.toString()) > 0n
+      ) {
+        await writeContractAsync({
+          address: sellTokenAddress,
+          abi: erc20Abi,
+          functionName: 'approve',
+          args: [quote.allowanceTarget as `0x${string}`, 0n],
+          account: connectedAddress,
+          chain: connectedChain,
+        });
+        didResetAllowance = true;
+        // Refresh cached allowance so retry logic sees the on-chain 0
+        await refetchAllowance();
+      }
+
       const hash = await writeContractAsync({
-        address: usdcAddress as `0x${string}`,
+        address: sellTokenAddress,
         abi: erc20Abi,
         functionName: 'approve',
         args: [quote.allowanceTarget as `0x${string}`, maxUint256],
@@ -392,11 +475,17 @@ function SwapModal({
         toast('Approval cancelled', { icon: '🔒' });
         setStep('idle');
       } else {
-        setError(msg.length > 120 ? `${msg.slice(0, 120)}…` : msg);
+        const prefix = didResetAllowance
+          ? 'Allowance was reset to 0 but re-approval failed. Please approve again. '
+          : '';
+        const detail = msg.length > 100 ? `${msg.slice(0, 100)}…` : msg;
+        setError(`${prefix}${detail}`);
         setStep('error');
       }
+      // If we reset but failed to re-approve, ensure cached allowance is current
+      if (didResetAllowance) void refetchAllowance();
     }
-  }, [usdcAddress, quote, writeContractAsync, refetchAllowance, connectedAddress, connectedChain]);
+  }, [sellTokenAddress, sellToken, effectiveChainId, quote, writeContractAsync, refetchAllowance, connectedAddress, connectedChain, tokenAllowance]);
 
   const address = connectedAddress;
 
@@ -406,14 +495,13 @@ function SwapModal({
     setStep('swapping');
     setError(null);
     try {
-      // Fetch firm quote with real taker address
       const res = await fetch(`${API_BASE}/evm/swap/tx`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chainId,
-          sellToken,
-          buyToken,
+          sellToken: tokenAddress(sellToken, effectiveChainId),
+          buyToken: tokenAddress(buyToken, effectiveChainId),
           sellAmount: sellAmountSmallest,
           takerAddress: address,
           slippageBps: 50,
@@ -454,17 +542,17 @@ function SwapModal({
         setStep('error');
       }
     }
-  }, [chainId, address, sellAmountSmallest, sellToken, buyToken, sendTransactionAsync, explorerUrl, onSwapComplete]);
+  }, [chainId, address, sellAmountSmallest, sellToken, buyToken, effectiveChainId, sendTransactionAsync, explorerUrl, onSwapComplete]);
 
   // Max button
   const handleMax = useCallback(() => {
-    if (sellToken === 'ETH') {
+    if (sellToken.isNative) {
       const max = Math.max(0, ethBalance - 0.005);
       setAmount(max > 0 ? max.toFixed(6) : '0');
     } else {
-      setAmount(usdcBalance > 0 ? usdcBalance.toFixed(2) : '0');
+      setAmount(sellBalance > 0 ? sellBalance.toFixed(sellToken.decimals <= 6 ? 2 : 6) : '0');
     }
-  }, [sellToken, ethBalance, usdcBalance]);
+  }, [sellToken, ethBalance, sellBalance]);
 
   // Reset when modal opens/closes
   useEffect(() => {
@@ -481,9 +569,9 @@ function SwapModal({
 
   // Format the buy amount for display
   const formattedBuyAmount = quote?.buyAmount
-    ? buyToken === 'ETH'
-      ? parseFloat(formatUnits(BigInt(quote.buyAmount), 18)).toFixed(6)
-      : parseFloat(formatUnits(BigInt(quote.buyAmount), 6)).toFixed(2)
+    ? parseFloat(formatUnits(BigInt(quote.buyAmount), buyToken.decimals)).toFixed(
+        buyToken.decimals <= 6 ? 2 : 6,
+      )
     : null;
 
   // Determine button state
@@ -514,7 +602,7 @@ function SwapModal({
   } else if (!quote) {
     buttonLabel = 'Enter amount to get quote';
   } else if (needsApproval) {
-    buttonLabel = `Approve ${sellToken}`;
+    buttonLabel = `Approve ${sellToken.symbol}`;
     buttonDisabled = false;
     buttonAction = () => void handleApprove();
   } else {
@@ -541,23 +629,17 @@ function SwapModal({
           <div>
             <label className="block text-xs text-dark-400 mb-1">Sell</label>
             <div className="flex gap-2">
-              <select
-                value={sellToken}
-                onChange={(e) => {
-                  const t = e.target.value as 'ETH' | 'USDC';
-                  setSellToken(t);
-                  setBuyToken(t === 'ETH' ? 'USDC' : 'ETH');
-                  setQuote(null);
-                }}
-                className="w-24 px-3 py-2 rounded-lg bg-dark-900 border border-dark-600 text-white text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400"
-              >
-                <option value="ETH">ETH</option>
-                {usdcAddress && <option value="USDC">USDC</option>}
-              </select>
+              <TokenSelector
+                selected={sellToken}
+                tokens={availableTokens}
+                disabledToken={buyToken}
+                chainId={effectiveChainId}
+                onSelect={handleSelectSell}
+              />
               <div className="flex-1 relative">
                 <input
                   type="number"
-                  step={sellToken === 'ETH' ? '0.001' : '0.01'}
+                  step={sellToken.decimals <= 6 ? '0.01' : '0.001'}
                   min="0"
                   placeholder="0.0"
                   value={amount}
@@ -573,7 +655,7 @@ function SwapModal({
                 </button>
               </div>
             </div>
-            <p className="text-xs text-dark-500 mt-1">Balance: {balance.toFixed(sellToken === 'ETH' ? 4 : 2)} {sellToken}</p>
+            <p className="text-xs text-dark-500 mt-1">Balance: {sellBalance.toFixed(sellToken.decimals <= 6 ? 2 : 4)} {sellToken.symbol}</p>
             {amountExceeds && <p className="text-xs text-red-400 mt-1">Insufficient balance</p>}
           </div>
 
@@ -593,24 +675,18 @@ function SwapModal({
           <div>
             <label className="block text-xs text-dark-400 mb-1">Buy</label>
             <div className="flex gap-2">
-              <select
-                value={buyToken}
-                onChange={(e) => {
-                  const t = e.target.value as 'ETH' | 'USDC';
-                  setBuyToken(t);
-                  setSellToken(t === 'ETH' ? 'USDC' : 'ETH');
-                  setQuote(null);
-                }}
-                className="w-24 px-3 py-2 rounded-lg bg-dark-900 border border-dark-600 text-white text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400"
-              >
-                <option value="ETH">ETH</option>
-                {usdcAddress && <option value="USDC">USDC</option>}
-              </select>
+              <TokenSelector
+                selected={buyToken}
+                tokens={availableTokens}
+                disabledToken={sellToken}
+                chainId={effectiveChainId}
+                onSelect={handleSelectBuy}
+              />
               <div className="flex-1 px-3 py-2 rounded-lg bg-dark-900 border border-dark-600 text-sm text-dark-300 min-h-[38px] flex items-center">
                 {step === 'quoting' ? (
                   <span className="animate-pulse">Getting quote…</span>
                 ) : formattedBuyAmount ? (
-                  <span className="text-white font-medium">{formattedBuyAmount} {buyToken}</span>
+                  <span className="text-white font-medium">{formattedBuyAmount} {buyToken.symbol}</span>
                 ) : (
                   <span className="text-dark-500">—</span>
                 )}
@@ -1258,7 +1334,6 @@ export default function WalletPage() {
         isOpen={swapOpen}
         onClose={() => setSwapOpen(false)}
         ethBalance={ethVal}
-        usdcBalance={usdcVal}
         explorerUrl={explorerUrl}
         chainId={chainId}
         onSwapComplete={handleSwapComplete}
