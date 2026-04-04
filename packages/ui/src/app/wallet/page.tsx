@@ -6,16 +6,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
-import { useAccount, useBalance, useConnect, useDisconnect, useEnsName, useReadContract, useSendTransaction } from 'wagmi';
-import { formatUnits, parseEther, isAddress } from 'viem';
-import { erc20Abi } from 'viem';
+import { useAccount, useBalance, useConnect, useDisconnect, useEnsName, useReadContract, useSendTransaction, useWriteContract } from 'wagmi';
+import { formatUnits, parseEther, parseUnits, isAddress, erc20Abi } from 'viem';
 import {
   Wallet,
   Copy,
   ExternalLink,
   TrendingUp,
   DollarSign,
-  Activity,
   AlertTriangle,
   ChevronRight,
   Shield,
@@ -23,8 +21,7 @@ import {
   LogOut,
   Send,
 } from 'lucide-react';
-import { formatETH, formatUSD, formatAddress, formatTxHash } from '@/utils/format';
-import { HelpTooltip } from '@/components/HelpTooltip';
+import { formatETH, formatUSD, formatAddress } from '@/utils/format';
 import { ChainSwitcherModal } from '@/components/ChainSwitcherModal';
 import { ArbAccountCard, PerformanceCharts, ActivityTable } from '@/components/portfolio';
 import { getPortfolioErrorDetails, usePortfolioSummary, usePortfolioTimeseries } from '@/hooks/usePortfolio';
@@ -32,6 +29,8 @@ import Link from 'next/link';
 import toast from 'react-hot-toast';
 import Image from 'next/image';
 import { notifyWalletStateUpdated } from '@/lib/walletState';
+import { useQuery } from '@tanstack/react-query';
+import { API_BASE } from '@/lib/apiConfig';
 
 const USDC_BY_CHAIN: Record<number, `0x${string}`> = {
   1: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' as const,
@@ -59,21 +58,7 @@ function buildMetaMaskDappLink(pathname: string) {
   return `https://link.metamask.io/dapp/${encodeURIComponent(url)}`;
 }
 
-// Mock tx history – replace with /api/wallet/txs or viem when wired
-interface TxRow {
-  hash: string;
-  type: 'arb' | 'swap' | 'withdraw' | 'deposit';
-  profitLoss: number;
-  gasEth: number;
-  status: 'success' | 'pending' | 'failed';
-  timestamp: number;
-}
-
-const MOCK_TXS: TxRow[] = [
-  { hash: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd', type: 'arb', profitLoss: 0.0123, gasEth: 0.0012, status: 'success', timestamp: Date.now() - 3600000 },
-  { hash: '0x5678901234abcdef5678901234abcdef5678901234abcdef5678901234abcd', type: 'swap', profitLoss: -0.0005, gasEth: 0.0008, status: 'success', timestamp: Date.now() - 7200000 },
-  { hash: '0x9abc5678901234abcdef5678901234abcdef5678901234abcdef5678901234', type: 'arb', profitLoss: 0.0089, gasEth: 0.001, status: 'success', timestamp: Date.now() - 86400000 },
-];
+const SUPPORTED_CHAIN_IDS = new Set([1, 10, 42161, 8453, 137, 80002]);
 
 function WithdrawModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   if (!isOpen) return null;
@@ -108,17 +93,29 @@ function TransferModal({
   isOpen,
   onClose,
   ethBalance,
+  usdcBalance,
   explorerUrl,
+  chainId,
+  onTransferComplete,
 }: {
   isOpen: boolean;
   onClose: () => void;
   ethBalance: number;
+  usdcBalance: number;
   explorerUrl: string;
+  chainId: number | undefined;
+  onTransferComplete?: () => void;
 }) {
   const [toAddress, setToAddress] = useState('');
   const [amount, setAmount] = useState('');
-  const { sendTransactionAsync, isPending } = useSendTransaction();
+  const [token, setToken] = useState<'ETH' | 'USDC'>('ETH');
+  const { sendTransactionAsync, isPending: isSendingEth } = useSendTransaction();
+  const { writeContractAsync, isPending: isSendingUsdc } = useWriteContract();
   const [isSending, setIsSending] = useState(false);
+
+  const usdcAddress = chainId ? USDC_BY_CHAIN[chainId] : undefined;
+  const balance = token === 'ETH' ? ethBalance : usdcBalance;
+  const isPending = isSendingEth || isSendingUsdc;
 
   const handleSend = useCallback(async () => {
     if (!isAddress(toAddress)) {
@@ -130,13 +127,27 @@ function TransferModal({
       toast.error('Enter a valid amount');
       return;
     }
-    if (val > ethBalance) {
-      toast.error('Insufficient ETH balance');
+    if (val > balance) {
+      toast.error(`Insufficient ${token} balance`);
+      return;
+    }
+    if (token === 'USDC' && !usdcAddress) {
+      toast.error('USDC is not available on this network');
       return;
     }
     setIsSending(true);
     try {
-      const hash = await sendTransactionAsync({ to: toAddress as `0x${string}`, value: parseEther(amount) });
+      let hash: string;
+      if (token === 'ETH') {
+        hash = await sendTransactionAsync({ to: toAddress as `0x${string}`, value: parseEther(amount) });
+      } else {
+        hash = await writeContractAsync({
+          address: usdcAddress!,
+          abi: erc20Abi,
+          functionName: 'transfer',
+          args: [toAddress as `0x${string}`, parseUnits(amount, 6)],
+        });
+      }
       toast.success(`Tx submitted: ${hash.slice(0, 10)}…${hash.slice(-8)}`);
       if (explorerUrl) {
         toast(() => (
@@ -147,6 +158,7 @@ function TransferModal({
       }
       setToAddress('');
       setAmount('');
+      onTransferComplete?.();
       onClose();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err ?? 'Transfer failed');
@@ -158,7 +170,7 @@ function TransferModal({
     } finally {
       setIsSending(false);
     }
-  }, [toAddress, amount, ethBalance, sendTransactionAsync, explorerUrl, onClose]);
+  }, [toAddress, amount, balance, token, usdcAddress, sendTransactionAsync, writeContractAsync, explorerUrl, onTransferComplete, onClose]);
 
   if (!isOpen) return null;
 
@@ -172,9 +184,21 @@ function TransferModal({
       >
         <div className="flex items-center gap-2 mb-4">
           <Send className="w-6 h-6 text-cyan-400" />
-          <h3 className="text-lg font-bold text-white">Send ETH</h3>
+          <h3 className="text-lg font-bold text-white">Send {token}</h3>
         </div>
         <div className="space-y-3">
+          <div>
+            <label htmlFor="transfer-token" className="block text-xs text-dark-400 mb-1">Token</label>
+            <select
+              id="transfer-token"
+              value={token}
+              onChange={(e) => setToken(e.target.value as 'ETH' | 'USDC')}
+              className="w-full px-3 py-2 rounded-lg bg-dark-900 border border-dark-600 text-white text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400"
+            >
+              <option value="ETH">ETH</option>
+              {usdcAddress && <option value="USDC">USDC</option>}
+            </select>
+          </div>
           <div>
             <label htmlFor="transfer-to" className="block text-xs text-dark-400 mb-1">Recipient address</label>
             <input
@@ -187,18 +211,18 @@ function TransferModal({
             />
           </div>
           <div>
-            <label htmlFor="transfer-amount" className="block text-xs text-dark-400 mb-1">Amount (ETH)</label>
+            <label htmlFor="transfer-amount" className="block text-xs text-dark-400 mb-1">Amount ({token})</label>
             <input
               id="transfer-amount"
               type="number"
-              step="0.001"
+              step={token === 'ETH' ? '0.001' : '0.01'}
               min="0"
-              placeholder="0.01"
+              placeholder={token === 'ETH' ? '0.01' : '10.00'}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               className="w-full px-3 py-2 rounded-lg bg-dark-900 border border-dark-600 text-white text-sm placeholder:text-dark-500 focus:outline-none focus:ring-1 focus:ring-cyan-400"
             />
-            <p className="text-xs text-dark-500 mt-1">Balance: {ethBalance.toFixed(4)} ETH</p>
+            <p className="text-xs text-dark-500 mt-1">Balance: {balance.toFixed(token === 'ETH' ? 4 : 2)} {token}</p>
           </div>
           <button
             type="button"
@@ -206,7 +230,7 @@ function TransferModal({
             disabled={isPending || isSending}
             className="w-full py-2.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 text-cyan-400 font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isPending || isSending ? 'Sending…' : 'Send ETH'}
+            {isPending || isSending ? 'Sending…' : `Send ${token}`}
           </button>
         </div>
       </motion.div>
@@ -218,9 +242,9 @@ export default function WalletPage() {
   const { address, isConnected, chain, chainId } = useAccount();
   const { connectAsync, connectors, isPending: isConnectPending } = useConnect();
   const { disconnect } = useDisconnect();
-  const { data: ethBalance } = useBalance({ address });
+  const { data: ethBalance, refetch: refetchEthBalance } = useBalance({ address });
   const usdcToken = address && chainId ? USDC_BY_CHAIN[chainId] : null;
-  const { data: usdcBalanceRaw } = useReadContract({
+  const { data: usdcBalanceRaw, refetch: refetchUsdcBalance } = useReadContract({
     address: usdcToken ?? undefined,
     abi: erc20Abi,
     functionName: 'balanceOf',
@@ -231,7 +255,6 @@ export default function WalletPage() {
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [chainSwitcherOpen, setChainSwitcherOpen] = useState(false);
-  const [txFilter, setTxFilter] = useState<string>('all');
   const isMobileBrowser = useMemo(() => isLikelyMobileBrowser(), []);
   const isMetaMaskBrowser = useMemo(() => isMetaMaskInAppBrowser(), []);
 
@@ -301,15 +324,34 @@ export default function WalletPage() {
     toast.success('EVM wallet disconnected');
   };
 
-  const filteredTxs = useMemo(() => {
-    if (txFilter === 'all') return MOCK_TXS;
-    return MOCK_TXS.filter((t) => t.type === txFilter);
-  }, [txFilter]);
+  const handleTransferComplete = useCallback(() => {
+    void refetchEthBalance();
+    void refetchUsdcBalance();
+    void refetchPortfolio();
+  }, [refetchEthBalance, refetchUsdcBalance, refetchPortfolio]);
 
-  const getTxTypeLabel = (type: TxRow['type']) =>
-    ({ arb: 'Arbitrage', swap: 'Swap', withdraw: 'Withdraw', deposit: 'Deposit' }[type]);
-  const getStatusColor = (status: TxRow['status']) =>
-    ({ success: 'text-green-400', pending: 'text-amber-400', failed: 'text-red-400' }[status]);
+  const { data: engineStatus } = useQuery({
+    queryKey: ['engine-status'],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/engine/status`);
+      if (!res.ok) return null;
+      return res.json() as Promise<{
+        active: string;
+        walletChain: string | null;
+        walletAddress: string | null;
+        oppsCount: number;
+        lastProfit: number;
+        lastScanAt: number | null;
+        uptime: number;
+        timestamp: number;
+      }>;
+    },
+    refetchInterval: 10_000,
+    enabled: isConnected,
+  });
+
+  const isEngineActive = Boolean(engineStatus?.active);
+  const isEngineSynced = engineStatus?.walletChain === 'evm' && engineStatus?.walletAddress?.toLowerCase() === address?.toLowerCase();
 
   return (
     <DashboardLayout currentPath="/wallet">
@@ -521,6 +563,53 @@ export default function WalletPage() {
           </motion.div>
         ) : (
           <>
+            {/* Unsupported network warning */}
+            {chainId && !SUPPORTED_CHAIN_IDS.has(chainId) && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm"
+              >
+                <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+                <div>
+                  <p className="font-medium">Unsupported network</p>
+                  <p className="text-amber-300/70 mt-0.5">
+                    Please switch to Ethereum, Arbitrum, Optimism, Base, or Polygon for full functionality.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setChainSwitcherOpen(true)}
+                  className="ml-auto px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 text-xs font-medium whitespace-nowrap transition"
+                >
+                  Switch Network
+                </button>
+              </motion.div>
+            )}
+
+            {/* Engine Status */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.02 }}
+              className="flex flex-wrap items-center gap-2"
+            >
+              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${isEngineActive ? 'border-green-500/30 bg-green-500/15 text-green-300' : 'border-dark-700 bg-dark-900/70 text-dark-300'}`}>
+                Bot: {isEngineActive ? 'ARBITRAGE ACTIVE' : 'INACTIVE'}
+              </span>
+              {isEngineSynced && (
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border border-cyan-500/30 bg-cyan-500/15 text-cyan-300">
+                  EVM Synced
+                </span>
+              )}
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border border-dark-700 bg-dark-900/70 text-dark-200">
+                {engineStatus?.oppsCount ?? 0} Opps | {(engineStatus?.lastProfit ?? 0).toFixed(4)} ETH
+              </span>
+              <span className="text-xs text-dark-400">
+                Last HB: {engineStatus?.timestamp ? new Date(engineStatus.timestamp).toISOString().slice(0, 16) + 'Z' : '\u2014'}
+              </span>
+            </motion.div>
+
             {/* Balances Card */}
             <motion.div
               initial={{ opacity: 0, y: 8 }}
@@ -632,80 +721,6 @@ export default function WalletPage() {
               />
             </motion.div>
 
-            {/* Recent Activity */}
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="glass-card p-4 sm:p-6 overflow-hidden"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  Recent Activity
-                  <HelpTooltip content="Last 10 txs. Profits auto-sweep to treasury." />
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-500/20 text-xs font-semibold text-amber-300 border border-amber-500/30">Demo</span>
-                </h3>
-                <label htmlFor="wallet-tx-filter" className="sr-only">Filter transactions</label>
-                <select
-                  id="wallet-tx-filter"
-                  name="txFilter"
-                  value={txFilter}
-                  onChange={(e) => setTxFilter(e.target.value)}
-                  className="px-3 py-1.5 rounded-lg bg-dark-800 border border-dark-600 text-sm text-white"
-                >
-                  <option value="all">All</option>
-                  <option value="arb">Arb</option>
-                  <option value="swap">Swap</option>
-                </select>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[500px]">
-                  <thead>
-                    <tr className="border-b border-dark-600">
-                      <th className="text-left py-2 text-xs font-medium text-dark-400 uppercase">Tx</th>
-                      <th className="text-left py-2 text-xs font-medium text-dark-400 uppercase">Type</th>
-                      <th className="text-right py-2 text-xs font-medium text-dark-400 uppercase">P/L</th>
-                      <th className="text-right py-2 text-xs font-medium text-dark-400 uppercase">Gas</th>
-                      <th className="text-right py-2 text-xs font-medium text-dark-400 uppercase">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredTxs.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="py-8 text-center text-dark-400">
-                          <Activity className="w-10 h-10 mx-auto mb-2 opacity-50" />
-                          <p>No activity yet</p>
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredTxs.map((tx) => (
-                        <tr key={tx.hash} className="border-b border-dark-700/50 hover:bg-dark-800/30">
-                          <td className="py-3">
-                            <a
-                              href={explorerUrl ? `${explorerUrl}/tx/${tx.hash}` : '#'}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-cyan-400 hover:underline font-mono text-sm"
-                            >
-                              {formatTxHash(tx.hash)}
-                            </a>
-                          </td>
-                          <td className="py-3 text-sm text-dark-300">{getTxTypeLabel(tx.type)}</td>
-                          <td className={`py-3 text-right font-medium text-sm ${tx.profitLoss >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            {tx.profitLoss >= 0 ? '+' : ''}{formatETH(tx.profitLoss)} ETH
-                          </td>
-                          <td className="py-3 text-right text-sm text-dark-400">{formatETH(tx.gasEth)} ETH</td>
-                          <td className={`py-3 text-right text-sm capitalize ${getStatusColor(tx.status)}`}>
-                            {tx.status}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </motion.div>
-
             {/* Quick Actions */}
             <motion.div
               initial={{ opacity: 0, y: 8 }}
@@ -722,7 +737,7 @@ export default function WalletPage() {
                 >
                   <div className="flex items-center gap-3">
                     <Send className="w-5 h-5 text-cyan-400" />
-                    <span className="font-medium text-white">Send ETH</span>
+                    <span className="font-medium text-white">Send ETH / USDC</span>
                   </div>
                   <ChevronRight className="w-5 h-5 text-dark-400 group-hover:text-cyan-400" />
                 </button>
@@ -771,7 +786,10 @@ export default function WalletPage() {
         isOpen={transferOpen}
         onClose={() => setTransferOpen(false)}
         ethBalance={ethVal}
+        usdcBalance={usdcVal}
         explorerUrl={explorerUrl}
+        chainId={chainId}
+        onTransferComplete={handleTransferComplete}
       />
       <ChainSwitcherModal
         isOpen={chainSwitcherOpen}
