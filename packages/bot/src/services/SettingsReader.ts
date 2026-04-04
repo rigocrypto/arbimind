@@ -15,13 +15,18 @@
 import { Logger } from '../utils/Logger';
 
 /* ------------------------------------------------------------------ */
-/*  Subset of EngineSettings the bot actually consumes (PR 1A scope)  */
+/*  Subset of EngineSettings the bot actually consumes at runtime     */
 /* ------------------------------------------------------------------ */
 export interface RuntimeSettings {
+  /* PR 1A — core engine */
   autoTrade: boolean;
   minProfitEth: number;
   maxGasGwei: number;
   // preferredChains: string[];  // TODO: multi-chain not yet supported in scan loop
+
+  /* PR 1B — advanced engine (only settings with real enforcement paths) */
+  slippagePct: number;              // replaces hardcoded 0.5% in ExecutionService
+  requiredConfirmations: number;    // passed to ethers tx.wait(confirms)
 }
 
 /* ------------------------------------------------------------------ */
@@ -79,6 +84,8 @@ export class SettingsReader {
           autoTrade?: boolean;
           minProfitEth?: number;
           maxGasGwei?: number;
+          slippagePct?: number;
+          requiredConfirmations?: number;
         };
       };
       if (!json.ok || !json.settings) {
@@ -91,6 +98,8 @@ export class SettingsReader {
         autoTrade: typeof s.autoTrade === 'boolean' ? s.autoTrade : this.envDefaults.autoTrade,
         minProfitEth: typeof s.minProfitEth === 'number' ? s.minProfitEth : this.envDefaults.minProfitEth,
         maxGasGwei: typeof s.maxGasGwei === 'number' ? s.maxGasGwei : this.envDefaults.maxGasGwei,
+        slippagePct: typeof s.slippagePct === 'number' ? s.slippagePct : this.envDefaults.slippagePct,
+        requiredConfirmations: typeof s.requiredConfirmations === 'number' ? s.requiredConfirmations : this.envDefaults.requiredConfirmations,
       };
       this.lastFetchMs = now;
 
