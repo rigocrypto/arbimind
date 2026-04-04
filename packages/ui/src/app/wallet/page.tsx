@@ -113,6 +113,7 @@ function TransferModal({
   const [token, setToken] = useState<'ETH' | 'USDC'>('ETH');
   const { sendTransactionAsync, isPending: isSendingEth } = useSendTransaction();
   const { writeContractAsync, isPending: isSendingUsdc } = useWriteContract();
+  const { address: connectedAddress, chain: connectedChain } = useAccount();
   const [isSending, setIsSending] = useState(false);
 
   const usdcAddress = chainId ? USDC_BY_CHAIN[chainId] : undefined;
@@ -148,6 +149,8 @@ function TransferModal({
           abi: erc20Abi,
           functionName: 'transfer',
           args: [toAddress as `0x${string}`, parseUnits(amount, 6)],
+          account: connectedAddress,
+          chain: connectedChain,
         });
       }
       toast.success(`Tx submitted: ${hash.slice(0, 10)}…${hash.slice(-8)}`);
@@ -172,7 +175,7 @@ function TransferModal({
     } finally {
       setIsSending(false);
     }
-  }, [toAddress, amount, balance, token, usdcAddress, sendTransactionAsync, writeContractAsync, explorerUrl, onTransferComplete, onClose]);
+  }, [toAddress, amount, balance, token, usdcAddress, sendTransactionAsync, writeContractAsync, explorerUrl, onTransferComplete, onClose, connectedAddress, connectedChain]);
 
   if (!isOpen) return null;
 
@@ -280,6 +283,7 @@ function SwapModal({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { sendTransactionAsync } = useSendTransaction();
   const { writeContractAsync } = useWriteContract();
+  const { address: connectedAddress, chain: connectedChain } = useAccount();
 
   const usdcAddress = chainId ? USDC_BY_CHAIN[chainId] : undefined;
   const balance = sellToken === 'ETH' ? ethBalance : usdcBalance;
@@ -367,6 +371,7 @@ function SwapModal({
   // Handle approval
   const handleApprove = useCallback(async () => {
     if (!usdcAddress || !quote?.allowanceTarget) return;
+    if (!connectedAddress || !connectedChain) { setError('Wallet not connected'); return; }
     setStep('approving');
     setError(null);
     try {
@@ -375,6 +380,8 @@ function SwapModal({
         abi: erc20Abi,
         functionName: 'approve',
         args: [quote.allowanceTarget as `0x${string}`, maxUint256],
+        account: connectedAddress,
+        chain: connectedChain,
       });
       toast.success(`Approval tx: ${String(hash).slice(0, 10)}…`);
       await refetchAllowance();
@@ -389,10 +396,9 @@ function SwapModal({
         setStep('error');
       }
     }
-  }, [usdcAddress, quote, writeContractAsync, refetchAllowance]);
+  }, [usdcAddress, quote, writeContractAsync, refetchAllowance, connectedAddress, connectedChain]);
 
-  // Get user address from wagmi (we access it via the parent scope)
-  const { address } = useAccount();
+  const address = connectedAddress;
 
   // Handle swap execution
   const handleSwap = useCallback(async () => {
