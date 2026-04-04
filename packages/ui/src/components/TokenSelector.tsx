@@ -18,6 +18,30 @@ interface TokenSelectorProps {
   onSelect: (token: SwapToken) => void;
 }
 
+/** 20×20 token icon with symbol-letter fallback */
+function TokenIcon({ token, size = 20 }: { token: SwapToken; size?: number }) {
+  if (token.logoURI) {
+    return (
+      <img
+        src={token.logoURI}
+        alt={token.symbol}
+        width={size}
+        height={size}
+        className="rounded-full"
+        loading="lazy"
+      />
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center justify-center rounded-full bg-dark-700 text-[10px] font-bold text-dark-300"
+      style={{ width: size, height: size }}
+    >
+      {token.symbol.slice(0, 2)}
+    </span>
+  );
+}
+
 export function TokenSelector({
   selected,
   tokens,
@@ -78,6 +102,7 @@ export function TokenSelector({
         onClick={() => { setQuery(''); setOpen((v) => !v); }}
         className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-dark-900 border border-dark-600 text-white text-sm hover:border-cyan-500/40 transition min-w-[90px]"
       >
+        <TokenIcon token={selected} />
         <span className="font-medium">{selected.symbol}</span>
         <ChevronDown className="w-3.5 h-3.5 text-dark-400" />
       </button>
@@ -122,6 +147,7 @@ export function TokenSelector({
                       ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}
                     `}
                   >
+                    <TokenIcon token={token} />
                     <span className="font-medium w-12 text-left">{token.symbol}</span>
                     <span className="text-xs text-dark-400 truncate">{token.name}</span>
                   </button>

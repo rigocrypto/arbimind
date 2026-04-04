@@ -36,6 +36,7 @@ export const ETH_TOKEN: SwapToken = {
   decimals: 18,
   isNative: true,
   addresses: {},
+  logoURI: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
 };
 
 export const USDC_TOKEN: SwapToken = {
@@ -49,6 +50,7 @@ export const USDC_TOKEN: SwapToken = {
     42161: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
     8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
   },
+  logoURI: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png',
 };
 
 export const USDT_TOKEN: SwapToken = {
@@ -62,6 +64,7 @@ export const USDT_TOKEN: SwapToken = {
     42161: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9',
     8453: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2',
   },
+  logoURI: 'https://assets.coingecko.com/coins/images/325/small/Tether.png',
 };
 
 export const WETH_TOKEN: SwapToken = {
@@ -75,6 +78,7 @@ export const WETH_TOKEN: SwapToken = {
     42161: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
     8453: '0x4200000000000000000000000000000000000006',
   },
+  logoURI: 'https://assets.coingecko.com/coins/images/2518/small/weth.png',
 };
 
 export const DAI_TOKEN: SwapToken = {
@@ -88,6 +92,7 @@ export const DAI_TOKEN: SwapToken = {
     42161: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1',
     8453: '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb',
   },
+  logoURI: 'https://assets.coingecko.com/coins/images/9956/small/Badge_Dai.png',
 };
 
 /** Master list — order determines default display order */
