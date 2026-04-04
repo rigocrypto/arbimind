@@ -2,12 +2,12 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
-import { useAccount, useBalance, useConnect, useDisconnect, useEnsName, useReadContract } from 'wagmi';
-import { formatUnits } from 'viem';
+import { useAccount, useBalance, useConnect, useDisconnect, useEnsName, useReadContract, useSendTransaction } from 'wagmi';
+import { formatUnits, parseEther, isAddress } from 'viem';
 import { erc20Abi } from 'viem';
 import {
   Wallet,
@@ -21,6 +21,7 @@ import {
   Shield,
   Banknote,
   LogOut,
+  Send,
 } from 'lucide-react';
 import { formatETH, formatUSD, formatAddress, formatTxHash } from '@/utils/format';
 import { HelpTooltip } from '@/components/HelpTooltip';
@@ -30,9 +31,11 @@ import { getPortfolioErrorDetails, usePortfolioSummary, usePortfolioTimeseries }
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import Image from 'next/image';
+import { notifyWalletStateUpdated } from '@/lib/walletState';
 
 const USDC_BY_CHAIN: Record<number, `0x${string}`> = {
   1: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' as const,
+  10: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85' as const,
   42161: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as const,
   8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const,
 };
@@ -101,6 +104,116 @@ function WithdrawModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
   );
 }
 
+function TransferModal({
+  isOpen,
+  onClose,
+  ethBalance,
+  explorerUrl,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  ethBalance: number;
+  explorerUrl: string;
+}) {
+  const [toAddress, setToAddress] = useState('');
+  const [amount, setAmount] = useState('');
+  const { sendTransactionAsync, isPending } = useSendTransaction();
+  const [isSending, setIsSending] = useState(false);
+
+  const handleSend = useCallback(async () => {
+    if (!isAddress(toAddress)) {
+      toast.error('Invalid recipient address');
+      return;
+    }
+    const val = parseFloat(amount);
+    if (!Number.isFinite(val) || val <= 0) {
+      toast.error('Enter a valid amount');
+      return;
+    }
+    if (val > ethBalance) {
+      toast.error('Insufficient ETH balance');
+      return;
+    }
+    setIsSending(true);
+    try {
+      const hash = await sendTransactionAsync({ to: toAddress as `0x${string}`, value: parseEther(amount) });
+      toast.success(`Tx submitted: ${hash.slice(0, 10)}…${hash.slice(-8)}`);
+      if (explorerUrl) {
+        toast(() => (
+          <a href={`${explorerUrl}/tx/${hash}`} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold underline text-cyan-400">
+            View on Explorer
+          </a>
+        ));
+      }
+      setToAddress('');
+      setAmount('');
+      onClose();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err ?? 'Transfer failed');
+      if (/user rejected|denied/i.test(msg)) {
+        toast('Transaction cancelled', { icon: '🔒' });
+      } else {
+        toast.error(msg.length > 120 ? `${msg.slice(0, 120)}…` : msg);
+      }
+    } finally {
+      setIsSending(false);
+    }
+  }, [toAddress, amount, ethBalance, sendTransactionAsync, explorerUrl, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-hidden />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="relative z-[9999] w-full max-w-sm rounded-xl bg-dark-800 border border-dark-600 p-6 shadow-2xl"
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <Send className="w-6 h-6 text-cyan-400" />
+          <h3 className="text-lg font-bold text-white">Send ETH</h3>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label htmlFor="transfer-to" className="block text-xs text-dark-400 mb-1">Recipient address</label>
+            <input
+              id="transfer-to"
+              type="text"
+              placeholder="0x…"
+              value={toAddress}
+              onChange={(e) => setToAddress(e.target.value.trim())}
+              className="w-full px-3 py-2 rounded-lg bg-dark-900 border border-dark-600 text-white text-sm placeholder:text-dark-500 focus:outline-none focus:ring-1 focus:ring-cyan-400"
+            />
+          </div>
+          <div>
+            <label htmlFor="transfer-amount" className="block text-xs text-dark-400 mb-1">Amount (ETH)</label>
+            <input
+              id="transfer-amount"
+              type="number"
+              step="0.001"
+              min="0"
+              placeholder="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-dark-900 border border-dark-600 text-white text-sm placeholder:text-dark-500 focus:outline-none focus:ring-1 focus:ring-cyan-400"
+            />
+            <p className="text-xs text-dark-500 mt-1">Balance: {ethBalance.toFixed(4)} ETH</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleSend()}
+            disabled={isPending || isSending}
+            className="w-full py-2.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 text-cyan-400 font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isPending || isSending ? 'Sending…' : 'Send ETH'}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 export default function WalletPage() {
   const { address, isConnected, chain, chainId } = useAccount();
   const { connectAsync, connectors, isPending: isConnectPending } = useConnect();
@@ -116,10 +229,28 @@ export default function WalletPage() {
   });
   const { data: ensName } = useEnsName({ address });
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const [chainSwitcherOpen, setChainSwitcherOpen] = useState(false);
   const [txFilter, setTxFilter] = useState<string>('all');
   const isMobileBrowser = useMemo(() => isLikelyMobileBrowser(), []);
   const isMetaMaskBrowser = useMemo(() => isMetaMaskInAppBrowser(), []);
+
+  // Persist EVM wallet state to localStorage (mirrors Solana wallet persistence)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (isConnected && address) {
+      window.localStorage.setItem('arbimind:wallet:activeChain', 'evm');
+      window.localStorage.setItem('arbimind:wallet:evmConnected', '1');
+      window.localStorage.setItem('arbimind:wallet:evmAddress', address);
+      if (chainId) window.localStorage.setItem('arbimind:wallet:evmChainId', String(chainId));
+      notifyWalletStateUpdated();
+      return;
+    }
+    window.localStorage.setItem('arbimind:wallet:evmConnected', '0');
+    window.localStorage.removeItem('arbimind:wallet:evmAddress');
+    window.localStorage.removeItem('arbimind:wallet:evmChainId');
+    notifyWalletStateUpdated();
+  }, [isConnected, address, chainId]);
 
   const handleDirectMetaMaskConnect = async () => {
     const metaMaskConnector = connectors.find(
@@ -512,6 +643,7 @@ export default function WalletPage() {
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
                   Recent Activity
                   <HelpTooltip content="Last 10 txs. Profits auto-sweep to treasury." />
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-500/20 text-xs font-semibold text-amber-300 border border-amber-500/30">Demo</span>
                 </h3>
                 <label htmlFor="wallet-tx-filter" className="sr-only">Filter transactions</label>
                 <select
@@ -582,7 +714,18 @@ export default function WalletPage() {
               className="glass-card p-4 sm:p-6"
             >
               <h3 className="text-lg font-bold text-white mb-4">Quick Actions</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setTransferOpen(true)}
+                  className="flex items-center justify-between p-4 rounded-lg bg-dark-800/50 hover:bg-dark-700/50 border border-dark-600 transition group text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <Send className="w-5 h-5 text-cyan-400" />
+                    <span className="font-medium text-white">Send ETH</span>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-dark-400 group-hover:text-cyan-400" />
+                </button>
                 <button
                   type="button"
                   onClick={() => setWithdrawOpen(true)}
@@ -624,6 +767,12 @@ export default function WalletPage() {
       </div>
 
       <WithdrawModal isOpen={withdrawOpen} onClose={() => setWithdrawOpen(false)} />
+      <TransferModal
+        isOpen={transferOpen}
+        onClose={() => setTransferOpen(false)}
+        ethBalance={ethVal}
+        explorerUrl={explorerUrl}
+      />
       <ChainSwitcherModal
         isOpen={chainSwitcherOpen}
         onClose={() => setChainSwitcherOpen(false)}

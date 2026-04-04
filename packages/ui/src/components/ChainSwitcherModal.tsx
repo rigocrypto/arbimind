@@ -3,12 +3,13 @@
 import { useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount, useSwitchChain } from 'wagmi';
-import { mainnet, arbitrum, base } from 'wagmi/chains';
+import { mainnet, arbitrum, optimism, base } from 'wagmi/chains';
 import Image from 'next/image';
 
 const EVM_CHAINS = [
   { id: mainnet.id, name: 'Ethereum', color: 'from-slate-400 to-slate-600' },
   { id: arbitrum.id, name: 'Arbitrum', color: 'from-blue-400 to-blue-600' },
+  { id: optimism.id, name: 'Optimism', color: 'from-red-400 to-red-600' },
   { id: base.id, name: 'Base', color: 'from-cyan-400 to-blue-500' },
 ];
 
