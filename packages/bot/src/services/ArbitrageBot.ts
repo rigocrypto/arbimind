@@ -9,7 +9,7 @@ import { ExecutionService } from './ExecutionService';
 import { Logger } from '../utils/Logger';
 import { AiScoringService } from './AiScoringService';
 import { AlertService } from './AlertService';
-// AI orchestrator imports removed (not used in current flow)
+import { SettingsReader, type RuntimeSettings } from './SettingsReader';
 
 /** Tokens considered stablecoins for quote sanity filtering */
 const STABLE_TOKENS = new Set(['USDC', 'USDT', 'DAI']);
@@ -53,6 +53,7 @@ export class ArbitrageBot {
   // private aiOrchestrator: AIOrchestrator | undefined;
   private logger: Logger;
   private isRunning: boolean = false;
+  private readonly settingsReader: SettingsReader;
   private stats: BotStats;
   private canaryDailyPnlEth: number = 0;
   private canaryDay: string = new Date().toISOString().slice(0, 10);
@@ -153,6 +154,16 @@ export class ArbitrageBot {
         maxDailyLossEth: this.botConfig.canaryMaxDailyLossEth
       });
     }
+
+    // SettingsReader — fetches runtime-adjustable settings from the backend API.
+    // Falls back to env-var defaults when the backend is unreachable.
+    this.settingsReader = new SettingsReader({
+      envDefaults: {
+        autoTrade: !this.botConfig.logOnly,
+        minProfitEth: this.botConfig.minProfitEth,
+        maxGasGwei: this.botConfig.maxGasGwei,
+      },
+    });
   }
 
   /**
@@ -311,6 +322,9 @@ export class ArbitrageBot {
     let quotesOk = 0;
     let quotesFailed = 0;
 
+    // Fetch runtime settings (cached, refreshed every ~30s)
+    const runtimeSettings = await this.settingsReader.get();
+
     this.logger.debug('Scanning for arbitrage opportunities...');
     console.log('[SCAN_START]', { pairsCount: this.tokenPairs.length });
 
@@ -353,8 +367,8 @@ export class ArbitrageBot {
 
           // Gate 1: isProfitable() — loose ETH-denominated sanity check (MIN_PROFIT_ETH)
           // Gate 2: passesTradeGuards() — authoritative USD floor (MIN_PROFIT_USD)
-          if (this.isProfitable(opportunity) && this.passesTradeGuards(opportunity) && approved) {
-            const success = await this.executeArbitrage(opportunity);
+          if (this.isProfitable(opportunity, runtimeSettings) && this.passesTradeGuards(opportunity) && approved) {
+            const success = await this.executeArbitrage(opportunity, runtimeSettings);
             if (success) executed++;
           }
         }
@@ -764,7 +778,7 @@ export class ArbitrageBot {
    * raw token units for others).  We convert to ETH-equivalent before
    * comparing against `minProfitEth`.
    */
-  private isProfitable(opportunity: ArbitrageOpportunity): boolean {
+  private isProfitable(opportunity: ArbitrageOpportunity, rs?: RuntimeSettings): boolean {
     const decimals = opportunity.decimalsIn;
     const inputIsEth = decimals === 18 && opportunity.tokenA === 'WETH';
 
@@ -778,7 +792,8 @@ export class ArbitrageBot {
       netProfitEth = profitInTokenUnits / this.cachedEthPriceUsd;
     }
 
-    const minProfitEth = this.botConfig.minProfitEth;
+    // Use runtime settings from backend if available, otherwise env-var default
+    const minProfitEth = rs?.minProfitEth ?? this.botConfig.minProfitEth;
 
     if (netProfitEth < minProfitEth) {
       console.log('[OPP_REJECTED_MIN_PROFIT]', {
@@ -786,6 +801,7 @@ export class ArbitrageBot {
         route: opportunity.route,
         netProfitEth: netProfitEth.toFixed(8),
         minProfitEth,
+        minProfitSource: rs ? 'settings-api' : 'env',
         shortfall: (minProfitEth - netProfitEth).toFixed(6),
         decimalsIn: decimals,
         inputIsEth,
@@ -794,14 +810,16 @@ export class ArbitrageBot {
       return false;
     }
 
-    // Check gas price
+    // Check gas price — use runtime maxGasGwei if available
+    const maxGasGwei = rs?.maxGasGwei ?? this.botConfig.maxGasGwei;
     const currentGasPrice = this.getCurrentGasPrice();
     const currentGasGwei = currentGasPrice / 1e9;
-    if (currentGasGwei > this.botConfig.maxGasGwei) {
+    if (currentGasGwei > maxGasGwei) {
       console.log('[OPP_REJECTED_GAS_PRICE]', {
         pair: `${opportunity.tokenA}/${opportunity.tokenB}`,
         currentGasGwei: currentGasGwei.toFixed(4),
-        maxGasGwei: this.botConfig.maxGasGwei,
+        maxGasGwei,
+        maxGasSource: rs ? 'settings-api' : 'env',
       });
       return false;
     }
@@ -913,7 +931,7 @@ export class ArbitrageBot {
   /**
    * Execute an arbitrage opportunity
    */
-  private async executeArbitrage(opportunity: ArbitrageOpportunity): Promise<boolean> {
+  private async executeArbitrage(opportunity: ArbitrageOpportunity, rs?: RuntimeSettings): Promise<boolean> {
     if (this.botConfig.canaryEnabled) {
       this.resetCanaryDayIfNeeded();
 
@@ -942,11 +960,15 @@ export class ArbitrageBot {
       }
     }
 
-    if (this.botConfig.logOnly) {
+    // autoTrade gate: if runtime settings say autoTrade=false, behave like logOnly
+    const autoTradeDisabled = rs && !rs.autoTrade;
+
+    if (this.botConfig.logOnly || autoTradeDisabled) {
+      const reason = this.botConfig.logOnly ? 'LOG_ONLY=true (env)' : 'autoTrade=false (settings-api)';
       console.log(
-        `[EXECUTE_SKIP_LOG_ONLY] route=${opportunity.route} tokenA=${opportunity.tokenA} tokenB=${opportunity.tokenB} netProfit=${ethers.formatUnits(opportunity.netProfit, opportunity.decimalsIn)} profit=${ethers.formatUnits(opportunity.profit, opportunity.decimalsOut)}`
+        `[EXECUTE_SKIP] reason=${reason} route=${opportunity.route} tokenA=${opportunity.tokenA} tokenB=${opportunity.tokenB} netProfit=${ethers.formatUnits(opportunity.netProfit, opportunity.decimalsIn)} profit=${ethers.formatUnits(opportunity.profit, opportunity.decimalsOut)}`
       );
-      this.logger.info('Dry-run mode: skipping real execution (LOG_ONLY=true)', {
+      this.logger.info(`Dry-run mode: skipping real execution (${reason})`, {
         tokenA: opportunity.tokenA,
         tokenB: opportunity.tokenB,
         dex1: opportunity.dex1,

@@ -173,13 +173,13 @@ export default function SettingsPageClient() {
           <div className="mb-6 flex items-center gap-2">
             <Zap className="h-5 w-5 text-cyan-400" />
             <h2 className="text-lg font-bold text-white">Trading Preferences</h2>
-            <StatusBadge active={applied.engine} source={source} />
+            <StatusBadge active={applied.autoTrade} source={source} />
           </div>
           <div className="space-y-4">
             <ToggleRow
               id="auto-trade"
               label="Enable Auto-Trading"
-              description={applied.engine ? 'Controls live auto-execution on the engine.' : 'Saved — will apply once engine integration is connected.'}
+              description={applied.autoTrade ? 'Controls live auto-execution on the engine.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.autoTrade}
               onToggle={(checked) => toggleBoolean('autoTrade')(checked)}
             />
@@ -187,7 +187,7 @@ export default function SettingsPageClient() {
             <NumberInput
               id="min-profit"
               label="Minimum Profit Threshold (ETH)"
-              description={applied.engine ? 'Active minimum profit threshold enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}
+              description={applied.minProfitEth ? 'Active minimum profit threshold enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.minProfit}
               step={0.001}
               min={0}
@@ -197,7 +197,7 @@ export default function SettingsPageClient() {
             <NumberInput
               id="max-gas"
               label="Maximum Gas Price (Gwei)"
-              description={applied.engine ? 'Active gas cap enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}
+              description={applied.maxGasGwei ? 'Active gas cap enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.maxGas}
               step={1}
               min={1}
@@ -207,7 +207,7 @@ export default function SettingsPageClient() {
             <NumberInput
               id="slippage"
               label="Slippage Tolerance (%)"
-              description={applied.engine ? 'Active slippage tolerance enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}
+              description={applied.slippagePct ? 'Active slippage tolerance enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.slippage}
               step={0.05}
               min={0.05}
@@ -228,12 +228,12 @@ export default function SettingsPageClient() {
                 <option value="medium">Medium - Balanced</option>
                 <option value="high">High - Aggressive</option>
               </select>
-              <p className="mt-1 text-xs text-dark-400">{applied.engine ? 'Active risk posture enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}</p>
+              <p className="mt-1 text-xs text-dark-400">{applied.riskLevel ? 'Active risk posture enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}</p>
             </div>
 
             <div className="rounded-lg border border-dark-700 bg-dark-800/50 p-4">
               <span className="text-sm font-medium text-white">Preferred Execution Chains</span>
-              <p className="mt-1 text-xs text-dark-400">{applied.scanner ? 'Active scanner chains enforced by the engine.' : 'Saved — will apply once scanner integration is connected.'}</p>
+              <p className="mt-1 text-xs text-dark-400">{applied.preferredChains ? 'Active scanner chains enforced by the engine.' : 'Saved — bot is single-chain (EVM_CHAIN env); multi-chain not yet supported.'}</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {CHAIN_OPTIONS.map((chain) => {
                   const checked = chainSelections.has(chain);
@@ -258,13 +258,13 @@ export default function SettingsPageClient() {
           <div className="mb-6 flex items-center gap-2">
             <Shield className="h-5 w-5 text-purple-400" />
             <h2 className="text-lg font-bold text-white">Risk Controls & Limits</h2>
-            <StatusBadge active={applied.engine} source={source} />
+            <StatusBadge active={applied.requiredConfirmations} source={source} />
           </div>
           <div className="space-y-4">
             <NumberInput
               id="tx-confirmations"
               label="Required Confirmations"
-              description={applied.engine ? 'Active confirmation depth enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}
+              description={applied.requiredConfirmations ? 'Active confirmation depth enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.txConfirmations}
               step={1}
               min={1}
@@ -273,7 +273,7 @@ export default function SettingsPageClient() {
             <NumberInput
               id="flashloan-max"
               label="Flashloan Notional Cap (ETH)"
-              description={applied.engine ? 'Active flashloan cap enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}
+              description={applied.flashloanMaxEth ? 'Active flashloan cap enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.flashloanMax}
               step={1}
               min={1}
@@ -282,7 +282,7 @@ export default function SettingsPageClient() {
             <ToggleRow
               id="mev-protection"
               label="MEV Protection"
-              description={applied.engine ? 'Active MEV protection routing on the engine.' : 'Saved — will apply once engine integration is connected.'}
+              description={applied.mevProtection ? 'Active MEV protection routing on the engine.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.mevProtection}
               onToggle={(checked) => toggleBoolean('mevProtection')(checked)}
             />
@@ -293,13 +293,13 @@ export default function SettingsPageClient() {
           <div className="mb-6 flex items-center gap-2">
             <Bell className="h-5 w-5 text-green-400" />
             <h2 className="text-lg font-bold text-white">Notifications</h2>
-            <StatusBadge active={applied.notifications} source={source} />
+            <StatusBadge active={applied.browserNotifications} source={source} />
           </div>
           <div className="space-y-4">
             <ToggleRow
               id="notifications"
               label="Enable Browser Notifications"
-              description={applied.notifications ? 'Browser notifications are active.' : 'Saved — browser notification delivery is not yet wired.'}
+              description={applied.browserNotifications ? 'Browser notifications are active.' : 'Saved — browser notification delivery is not yet wired.'}
               value={settings.notifications}
               onToggle={(checked) => toggleBoolean('notifications')(checked)}
             />
@@ -326,14 +326,14 @@ export default function SettingsPageClient() {
           <div className="mb-6 flex items-center gap-2">
             <Database className="h-5 w-5 text-orange-400" />
             <h2 className="text-lg font-bold text-white">Connectivity</h2>
-            <StatusBadge active={applied.engine} source={source} />
+            <StatusBadge active={applied.primaryRpcUrl} source={source} />
           </div>
           <div className="space-y-4">
             <TextInput
               id="rpc-url"
               label="Primary RPC URL"
               placeholder="https://arb1.infura.io/v3/..."
-              description={applied.engine ? 'Active RPC endpoint used by the engine.' : 'Saved — will apply once engine integration is connected.'}
+              description={applied.primaryRpcUrl ? 'Active RPC endpoint used by the engine.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.rpcUrl}
               onChange={(value) => setSetting('rpcUrl', value)}
             />
@@ -341,7 +341,7 @@ export default function SettingsPageClient() {
               id="private-relay"
               label="Private Relay URL"
               placeholder="https://relay.flashbots.net"
-              description={applied.engine ? 'Active relay endpoint used by the engine.' : 'Saved — will apply once engine integration is connected.'}
+              description={applied.privateRelayUrl ? 'Active relay endpoint used by the engine.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.privateRelay}
               onChange={(value) => setSetting('privateRelay', value)}
             />
@@ -349,7 +349,7 @@ export default function SettingsPageClient() {
               id="wc-project"
               label="WalletConnect Project ID"
               placeholder="Project identifier for WalletConnect session pairing"
-              description={applied.walletconnect ? 'Active WalletConnect project ID.' : 'Saved — WalletConnect pairing is not yet connected.'}
+              description={applied.walletConnectProjectId ? 'Active WalletConnect project ID.' : 'Saved — WalletConnect pairing is not yet connected.'}
               value={settings.wcProjectId}
               onChange={(value) => setSetting('wcProjectId', value)}
             />

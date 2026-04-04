@@ -28,10 +28,21 @@ interface BackendSettings {
 }
 
 export interface AppliedMeta {
-  engine: boolean;
-  scanner: boolean;
-  notifications: boolean;
-  walletconnect: boolean;
+  autoTrade: boolean;
+  minProfitEth: boolean;
+  maxGasGwei: boolean;
+  preferredChains: boolean;
+  slippagePct: boolean;
+  riskLevel: boolean;
+  requiredConfirmations: boolean;
+  flashloanMaxEth: boolean;
+  mevProtection: boolean;
+  browserNotifications: boolean;
+  emailAlerts: boolean;
+  discordAlerts: boolean;
+  primaryRpcUrl: boolean;
+  privateRelayUrl: boolean;
+  walletConnectProjectId: boolean;
 }
 
 function backendToFrontend(b: BackendSettings): Settings {
@@ -132,7 +143,13 @@ export const useSettingsStore = create<{
   error: null,
   validationErrors: [],
   source: 'defaults',
-  applied: { engine: false, scanner: false, notifications: false, walletconnect: false },
+  applied: {
+    autoTrade: false, minProfitEth: false, maxGasGwei: false, preferredChains: false,
+    slippagePct: false, riskLevel: false, requiredConfirmations: false,
+    flashloanMaxEth: false, mevProtection: false,
+    browserNotifications: false, emailAlerts: false, discordAlerts: false,
+    primaryRpcUrl: false, privateRelayUrl: false, walletConnectProjectId: false,
+  },
 
   hydrate: async () => {
     if (typeof window === 'undefined') return;

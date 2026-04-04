@@ -68,18 +68,64 @@ export const engineSettingsSchema = Joi.object<EngineSettings>({
   walletConnectProjectId: Joi.string().max(100).allow(null, ''),
 }).options({ stripUnknown: true });
 
-/** Applied-status metadata: which subsystems actually consume settings. */
+/**
+ * Per-setting applied-status metadata.
+ *
+ * Each key corresponds to a setting and indicates whether the **engine / bot**
+ * actively reads and enforces that value at runtime.
+ *
+ * `true`  = the bot fetches this from the settings store and uses it in its
+ *           scan / execution / alerting pipeline.
+ * `false` = the value is persisted but not yet consumed — the frontend shows
+ *           "Saved — not yet wired" accordingly.
+ */
 export interface AppliedMeta {
-  engine: boolean;
-  scanner: boolean;
-  notifications: boolean;
-  walletconnect: boolean;
+  /* --- Core engine (PR 1A) --- */
+  autoTrade: boolean;
+  minProfitEth: boolean;
+  maxGasGwei: boolean;
+  preferredChains: boolean;
+
+  /* --- Advanced engine (PR 1B — not yet) --- */
+  slippagePct: boolean;
+  riskLevel: boolean;
+  requiredConfirmations: boolean;
+  flashloanMaxEth: boolean;
+  mevProtection: boolean;
+
+  /* --- Notifications --- */
+  browserNotifications: boolean;
+  emailAlerts: boolean;
+  discordAlerts: boolean;
+
+  /* --- Infrastructure / WalletConnect --- */
+  primaryRpcUrl: boolean;
+  privateRelayUrl: boolean;
+  walletConnectProjectId: boolean;
 }
 
 /** Current applied status — updated as engine integration PRs land. */
 export const APPLIED_META: AppliedMeta = {
-  engine: false,
-  scanner: false,
-  notifications: false,
-  walletconnect: false,
+  /* Core engine — wired in this PR */
+  autoTrade: true,
+  minProfitEth: true,
+  maxGasGwei: true,
+  preferredChains: false, // bot is single-chain (EVM_CHAIN env); multi-chain not yet supported
+
+  /* Advanced engine — not yet consumed */
+  slippagePct: false,
+  riskLevel: false,
+  requiredConfirmations: false,
+  flashloanMaxEth: false,
+  mevProtection: false,
+
+  /* Notifications — not yet consumed */
+  browserNotifications: false,
+  emailAlerts: false,
+  discordAlerts: false,
+
+  /* Infrastructure — not yet consumed */
+  primaryRpcUrl: false,
+  privateRelayUrl: false,
+  walletConnectProjectId: false,
 };
