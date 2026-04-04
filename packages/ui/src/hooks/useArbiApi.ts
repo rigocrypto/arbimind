@@ -224,6 +224,7 @@ async function fetchWithFallback<T>(
 export function useHealth() {
   const [health, setHealth] = useState<HealthStatus>(mockHealth);
   const [loading, setLoading] = useState(false);
+  const [latencyMs, setLatencyMs] = useState(0);
 
   useEffect(() => {
     if (!ENABLE_API_CALLS) {
@@ -239,10 +240,12 @@ export function useHealth() {
       if (!isMounted) return;
       
       setLoading(true);
+      const t0 = Date.now();
       const { data, shouldRetry } = await fetchWithFallback('/health', mockHealth);
       
       if (!isMounted) return;
       
+      setLatencyMs(Date.now() - t0);
       setHealth(normalizeHealth(data));
       setLoading(false);
 
@@ -270,12 +273,13 @@ export function useHealth() {
     };
   }, []);
 
-  return { health, loading };
+  return { health, loading, latencyMs };
 }
 
 export function useMetrics() {
   const [metrics, setMetrics] = useState<Metrics>(mockMetrics);
   const [loading, setLoading] = useState(false);
+  const isDemo = !ENABLE_API_CALLS || !ENABLE_PUBLIC_METRICS;
 
   useEffect(() => {
     if (!ENABLE_API_CALLS || !ENABLE_PUBLIC_METRICS) {
@@ -318,12 +322,13 @@ export function useMetrics() {
     };
   }, []);
 
-  return { metrics, loading };
+  return { metrics, loading, isDemo };
 }
 
 export function useStrategies() {
   const [strategies, setStrategies] = useState<Strategy[]>(mockStrategies);
   const [loading, setLoading] = useState(false);
+  const isDemo = !ENABLE_API_CALLS || !ENABLE_PUBLIC_METRICS;
 
   useEffect(() => {
     if (!ENABLE_API_CALLS || !ENABLE_PUBLIC_METRICS) {
@@ -366,7 +371,7 @@ export function useStrategies() {
     };
   }, []);
 
-  return { strategies, loading };
+  return { strategies, loading, isDemo };
 }
 
 export function useOpportunities() {
