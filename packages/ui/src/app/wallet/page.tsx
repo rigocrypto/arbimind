@@ -2,12 +2,12 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
 import { useAccount, useBalance, useConnect, useDisconnect, useEnsName, useReadContract, useSendTransaction, useWriteContract } from 'wagmi';
-import { formatUnits, parseEther, parseUnits, isAddress, erc20Abi } from 'viem';
+import { formatUnits, parseEther, parseUnits, isAddress, erc20Abi, maxUint256 } from 'viem';
 import {
   Wallet,
   Copy,
@@ -20,6 +20,7 @@ import {
   Banknote,
   LogOut,
   Send,
+  ArrowDownUp,
 } from 'lucide-react';
 import { formatETH, formatUSD, formatAddress } from '@/utils/format';
 import { ChainSwitcherModal } from '@/components/ChainSwitcherModal';
@@ -239,6 +240,433 @@ function TransferModal({
   );
 }
 
+const SWAP_CHAINS = new Set([1, 10, 42161, 8453]);
+
+type SwapQuote = {
+  buyAmount: string;
+  sellAmount: string;
+  price: string;
+  estimatedGas: string | null;
+  sources: unknown[];
+  allowanceTarget: string | null;
+};
+
+type SwapStep = 'idle' | 'quoting' | 'approving' | 'swapping' | 'success' | 'error';
+
+function SwapModal({
+  isOpen,
+  onClose,
+  ethBalance,
+  usdcBalance,
+  explorerUrl,
+  chainId,
+  onSwapComplete,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  ethBalance: number;
+  usdcBalance: number;
+  explorerUrl: string;
+  chainId: number | undefined;
+  onSwapComplete?: () => void;
+}) {
+  const [sellToken, setSellToken] = useState<'ETH' | 'USDC'>('ETH');
+  const [buyToken, setBuyToken] = useState<'ETH' | 'USDC'>('USDC');
+  const [amount, setAmount] = useState('');
+  const [quote, setQuote] = useState<SwapQuote | null>(null);
+  const [step, setStep] = useState<SwapStep>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { sendTransactionAsync } = useSendTransaction();
+  const { writeContractAsync } = useWriteContract();
+
+  const usdcAddress = chainId ? USDC_BY_CHAIN[chainId] : undefined;
+  const balance = sellToken === 'ETH' ? ethBalance : usdcBalance;
+  const chainSupported = chainId != null && SWAP_CHAINS.has(chainId);
+
+  const numAmount = parseFloat(amount);
+  const amountValid = Number.isFinite(numAmount) && numAmount > 0;
+  const amountExceeds = amountValid && numAmount > balance;
+
+  // Derive sell amount in smallest unit
+  const sellAmountSmallest = useMemo(() => {
+    if (!amountValid) return '';
+    if (sellToken === 'ETH') return parseEther(amount).toString();
+    return parseUnits(amount, 6).toString();
+  }, [amount, sellToken, amountValid]);
+
+  // Read USDC allowance for the swap target
+  const { data: usdcAllowance, refetch: refetchAllowance } = useReadContract({
+    address: usdcAddress as `0x${string}` | undefined,
+    abi: erc20Abi,
+    functionName: 'allowance',
+    args: quote?.allowanceTarget
+      ? [usdcAddress as `0x${string}`, quote.allowanceTarget as `0x${string}`]
+      : undefined,
+    query: { enabled: Boolean(usdcAddress && quote?.allowanceTarget && sellToken === 'USDC') },
+  });
+
+  // Check if approval is needed
+  const needsApproval = useMemo(() => {
+    if (sellToken !== 'USDC' || !quote?.allowanceTarget || !sellAmountSmallest) return false;
+    if (usdcAllowance == null) return true; // assume needed if not fetched
+    return BigInt(usdcAllowance.toString()) < BigInt(sellAmountSmallest);
+  }, [sellToken, quote, sellAmountSmallest, usdcAllowance]);
+
+  // Reverse tokens
+  const handleReverse = useCallback(() => {
+    setSellToken(buyToken);
+    setBuyToken(sellToken);
+    setQuote(null);
+    setError(null);
+    setAmount('');
+  }, [sellToken, buyToken]);
+
+  // Debounced quote fetching
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setQuote(null);
+    setError(null);
+
+    if (!amountValid || !chainSupported || !sellAmountSmallest || amountExceeds) return;
+
+    setStep('quoting');
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/evm/swap/quote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chainId,
+            sellToken,
+            buyToken,
+            sellAmount: sellAmountSmallest,
+            takerAddress: '0x0000000000000000000000000000000000000000', // placeholder for quote
+            slippageBps: 50,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          setError(data?.error ?? 'Quote failed');
+          setStep('idle');
+          return;
+        }
+        setQuote(data as SwapQuote);
+        setStep('idle');
+      } catch {
+        setError('Failed to fetch quote');
+        setStep('idle');
+      }
+    }, 500);
+
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amount, sellToken, buyToken, chainId, chainSupported, amountExceeds]);
+
+  // Handle approval
+  const handleApprove = useCallback(async () => {
+    if (!usdcAddress || !quote?.allowanceTarget) return;
+    setStep('approving');
+    setError(null);
+    try {
+      const hash = await writeContractAsync({
+        address: usdcAddress as `0x${string}`,
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [quote.allowanceTarget as `0x${string}`, maxUint256],
+      });
+      toast.success(`Approval tx: ${String(hash).slice(0, 10)}…`);
+      await refetchAllowance();
+      setStep('idle');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/user rejected|denied/i.test(msg)) {
+        toast('Approval cancelled', { icon: '🔒' });
+        setStep('idle');
+      } else {
+        setError(msg.length > 120 ? `${msg.slice(0, 120)}…` : msg);
+        setStep('error');
+      }
+    }
+  }, [usdcAddress, quote, writeContractAsync, refetchAllowance]);
+
+  // Get user address from wagmi (we access it via the parent scope)
+  const { address } = useAccount();
+
+  // Handle swap execution
+  const handleSwap = useCallback(async () => {
+    if (!chainId || !address || !sellAmountSmallest) return;
+    setStep('swapping');
+    setError(null);
+    try {
+      // Fetch firm quote with real taker address
+      const res = await fetch(`${API_BASE}/evm/swap/tx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chainId,
+          sellToken,
+          buyToken,
+          sellAmount: sellAmountSmallest,
+          takerAddress: address,
+          slippageBps: 50,
+        }),
+      });
+      const txData = await res.json();
+      if (!res.ok || !txData.ok) {
+        setError(txData?.error ?? 'Failed to get swap transaction');
+        setStep('error');
+        return;
+      }
+
+      const hash = await sendTransactionAsync({
+        to: txData.to as `0x${string}`,
+        data: txData.data as `0x${string}`,
+        value: txData.value ? BigInt(txData.value) : 0n,
+        gas: txData.gas ? BigInt(txData.gas) : undefined,
+      });
+
+      setTxHash(hash);
+      setStep('success');
+      toast.success(`Swap submitted: ${hash.slice(0, 10)}…`);
+      if (explorerUrl) {
+        toast(() => (
+          <a href={`${explorerUrl}/tx/${hash}`} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold underline text-cyan-400">
+            View on Explorer
+          </a>
+        ));
+      }
+      onSwapComplete?.();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/user rejected|denied/i.test(msg)) {
+        toast('Swap cancelled', { icon: '🔒' });
+        setStep('idle');
+      } else {
+        setError(msg.length > 120 ? `${msg.slice(0, 120)}…` : msg);
+        setStep('error');
+      }
+    }
+  }, [chainId, address, sellAmountSmallest, sellToken, buyToken, sendTransactionAsync, explorerUrl, onSwapComplete]);
+
+  // Max button
+  const handleMax = useCallback(() => {
+    if (sellToken === 'ETH') {
+      const max = Math.max(0, ethBalance - 0.005);
+      setAmount(max > 0 ? max.toFixed(6) : '0');
+    } else {
+      setAmount(usdcBalance > 0 ? usdcBalance.toFixed(2) : '0');
+    }
+  }, [sellToken, ethBalance, usdcBalance]);
+
+  // Reset when modal opens/closes
+  useEffect(() => {
+    if (!isOpen) {
+      setAmount('');
+      setQuote(null);
+      setStep('idle');
+      setError(null);
+      setTxHash(null);
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  // Format the buy amount for display
+  const formattedBuyAmount = quote?.buyAmount
+    ? buyToken === 'ETH'
+      ? parseFloat(formatUnits(BigInt(quote.buyAmount), 18)).toFixed(6)
+      : parseFloat(formatUnits(BigInt(quote.buyAmount), 6)).toFixed(2)
+    : null;
+
+  // Determine button state
+  let buttonLabel = 'Enter amount';
+  let buttonDisabled = true;
+  let buttonAction: (() => void) | undefined;
+
+  if (!chainSupported) {
+    buttonLabel = 'Switch to supported network';
+  } else if (!amountValid) {
+    buttonLabel = 'Enter amount';
+  } else if (amountExceeds) {
+    buttonLabel = 'Insufficient balance';
+  } else if (step === 'quoting') {
+    buttonLabel = 'Getting quote…';
+  } else if (step === 'approving') {
+    buttonLabel = 'Approving…';
+  } else if (step === 'swapping') {
+    buttonLabel = 'Swapping…';
+  } else if (step === 'success') {
+    buttonLabel = 'Done';
+    buttonDisabled = false;
+    buttonAction = () => { setStep('idle'); setAmount(''); setQuote(null); setTxHash(null); };
+  } else if (step === 'error') {
+    buttonLabel = 'Retry';
+    buttonDisabled = false;
+    buttonAction = () => { setStep('idle'); setError(null); };
+  } else if (!quote) {
+    buttonLabel = 'Enter amount to get quote';
+  } else if (needsApproval) {
+    buttonLabel = `Approve ${sellToken}`;
+    buttonDisabled = false;
+    buttonAction = () => void handleApprove();
+  } else {
+    buttonLabel = 'Swap';
+    buttonDisabled = false;
+    buttonAction = () => void handleSwap();
+  }
+
+  return (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-hidden />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="relative z-[9999] w-full max-w-sm rounded-xl bg-dark-800 border border-dark-600 p-6 shadow-2xl"
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <ArrowDownUp className="w-6 h-6 text-cyan-400" />
+          <h3 className="text-lg font-bold text-white">Swap</h3>
+        </div>
+
+        <div className="space-y-3">
+          {/* Sell token */}
+          <div>
+            <label className="block text-xs text-dark-400 mb-1">Sell</label>
+            <div className="flex gap-2">
+              <select
+                value={sellToken}
+                onChange={(e) => {
+                  const t = e.target.value as 'ETH' | 'USDC';
+                  setSellToken(t);
+                  setBuyToken(t === 'ETH' ? 'USDC' : 'ETH');
+                  setQuote(null);
+                }}
+                className="w-24 px-3 py-2 rounded-lg bg-dark-900 border border-dark-600 text-white text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400"
+              >
+                <option value="ETH">ETH</option>
+                {usdcAddress && <option value="USDC">USDC</option>}
+              </select>
+              <div className="flex-1 relative">
+                <input
+                  type="number"
+                  step={sellToken === 'ETH' ? '0.001' : '0.01'}
+                  min="0"
+                  placeholder="0.0"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-dark-900 border border-dark-600 text-white text-sm placeholder:text-dark-500 focus:outline-none focus:ring-1 focus:ring-cyan-400 pr-14"
+                />
+                <button
+                  type="button"
+                  onClick={handleMax}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-cyan-400 hover:text-cyan-300"
+                >
+                  Max
+                </button>
+              </div>
+            </div>
+            <p className="text-xs text-dark-500 mt-1">Balance: {balance.toFixed(sellToken === 'ETH' ? 4 : 2)} {sellToken}</p>
+            {amountExceeds && <p className="text-xs text-red-400 mt-1">Insufficient balance</p>}
+          </div>
+
+          {/* Reverse button */}
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={handleReverse}
+              className="p-2 rounded-full bg-dark-700 hover:bg-dark-600 transition text-dark-300 hover:text-cyan-400"
+              aria-label="Reverse tokens"
+            >
+              <ArrowDownUp className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Buy token */}
+          <div>
+            <label className="block text-xs text-dark-400 mb-1">Buy</label>
+            <div className="flex gap-2">
+              <select
+                value={buyToken}
+                onChange={(e) => {
+                  const t = e.target.value as 'ETH' | 'USDC';
+                  setBuyToken(t);
+                  setSellToken(t === 'ETH' ? 'USDC' : 'ETH');
+                  setQuote(null);
+                }}
+                className="w-24 px-3 py-2 rounded-lg bg-dark-900 border border-dark-600 text-white text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400"
+              >
+                <option value="ETH">ETH</option>
+                {usdcAddress && <option value="USDC">USDC</option>}
+              </select>
+              <div className="flex-1 px-3 py-2 rounded-lg bg-dark-900 border border-dark-600 text-sm text-dark-300 min-h-[38px] flex items-center">
+                {step === 'quoting' ? (
+                  <span className="animate-pulse">Getting quote…</span>
+                ) : formattedBuyAmount ? (
+                  <span className="text-white font-medium">{formattedBuyAmount} {buyToken}</span>
+                ) : (
+                  <span className="text-dark-500">—</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Quote details */}
+          {quote && (
+            <div className="p-3 rounded-lg bg-dark-900/50 border border-dark-700 text-xs space-y-1">
+              {quote.estimatedGas && (
+                <div className="flex justify-between text-dark-400">
+                  <span>Est. gas</span>
+                  <span>{Number(quote.estimatedGas).toLocaleString()}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-dark-400">
+                <span>Slippage</span>
+                <span>0.5%</span>
+              </div>
+            </div>
+          )}
+
+          {/* Error display */}
+          {error && (
+            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-300">
+              {error}
+            </div>
+          )}
+
+          {/* Success display */}
+          {step === 'success' && txHash && (
+            <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/30 text-xs text-green-300 space-y-1">
+              <p>Swap submitted successfully!</p>
+              {explorerUrl && (
+                <a
+                  href={`${explorerUrl}/tx/${txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-cyan-400 underline"
+                >
+                  View on Explorer
+                </a>
+              )}
+            </div>
+          )}
+
+          {/* Action button */}
+          <button
+            type="button"
+            onClick={buttonAction}
+            disabled={buttonDisabled}
+            className="w-full py-2.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 text-cyan-400 font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {buttonLabel}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 export default function WalletPage() {
   const { address, isConnected, chain, chainId } = useAccount();
   const { connectAsync, connectors, isPending: isConnectPending } = useConnect();
@@ -255,6 +683,7 @@ export default function WalletPage() {
   const { data: ensName } = useEnsName({ address });
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [swapOpen, setSwapOpen] = useState(false);
   const [chainSwitcherOpen, setChainSwitcherOpen] = useState(false);
   const isMobileBrowser = useMemo(() => isLikelyMobileBrowser(), []);
   const isMetaMaskBrowser = useMemo(() => isMetaMaskInAppBrowser(), []);
@@ -336,6 +765,12 @@ export default function WalletPage() {
   };
 
   const handleTransferComplete = useCallback(() => {
+    void refetchEthBalance();
+    void refetchUsdcBalance();
+    void refetchPortfolio();
+  }, [refetchEthBalance, refetchUsdcBalance, refetchPortfolio]);
+
+  const handleSwapComplete = useCallback(() => {
     void refetchEthBalance();
     void refetchUsdcBalance();
     void refetchPortfolio();
@@ -740,7 +1175,7 @@ export default function WalletPage() {
               className="glass-card p-4 sm:p-6"
             >
               <h3 className="text-lg font-bold text-white mb-4">Quick Actions</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
                 <button
                   type="button"
                   onClick={() => setTransferOpen(true)}
@@ -777,6 +1212,17 @@ export default function WalletPage() {
                 </a>
                 <button
                   type="button"
+                  onClick={() => setSwapOpen(true)}
+                  className="flex items-center justify-between p-4 rounded-lg bg-dark-800/50 hover:bg-dark-700/50 border border-dark-600 transition group text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <ArrowDownUp className="w-5 h-5 text-yellow-400" />
+                    <span className="font-medium text-white">Swap</span>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-dark-400 group-hover:text-yellow-400" />
+                </button>
+                <button
+                  type="button"
                   onClick={handleDisconnect}
                   className="flex items-center justify-between p-4 rounded-lg bg-dark-800/50 hover:bg-dark-700/50 border border-dark-600 transition group text-left"
                 >
@@ -801,6 +1247,15 @@ export default function WalletPage() {
         explorerUrl={explorerUrl}
         chainId={chainId}
         onTransferComplete={handleTransferComplete}
+      />
+      <SwapModal
+        isOpen={swapOpen}
+        onClose={() => setSwapOpen(false)}
+        ethBalance={ethVal}
+        usdcBalance={usdcVal}
+        explorerUrl={explorerUrl}
+        chainId={chainId}
+        onSwapComplete={handleSwapComplete}
       />
       <ChainSwitcherModal
         isOpen={chainSwitcherOpen}
