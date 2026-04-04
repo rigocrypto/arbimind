@@ -102,7 +102,7 @@ function HelpModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }
 }
 
 export default function StrategiesPage() {
-  const { strategies, loading } = useStrategies();
+  const { strategies, loading, isDemo } = useStrategies();
   const { start, stop, activeStrategy, activeWalletChain, activeWalletAddress, checkBalance } = useEngineContext();
   const [searchPairs, setSearchPairs] = useState('');
   const [helpOpen, setHelpOpen] = useState(false);
@@ -144,6 +144,11 @@ export default function StrategiesPage() {
             <div className="flex-1 min-w-0">
               <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold mb-2 bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
                 AI Trading Strategies
+                {isDemo && (
+                  <span className="ml-2 inline-flex items-center rounded-full bg-amber-500/20 px-2.5 py-0.5 text-xs font-medium text-amber-400 border border-amber-500/30 align-middle">
+                    Demo
+                  </span>
+                )}
               </h1>
               <p className="text-dark-300 text-sm sm:text-base mb-4">
                 Configure and manage arbitrage strategies powered by AI risk prediction and sentiment.
@@ -188,23 +193,23 @@ export default function StrategiesPage() {
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"
         >
           <div className="glass-card p-4">
-            <div className="text-xs text-dark-400 mb-1">Total Strategies</div>
+            <div className="text-xs text-dark-400 mb-1">Total Strategies{isDemo && <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-400 border border-amber-500/30">Demo</span>}</div>
             <div className="text-2xl font-bold text-white">{displayStrategies.length}</div>
           </div>
           <div className="glass-card p-4">
-            <div className="text-xs text-dark-400 mb-1">Active</div>
+            <div className="text-xs text-dark-400 mb-1">Active{isDemo && <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-400 border border-amber-500/30">Demo</span>}</div>
             <div className="text-2xl font-bold text-green-400">
               {displayStrategies.filter((s) => s.active || s.id === activeStrategy).length}
             </div>
           </div>
           <div className="glass-card p-4">
-            <div className="text-xs text-dark-400 mb-1">Total Profit</div>
+            <div className="text-xs text-dark-400 mb-1">Total Profit{isDemo && <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-400 border border-amber-500/30">Demo</span>}</div>
             <div className="text-2xl font-bold text-white">
               {displayStrategies.reduce((a, s) => a + Math.max(0, s.lastPnl ?? 0), 0).toFixed(2)} ETH
             </div>
           </div>
           <div className="glass-card p-4">
-            <div className="text-xs text-dark-400 mb-1">Avg Success</div>
+            <div className="text-xs text-dark-400 mb-1">Avg Success{isDemo && <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-400 border border-amber-500/30">Demo</span>}</div>
             <div className="text-2xl font-bold text-cyan-400">
               {displayStrategies.length
                 ? Math.round(

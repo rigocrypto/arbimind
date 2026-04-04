@@ -96,6 +96,78 @@ function getAutoTradeServerSnapshot(): boolean {
   return false;
 }
 
+const STRATEGY_TAB_KEY = 'arbimind:strategyTab';
+const STRATEGY_TAB_EVENT = 'arbimind:strategyTabChanged';
+
+function subscribeStrategyTab(callback: () => void) {
+  window.addEventListener('storage', callback);
+  window.addEventListener(STRATEGY_TAB_EVENT, callback);
+  return () => {
+    window.removeEventListener('storage', callback);
+    window.removeEventListener(STRATEGY_TAB_EVENT, callback);
+  };
+}
+
+function getStrategyTabSnapshot(): StrategyMode {
+  try {
+    const saved = window.localStorage.getItem(STRATEGY_TAB_KEY) as StrategyMode | null;
+    if (saved && ['dex', 'cex', 'cross-chain', 'triangular'].includes(saved)) return saved;
+  } catch { /* private mode */ }
+  return 'dex';
+}
+
+function getStrategyTabServerSnapshot(): StrategyMode {
+  return 'dex';
+}
+
+const RISK_KEY = 'arbimind:maxRiskPct';
+const RISK_EVENT = 'arbimind:maxRiskPctChanged';
+
+function subscribeRisk(callback: () => void) {
+  window.addEventListener('storage', callback);
+  window.addEventListener(RISK_EVENT, callback);
+  return () => {
+    window.removeEventListener('storage', callback);
+    window.removeEventListener(RISK_EVENT, callback);
+  };
+}
+
+function getRiskSnapshot(): number {
+  try {
+    const v = window.localStorage.getItem(RISK_KEY);
+    if (v !== null) return Number(v) || 2;
+  } catch { /* private mode */ }
+  return 2;
+}
+
+function getRiskServerSnapshot(): number {
+  return 2;
+}
+
+const SIZE_KEY = 'arbimind:maxTradeSizeEth';
+const SIZE_EVENT = 'arbimind:maxTradeSizeEthChanged';
+
+function subscribeSize(callback: () => void) {
+  window.addEventListener('storage', callback);
+  window.addEventListener(SIZE_EVENT, callback);
+  return () => {
+    window.removeEventListener('storage', callback);
+    window.removeEventListener(SIZE_EVENT, callback);
+  };
+}
+
+function getSizeSnapshot(): number {
+  try {
+    const v = window.localStorage.getItem(SIZE_KEY);
+    if (v !== null) return Number(v) || 0.35;
+  } catch { /* private mode */ }
+  return 0.35;
+}
+
+function getSizeServerSnapshot(): number {
+  return 0.35;
+}
+
 export default function HomePage() {
   const { isConnected } = useAccount();
   const ctaVariant = useMemo(() => getPersistentCtaVariant(), []);
@@ -106,18 +178,12 @@ export default function HomePage() {
   const { start, stop, singleScan, reloadPrices, activeStrategy, isRunning, checkBalance } = useEngineContext();
 
   // SSR-safe localStorage-backed strategy tab
-  const [strategyMode, setStrategyMode] = useState<StrategyMode>('dex');
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem('arbimind:strategyTab') as StrategyMode | null;
-      if (saved && ['dex', 'cex', 'cross-chain', 'triangular'].includes(saved)) {
-        setStrategyMode(saved);
-      }
-    } catch { /* private mode */ }
-  }, []);
+  const strategyMode = useSyncExternalStore(subscribeStrategyTab, getStrategyTabSnapshot, getStrategyTabServerSnapshot);
   const setStrategyModePersisted = useCallback((next: StrategyMode) => {
-    setStrategyMode(next);
-    try { window.localStorage.setItem('arbimind:strategyTab', next); } catch { /* private mode */ }
+    try {
+      window.localStorage.setItem(STRATEGY_TAB_KEY, next);
+      window.dispatchEvent(new Event(STRATEGY_TAB_EVENT));
+    } catch { /* private mode */ }
   }, []);
 
   // SSR-safe localStorage-backed toggle via useSyncExternalStore
@@ -142,27 +208,21 @@ export default function HomePage() {
     }
   }, [isRunning, setAutoModeEnabledPersisted]);
 
-  const [maxRiskPct, setMaxRiskPctRaw] = useState(2);
-  const [maxTradeSizeEth, setMaxTradeSizeEthRaw] = useState(0.35);
+  const maxRiskPct = useSyncExternalStore(subscribeRisk, getRiskSnapshot, getRiskServerSnapshot);
+  const maxTradeSizeEth = useSyncExternalStore(subscribeSize, getSizeSnapshot, getSizeServerSnapshot);
 
-  // Hydrate from localStorage on mount
-  useEffect(() => {
+  const setMaxRiskPct = useCallback((next: number) => {
     try {
-      const savedRisk = window.localStorage.getItem('arbimind:maxRiskPct');
-      const savedSize = window.localStorage.getItem('arbimind:maxTradeSizeEth');
-      if (savedRisk !== null) setMaxRiskPctRaw(Number(savedRisk) || 2);
-      if (savedSize !== null) setMaxTradeSizeEthRaw(Number(savedSize) || 0.35);
+      window.localStorage.setItem(RISK_KEY, String(next));
+      window.dispatchEvent(new Event(RISK_EVENT));
     } catch { /* private mode */ }
   }, []);
 
-  const setMaxRiskPct = useCallback((next: number) => {
-    setMaxRiskPctRaw(next);
-    try { window.localStorage.setItem('arbimind:maxRiskPct', String(next)); } catch { /* private mode */ }
-  }, []);
-
   const setMaxTradeSizeEth = useCallback((next: number) => {
-    setMaxTradeSizeEthRaw(next);
-    try { window.localStorage.setItem('arbimind:maxTradeSizeEth', String(next)); } catch { /* private mode */ }
+    try {
+      window.localStorage.setItem(SIZE_KEY, String(next));
+      window.dispatchEvent(new Event(SIZE_EVENT));
+    } catch { /* private mode */ }
   }, []);
 
   const [timelineStep, setTimelineStep] = useState<ExecutionTimelineStep>(0);
