@@ -96,15 +96,95 @@ function getAutoTradeServerSnapshot(): boolean {
   return false;
 }
 
+const STRATEGY_TAB_KEY = 'arbimind:strategyTab';
+const STRATEGY_TAB_EVENT = 'arbimind:strategyTabChanged';
+
+function subscribeStrategyTab(callback: () => void) {
+  window.addEventListener('storage', callback);
+  window.addEventListener(STRATEGY_TAB_EVENT, callback);
+  return () => {
+    window.removeEventListener('storage', callback);
+    window.removeEventListener(STRATEGY_TAB_EVENT, callback);
+  };
+}
+
+function getStrategyTabSnapshot(): StrategyMode {
+  try {
+    const saved = window.localStorage.getItem(STRATEGY_TAB_KEY) as StrategyMode | null;
+    if (saved && ['dex', 'cex', 'cross-chain', 'triangular'].includes(saved)) return saved;
+  } catch { /* private mode */ }
+  return 'dex';
+}
+
+function getStrategyTabServerSnapshot(): StrategyMode {
+  return 'dex';
+}
+
+const RISK_KEY = 'arbimind:maxRiskPct';
+const RISK_EVENT = 'arbimind:maxRiskPctChanged';
+
+function subscribeRisk(callback: () => void) {
+  window.addEventListener('storage', callback);
+  window.addEventListener(RISK_EVENT, callback);
+  return () => {
+    window.removeEventListener('storage', callback);
+    window.removeEventListener(RISK_EVENT, callback);
+  };
+}
+
+function getRiskSnapshot(): number {
+  try {
+    const v = window.localStorage.getItem(RISK_KEY);
+    if (v !== null) return Number(v) || 2;
+  } catch { /* private mode */ }
+  return 2;
+}
+
+function getRiskServerSnapshot(): number {
+  return 2;
+}
+
+const SIZE_KEY = 'arbimind:maxTradeSizeEth';
+const SIZE_EVENT = 'arbimind:maxTradeSizeEthChanged';
+
+function subscribeSize(callback: () => void) {
+  window.addEventListener('storage', callback);
+  window.addEventListener(SIZE_EVENT, callback);
+  return () => {
+    window.removeEventListener('storage', callback);
+    window.removeEventListener(SIZE_EVENT, callback);
+  };
+}
+
+function getSizeSnapshot(): number {
+  try {
+    const v = window.localStorage.getItem(SIZE_KEY);
+    if (v !== null) return Number(v) || 0.35;
+  } catch { /* private mode */ }
+  return 0.35;
+}
+
+function getSizeServerSnapshot(): number {
+  return 0.35;
+}
+
 export default function HomePage() {
   const { isConnected } = useAccount();
   const ctaVariant = useMemo(() => getPersistentCtaVariant(), []);
   const landingTrackedRef = useRef(false);
-  const { metrics, loading: metricsLoading } = useMetrics();
-  const { strategies, loading: strategiesLoading } = useStrategies();
+  const { metrics, loading: metricsLoading, isDemo: metricsDemo } = useMetrics();
+  const { strategies, loading: strategiesLoading, isDemo: strategiesDemo } = useStrategies();
   const { opportunities, loading: opportunitiesLoading } = useOpportunities();
   const { start, stop, singleScan, reloadPrices, activeStrategy, isRunning, checkBalance } = useEngineContext();
-  const [strategyMode, setStrategyMode] = useState<StrategyMode>('dex');
+
+  // SSR-safe localStorage-backed strategy tab
+  const strategyMode = useSyncExternalStore(subscribeStrategyTab, getStrategyTabSnapshot, getStrategyTabServerSnapshot);
+  const setStrategyModePersisted = useCallback((next: StrategyMode) => {
+    try {
+      window.localStorage.setItem(STRATEGY_TAB_KEY, next);
+      window.dispatchEvent(new Event(STRATEGY_TAB_EVENT));
+    } catch { /* private mode */ }
+  }, []);
 
   // SSR-safe localStorage-backed toggle via useSyncExternalStore
   const autoModeEnabled = useSyncExternalStore(
@@ -128,8 +208,23 @@ export default function HomePage() {
     }
   }, [isRunning, setAutoModeEnabledPersisted]);
 
-  const [maxRiskPct, setMaxRiskPct] = useState(2);
-  const [maxTradeSizeEth, setMaxTradeSizeEth] = useState(0.35);
+  const maxRiskPct = useSyncExternalStore(subscribeRisk, getRiskSnapshot, getRiskServerSnapshot);
+  const maxTradeSizeEth = useSyncExternalStore(subscribeSize, getSizeSnapshot, getSizeServerSnapshot);
+
+  const setMaxRiskPct = useCallback((next: number) => {
+    try {
+      window.localStorage.setItem(RISK_KEY, String(next));
+      window.dispatchEvent(new Event(RISK_EVENT));
+    } catch { /* private mode */ }
+  }, []);
+
+  const setMaxTradeSizeEth = useCallback((next: number) => {
+    try {
+      window.localStorage.setItem(SIZE_KEY, String(next));
+      window.dispatchEvent(new Event(SIZE_EVENT));
+    } catch { /* private mode */ }
+  }, []);
+
   const [timelineStep, setTimelineStep] = useState<ExecutionTimelineStep>(0);
   const [timelineStatus, setTimelineStatus] = useState<ExecutionTimelineStatus>('idle');
   const [singleScanAnimating, setSingleScanAnimating] = useState(false);
@@ -402,7 +497,14 @@ export default function HomePage() {
             </div>
             <div className="flex items-center gap-4 flex-shrink-0">
               <div className="text-right">
-                <div className="text-xs sm:text-sm text-dark-400 mb-1">Total Profit (24h)</div>
+                <div className="flex items-center justify-end gap-2 text-xs sm:text-sm text-dark-400 mb-1">
+                  <span>Total Profit (24h)</span>
+                  {metricsDemo && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-400/70 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5">
+                      Demo
+                    </span>
+                  )}
+                </div>
                 <div className="text-2xl sm:text-3xl font-bold text-white">{formatETH(safeMetrics.profitEth)}</div>
                 <div className="text-xs sm:text-sm text-dark-400">
                   <ProfitTicker value={safeMetrics.profitUsd} prefix="$" className="font-mono" />
@@ -414,7 +516,7 @@ export default function HomePage() {
 
         <div className="grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-3">
           <div className="space-y-3 sm:space-y-4 xl:col-span-2">
-            <StrategyToggleBar value={strategyMode} onChange={setStrategyMode} />
+            <StrategyToggleBar value={strategyMode} onChange={setStrategyModePersisted} />
             <ExecutionTimeline currentStep={timelineStep} status={timelineStatus} />
             <AIExplainPanel
               opportunity={selectedOpportunity}
@@ -443,6 +545,7 @@ export default function HomePage() {
             icon={DollarSign}
             gradient="green"
             sparklineData={profitSparkline}
+            isDemo={metricsDemo}
           />
           <MetricCard
             title="Success Rate"
@@ -451,6 +554,7 @@ export default function HomePage() {
             icon={TrendingUp}
             gradient="cyan"
             sparklineData={successSparkline}
+            isDemo={metricsDemo}
           />
           <MetricCard
             title="Total Trades"
@@ -459,6 +563,7 @@ export default function HomePage() {
             icon={Activity}
             gradient="purple"
             sparklineData={tradesSparkline}
+            isDemo={metricsDemo}
           />
           <MetricCard
             title="Gas Used"
@@ -467,6 +572,7 @@ export default function HomePage() {
             icon={Gauge}
             gradient="orange"
             sparklineData={gasSparkline}
+            isDemo={metricsDemo}
           />
         </div>
 
@@ -475,7 +581,14 @@ export default function HomePage() {
           {/* PNL Chart */}
           <div className="lg:col-span-2 glass-card p-4 sm:p-6 flex flex-col">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4 flex-shrink-0">
-              <h3 className="text-base sm:text-lg font-bold text-white">24h Profit & Loss</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-bold text-white">24h Profit & Loss</h3>
+                {metricsDemo && (
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-400/70 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5">
+                    Demo
+                  </span>
+                )}
+              </div>
               <div className="text-xs sm:text-sm text-dark-400">Realtime · last 24h</div>
             </div>
             <div className="h-[180px] sm:h-[200px]">
@@ -573,7 +686,14 @@ export default function HomePage() {
           {/* AI Strategies */}
           <div className="space-y-3 sm:space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl sm:text-2xl font-bold text-white">AI Strategies</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl sm:text-2xl font-bold text-white">AI Strategies</h2>
+                {strategiesDemo && (
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-400/70 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5">
+                    Demo
+                  </span>
+                )}
+              </div>
               <span className="text-xs sm:text-sm text-dark-400">{strategies.length} active</span>
             </div>
             {strategiesLoading ? (

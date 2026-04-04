@@ -11,6 +11,7 @@ interface MetricCardProps {
   sparklineData?: number[];
   variant?: 'default' | 'accent';
   gradient?: 'cyan' | 'purple' | 'green' | 'orange' | 'pink';
+  isDemo?: boolean;
 }
 
 const gradients = {
@@ -28,7 +29,8 @@ export function MetricCard({
   subtitle,
   sparklineData,
   variant = 'default',
-  gradient = 'cyan' 
+  gradient = 'cyan',
+  isDemo,
 }: MetricCardProps) {
   const isAccent = variant === 'accent';
   
@@ -43,9 +45,16 @@ export function MetricCard({
       
       <div className="relative z-10">
         <div className="flex items-center justify-between mb-3 sm:mb-4">
-          <p className="text-xs sm:text-sm font-medium text-dark-300 uppercase tracking-wider">
-            {title}
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-xs sm:text-sm font-medium text-dark-300 uppercase tracking-wider">
+              {title}
+            </p>
+            {isDemo && (
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-400/70 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5">
+                Demo
+              </span>
+            )}
+          </div>
           {Icon && (
             <div className={`
               p-2 rounded-lg
