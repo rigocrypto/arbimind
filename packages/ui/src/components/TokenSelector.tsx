@@ -20,25 +20,30 @@ interface TokenSelectorProps {
 
 /** 20×20 token icon with symbol-letter fallback */
 function TokenIcon({ token, size = 20 }: { token: SwapToken; size?: number }) {
-  if (token.logoURI) {
+  const [imgError, setImgError] = useState(false);
+
+  if (!token.logoURI || imgError) {
     return (
-      <img
-        src={token.logoURI}
-        alt={token.symbol}
-        width={size}
-        height={size}
-        className="rounded-full"
-        loading="lazy"
-      />
+      <span
+        className="inline-flex items-center justify-center rounded-full bg-dark-700 text-[10px] font-bold text-dark-300"
+        style={{ width: size, height: size }}
+      >
+        {token.symbol.slice(0, 2)}
+      </span>
     );
   }
+
   return (
-    <span
-      className="inline-flex items-center justify-center rounded-full bg-dark-700 text-[10px] font-bold text-dark-300"
-      style={{ width: size, height: size }}
-    >
-      {token.symbol.slice(0, 2)}
-    </span>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={token.logoURI}
+      alt={token.symbol}
+      width={size}
+      height={size}
+      className="rounded-full"
+      loading="lazy"
+      onError={() => setImgError(true)}
+    />
   );
 }
 

@@ -51,6 +51,13 @@ const USDC_BY_CHAIN: Record<number, `0x${string}`> = {
   8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const,
 };
 
+const DAI_BY_CHAIN: Record<number, `0x${string}`> = {
+  1: '0x6B175474E89094C44Da98b954EedeAC495271d0F' as const,
+  10: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1' as const,
+  42161: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1' as const,
+  8453: '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb' as const,
+};
+
 const MIN_ETH = parseFloat(process.env.NEXT_PUBLIC_MIN_TRADE_ETH || '0.05');
 const MIN_USDC = parseFloat(process.env.NEXT_PUBLIC_MIN_TRADE_USDC || '20');
 
@@ -101,11 +108,14 @@ function WithdrawModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
   );
 }
 
+type TransferToken = 'ETH' | 'USDC' | 'DAI';
+
 function TransferModal({
   isOpen,
   onClose,
   ethBalance,
   usdcBalance,
+  daiBalance,
   explorerUrl,
   chainId,
   onTransferComplete,
@@ -114,20 +124,22 @@ function TransferModal({
   onClose: () => void;
   ethBalance: number;
   usdcBalance: number;
+  daiBalance: number;
   explorerUrl: string;
   chainId: number | undefined;
   onTransferComplete?: () => void;
 }) {
   const [toAddress, setToAddress] = useState('');
   const [amount, setAmount] = useState('');
-  const [token, setToken] = useState<'ETH' | 'USDC'>('ETH');
+  const [token, setToken] = useState<TransferToken>('ETH');
   const { sendTransactionAsync, isPending: isSendingEth } = useSendTransaction();
   const { writeContractAsync, isPending: isSendingUsdc } = useWriteContract();
   const { address: connectedAddress, chain: connectedChain } = useAccount();
   const [isSending, setIsSending] = useState(false);
 
   const usdcAddress = chainId ? USDC_BY_CHAIN[chainId] : undefined;
-  const balance = token === 'ETH' ? ethBalance : usdcBalance;
+  const daiAddress = chainId ? DAI_BY_CHAIN[chainId] : undefined;
+  const balance = token === 'ETH' ? ethBalance : token === 'USDC' ? usdcBalance : daiBalance;
   const isPending = isSendingEth || isSendingUsdc;
 
   const handleSend = useCallback(async () => {
@@ -148,17 +160,23 @@ function TransferModal({
       toast.error('USDC is not available on this network');
       return;
     }
+    if (token === 'DAI' && !daiAddress) {
+      toast.error('DAI is not available on this network');
+      return;
+    }
     setIsSending(true);
     try {
       let hash: string;
       if (token === 'ETH') {
         hash = await sendTransactionAsync({ to: toAddress as `0x${string}`, value: parseEther(amount) });
       } else {
+        const erc20Addr = token === 'USDC' ? usdcAddress! : daiAddress!;
+        const decimals = token === 'USDC' ? 6 : 18;
         hash = await writeContractAsync({
-          address: usdcAddress!,
+          address: erc20Addr,
           abi: erc20Abi,
           functionName: 'transfer',
-          args: [toAddress as `0x${string}`, parseUnits(amount, 6)],
+          args: [toAddress as `0x${string}`, parseUnits(amount, decimals)],
           account: connectedAddress,
           chain: connectedChain,
         });
@@ -185,7 +203,7 @@ function TransferModal({
     } finally {
       setIsSending(false);
     }
-  }, [toAddress, amount, balance, token, usdcAddress, sendTransactionAsync, writeContractAsync, explorerUrl, onTransferComplete, onClose, connectedAddress, connectedChain]);
+  }, [toAddress, amount, balance, token, usdcAddress, daiAddress, sendTransactionAsync, writeContractAsync, explorerUrl, onTransferComplete, onClose, connectedAddress, connectedChain]);
 
   if (!isOpen) return null;
 
@@ -207,11 +225,12 @@ function TransferModal({
             <select
               id="transfer-token"
               value={token}
-              onChange={(e) => setToken(e.target.value as 'ETH' | 'USDC')}
+              onChange={(e) => setToken(e.target.value as TransferToken)}
               className="w-full px-3 py-2 rounded-lg bg-dark-900 border border-dark-600 text-white text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400"
             >
               <option value="ETH">ETH</option>
               {usdcAddress && <option value="USDC">USDC</option>}
+              {daiAddress && <option value="DAI">DAI</option>}
             </select>
           </div>
           <div>
@@ -230,14 +249,14 @@ function TransferModal({
             <input
               id="transfer-amount"
               type="number"
-              step={token === 'ETH' ? '0.001' : '0.01'}
+              step={token === 'USDC' ? '0.01' : '0.001'}
               min="0"
-              placeholder={token === 'ETH' ? '0.01' : '10.00'}
+              placeholder={token === 'USDC' ? '10.00' : token === 'DAI' ? '10.00' : '0.01'}
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               className="w-full px-3 py-2 rounded-lg bg-dark-900 border border-dark-600 text-white text-sm placeholder:text-dark-500 focus:outline-none focus:ring-1 focus:ring-cyan-400"
             />
-            <p className="text-xs text-dark-500 mt-1">Balance: {balance.toFixed(token === 'ETH' ? 4 : 2)} {token}</p>
+            <p className="text-xs text-dark-500 mt-1">Balance: {balance.toFixed(token === 'USDC' ? 2 : token === 'DAI' ? 2 : 4)} {token}</p>
           </div>
           <button
             type="button"
@@ -763,6 +782,14 @@ export default function WalletPage() {
     args: address ? [address] : undefined,
     query: { enabled: Boolean(usdcToken && address) },
   });
+  const daiToken = address && chainId ? DAI_BY_CHAIN[chainId] : null;
+  const { data: daiBalanceRaw, refetch: refetchDaiBalance } = useReadContract({
+    address: daiToken ?? undefined,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: { enabled: Boolean(daiToken && address) },
+  });
   const { data: ensName } = useEnsName({ address });
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
@@ -812,7 +839,8 @@ export default function WalletPage() {
 
   const ethVal = ethBalance ? parseFloat(formatUnits(ethBalance.value, ethBalance.decimals)) : 0;
   const usdcVal = usdcBalanceRaw != null ? Number(formatUnits(usdcBalanceRaw, 6)) : 0;
-  const totalUsd = ethVal * 3000 + usdcVal;
+  const daiVal = daiBalanceRaw != null ? Number(formatUnits(daiBalanceRaw, 18)) : 0;
+  const totalUsd = ethVal * 3000 + usdcVal + daiVal;
   const isLowBalance = ethVal < MIN_ETH && usdcVal < MIN_USDC;
   const explorerUrl = chain?.blockExplorers?.default?.url ?? '';
   const {
@@ -850,14 +878,16 @@ export default function WalletPage() {
   const handleTransferComplete = useCallback(() => {
     void refetchEthBalance();
     void refetchUsdcBalance();
+    void refetchDaiBalance();
     void refetchPortfolio();
-  }, [refetchEthBalance, refetchUsdcBalance, refetchPortfolio]);
+  }, [refetchEthBalance, refetchUsdcBalance, refetchDaiBalance, refetchPortfolio]);
 
   const handleSwapComplete = useCallback(() => {
     void refetchEthBalance();
     void refetchUsdcBalance();
+    void refetchDaiBalance();
     void refetchPortfolio();
-  }, [refetchEthBalance, refetchUsdcBalance, refetchPortfolio]);
+  }, [refetchEthBalance, refetchUsdcBalance, refetchDaiBalance, refetchPortfolio]);
 
   const { data: engineStatus } = useQuery({
     queryKey: ['engine-status'],
@@ -997,7 +1027,7 @@ export default function WalletPage() {
                   <div>
                     <p className="text-xs uppercase tracking-[0.18em] text-dark-400">Available funds</p>
                     <p className="mt-1 text-lg font-bold text-white">{formatUSD(totalUsd)}</p>
-                    <p className="text-xs text-dark-400">{formatETH(ethVal)} ETH + {(usdcVal ?? 0).toFixed(2)} USDC</p>
+                    <p className="text-xs text-dark-400">{formatETH(ethVal)} ETH + {(usdcVal ?? 0).toFixed(2)} USDC{daiVal > 0 ? ` + ${daiVal.toFixed(2)} DAI` : ''}</p>
                   </div>
                   <div>
                     <p className="text-xs uppercase tracking-[0.18em] text-dark-400">Bot activation</p>
@@ -1177,7 +1207,7 @@ export default function WalletPage() {
                   Low balance? Deposit {MIN_ETH} ETH or ~${MIN_USDC} USDC to trade.
                 </div>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="p-4 rounded-lg bg-dark-800/50 border border-dark-700">
                   <div className="flex items-center gap-2 mb-2">
                     <DollarSign className="w-4 h-4 text-cyan-400" />
@@ -1193,6 +1223,14 @@ export default function WalletPage() {
                   </div>
                   <div className="text-xl font-bold text-white">{(usdcVal ?? 0).toFixed(2)}</div>
                   <div className="text-xs text-dark-400 mt-1">≈ {formatUSD(usdcVal)}</div>
+                </div>
+                <div className="p-4 rounded-lg bg-dark-800/50 border border-dark-700">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Banknote className="w-4 h-4 text-yellow-400" />
+                    <span className="text-xs text-dark-400">DAI</span>
+                  </div>
+                  <div className="text-xl font-bold text-white">{(daiVal ?? 0).toFixed(2)}</div>
+                  <div className="text-xs text-dark-400 mt-1">≈ {formatUSD(daiVal)}</div>
                 </div>
                 <div className="p-4 rounded-lg bg-dark-800/50 border border-dark-700">
                   <div className="flex items-center gap-2 mb-2">
@@ -1327,6 +1365,7 @@ export default function WalletPage() {
         onClose={() => setTransferOpen(false)}
         ethBalance={ethVal}
         usdcBalance={usdcVal}
+        daiBalance={daiVal}
         explorerUrl={explorerUrl}
         chainId={chainId}
         onTransferComplete={handleTransferComplete}
