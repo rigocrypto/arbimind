@@ -113,11 +113,11 @@ export const APPLIED_META: AppliedMeta = {
   preferredChains: false, // bot is single-chain (EVM_CHAIN env); multi-chain not yet supported
 
   /* Advanced engine — not yet consumed */
-  slippagePct: false,
-  riskLevel: false,
-  requiredConfirmations: false,
-  flashloanMaxEth: false,
-  mevProtection: false,
+  slippagePct: true,    // PR 1B: replaces hardcoded 0.5% in ExecutionService swap paths
+  riskLevel: false,     // no risk-based filtering / scanner breadth system exists
+  requiredConfirmations: true,  // PR 1B: passed to ethers tx.wait(confirms)
+  flashloanMaxEth: false,       // AI scoring only — no flashloan execution path
+  mevProtection: false,         // config field exists but no relay submission client
 
   /* Notifications — not yet consumed */
   browserNotifications: false,

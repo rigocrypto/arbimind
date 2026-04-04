@@ -207,7 +207,7 @@ export default function SettingsPageClient() {
             <NumberInput
               id="slippage"
               label="Slippage Tolerance (%)"
-              description={applied.slippagePct ? 'Active slippage tolerance enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}
+              description={applied.slippagePct ? 'Active — engine enforces this slippage tolerance on all swap paths.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.slippage}
               step={0.05}
               min={0.05}
@@ -228,7 +228,7 @@ export default function SettingsPageClient() {
                 <option value="medium">Medium - Balanced</option>
                 <option value="high">High - Aggressive</option>
               </select>
-              <p className="mt-1 text-xs text-dark-400">{applied.riskLevel ? 'Active risk posture enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}</p>
+              <p className="mt-1 text-xs text-dark-400">{applied.riskLevel ? 'Active risk posture enforced by the engine.' : 'Saved — no risk-based filtering or scanner breadth system exists yet.'}</p>
             </div>
 
             <div className="rounded-lg border border-dark-700 bg-dark-800/50 p-4">
@@ -264,7 +264,7 @@ export default function SettingsPageClient() {
             <NumberInput
               id="tx-confirmations"
               label="Required Confirmations"
-              description={applied.requiredConfirmations ? 'Active confirmation depth enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}
+              description={applied.requiredConfirmations ? 'Active — engine waits for this many block confirmations before finalizing trades.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.txConfirmations}
               step={1}
               min={1}
@@ -273,7 +273,7 @@ export default function SettingsPageClient() {
             <NumberInput
               id="flashloan-max"
               label="Flashloan Notional Cap (ETH)"
-              description={applied.flashloanMaxEth ? 'Active flashloan cap enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}
+              description={applied.flashloanMaxEth ? 'Active flashloan cap enforced by the engine.' : 'Saved — no flashloan execution path exists; AI scoring only.'}
               value={settings.flashloanMax}
               step={1}
               min={1}
@@ -282,7 +282,7 @@ export default function SettingsPageClient() {
             <ToggleRow
               id="mev-protection"
               label="MEV Protection"
-              description={applied.mevProtection ? 'Active MEV protection routing on the engine.' : 'Saved — will apply once engine integration is connected.'}
+              description={applied.mevProtection ? 'Active MEV protection routing on the engine.' : 'Saved — relay submission client not yet implemented; privateRelayUrl is stored but unused.'}
               value={settings.mevProtection}
               onToggle={(checked) => toggleBoolean('mevProtection')(checked)}
             />

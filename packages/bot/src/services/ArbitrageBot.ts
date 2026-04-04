@@ -5,7 +5,7 @@ import { type DexConfig, getEligibleDexesForPair } from '../config/dexes';
 import { getTokenConfig, getEffectiveTokenPairs } from '../config/tokens';
 import { ArbitrageOpportunity, PriceQuote, BotStats } from '../types';
 import { PriceService } from './PriceService';
-import { ExecutionService } from './ExecutionService';
+import { ExecutionService, type ExecutionOverrides } from './ExecutionService';
 import { Logger } from '../utils/Logger';
 import { AiScoringService } from './AiScoringService';
 import { AlertService } from './AlertService';
@@ -162,6 +162,8 @@ export class ArbitrageBot {
         autoTrade: !this.botConfig.logOnly,
         minProfitEth: this.botConfig.minProfitEth,
         maxGasGwei: this.botConfig.maxGasGwei,
+        slippagePct: 0.5,           // historical hardcoded default
+        requiredConfirmations: 1,   // ethers tx.wait() default
       },
     });
   }
@@ -1001,7 +1003,11 @@ export class ArbitrageBot {
       console.log(
         `[EXECUTE_ATTEMPT] ts=${new Date().toISOString()} route=${opportunity.route} tokenA=${opportunity.tokenA} tokenB=${opportunity.tokenB} netProfit=${ethers.formatUnits(opportunity.netProfit, opportunity.decimalsIn)}`
       );
-      const result = await this.executionService.executeArbitrage(opportunity);
+      const execOverrides: ExecutionOverrides = {
+        slippagePct: rs?.slippagePct,
+        requiredConfirmations: rs?.requiredConfirmations,
+      };
+      const result = await this.executionService.executeArbitrage(opportunity, execOverrides);
       
       if (result.success) {
         this.stats.successfulTrades++;

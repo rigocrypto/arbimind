@@ -12,6 +12,12 @@ const ERC20_ABI = [
 
 const MAINNET_V2_ROUTER = '0x7a250d5630b4cf539739df2c5dacb4c659f2488d';
 
+/** Runtime overrides passed from ArbitrageBot (sourced from SettingsReader). */
+export interface ExecutionOverrides {
+  slippagePct?: number;              // replaces hardcoded 0.5%
+  requiredConfirmations?: number;    // passed to tx.wait(confirms)
+}
+
 function normalizeAddress(value: string | undefined): string {
   return (value || '').trim().toLowerCase();
 }
@@ -146,7 +152,7 @@ export class ExecutionService {
   /**
    * Execute an arbitrage opportunity (executor contract or direct router on Sepolia)
    */
-  public async executeArbitrage(opportunity: ArbitrageOpportunity): Promise<TransactionResult> {
+  public async executeArbitrage(opportunity: ArbitrageOpportunity, overrides?: ExecutionOverrides): Promise<TransactionResult> {
     try {
       this.logger.info('Preparing arbitrage execution', {
         tokenA: opportunity.tokenA,
@@ -162,11 +168,11 @@ export class ExecutionService {
         process.env['SEPOLIA_UNISWAP_V3_ROUTER']?.trim();
 
       if (useDirectSwap) {
-        return await this.executeSwapDirect(opportunity);
+        return await this.executeSwapDirect(opportunity, overrides);
       }
 
       // Build transaction data (executor contract)
-      const txData = await this.buildArbitrageTransaction(opportunity);
+      const txData = await this.buildArbitrageTransaction(opportunity, overrides);
       
   // Estimate gas
   const gasEstimate = await this.wallet.provider?.estimateGas?.(txData);
@@ -198,7 +204,7 @@ export class ExecutionService {
       });
 
       // Wait for confirmation
-  const receipt = await tx.wait();
+  const receipt = await tx.wait(overrides?.requiredConfirmations);
       
       if (receipt?.status === 1) {
         this.logger.info('Arbitrage executed successfully', {
@@ -252,13 +258,14 @@ export class ExecutionService {
   /**
    * Execute a single swap on the DEX with better price (Sepolia direct router path).
    */
-  private async executeSwapDirect(opportunity: ArbitrageOpportunity): Promise<TransactionResult> {
+  private async executeSwapDirect(opportunity: ArbitrageOpportunity, overrides?: ExecutionOverrides): Promise<TransactionResult> {
     const tokenInAddr = getTokenAddress(opportunity.tokenA);
     const tokenOutAddr = getTokenAddress(opportunity.tokenB);
     const amountIn = ethers.getBigInt(opportunity.amountIn);
     const amountOut1 = ethers.getBigInt(opportunity.amountOut1);
     const amountOut2 = ethers.getBigInt(opportunity.amountOut2);
-    const slippageBps = 50; // 0.5%
+    const slippagePct = overrides?.slippagePct ?? 0.5;
+    const slippageBps = Math.round(slippagePct * 100);  // e.g. 0.5% → 50 bps
     const expectedOut = amountOut1 >= amountOut2 ? amountOut1 : amountOut2;
     const amountOutMin = (expectedOut * BigInt(10000 - slippageBps)) / BigInt(10000);
     const deadline = Math.floor(Date.now() / 1000) + 60;
@@ -305,7 +312,7 @@ export class ExecutionService {
           sqrtPriceLimitX96: 0n,
         });
       }
-      const receipt = await tx.wait();
+      const receipt = await tx.wait(overrides?.requiredConfirmations);
       if (!receipt) {
         throw new Error('Swap transaction receipt was null');
       }
@@ -337,7 +344,7 @@ export class ExecutionService {
   /**
    * Build arbitrage transaction data
    */
-  private async buildArbitrageTransaction(opportunity: ArbitrageOpportunity): Promise<ethers.TransactionRequest> {
+  private async buildArbitrageTransaction(opportunity: ArbitrageOpportunity, overrides?: ExecutionOverrides): Promise<ethers.TransactionRequest> {
     const executorContract = new ethers.Contract(
       this.executorAddress,
       [
@@ -372,8 +379,9 @@ export class ExecutionService {
     }
 
     // Calculate minimum outputs with slippage protection
-    const minOutV2 = this.calculateMinOutput(opportunity.amountOut1, 0.5); // 0.5% slippage
-    const minOutV3 = this.calculateMinOutput(opportunity.amountOut2, 0.5); // 0.5% slippage
+    const slippage = overrides?.slippagePct ?? 0.5;
+    const minOutV2 = this.calculateMinOutput(opportunity.amountOut1, slippage);
+    const minOutV3 = this.calculateMinOutput(opportunity.amountOut2, slippage);
 
     // Set deadline (5 minutes from now)
     const deadline = Math.floor(Date.now() / 1000) + 300;
