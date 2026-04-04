@@ -232,13 +232,25 @@ export default function OpportunityDetailPanel({ opportunity }: OpportunityDetai
           <p className="text-xs text-dark-400">{cta.hint}</p>
           <button
             type="button"
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-dark-200 transition hover:text-white"
+            disabled
+            title="Bot rules coming soon — focus on live trading first"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-dark-200 opacity-50 cursor-not-allowed"
           >
             <Bot className="h-4 w-4" />
             {mode === 'TRADER' ? 'Create bot rule' : 'Create alert'}
           </button>
           <button
             type="button"
+            onClick={() => {
+              if (!opportunity) return;
+              const blob = new Blob([JSON.stringify(opportunity, null, 2)], { type: 'application/json' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `opportunity-${opportunity.id}.json`;
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-dark-200 transition hover:text-white"
           >
             <Download className="h-4 w-4" />

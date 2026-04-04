@@ -135,10 +135,12 @@ export default function OpportunityRow({ opportunity, isSelected, mode, onSelect
             </button>
             <button
               type="button"
+              disabled
+              title="Alert subscriptions coming soon"
               onClick={(event) => {
                 event.stopPropagation();
               }}
-              className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-dark-200 transition hover:text-white"
+              className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-dark-200 opacity-50 cursor-not-allowed"
             >
               <Bell className="h-4 w-4" />
               Alert me

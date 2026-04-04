@@ -53,6 +53,11 @@ export default function FeedControlRail() {
             <div>
               <div className="flex items-center gap-2">
                 <p className="text-sm font-semibold text-white">Live Opportunity Control</p>
+                {source === 'DEMO' && (
+                  <span className="inline-flex items-center rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-400 border border-amber-500/30">
+                    Demo
+                  </span>
+                )}
                 <HelpTooltip content="Switch between trader workflow and operator automation without leaving the feed." />
               </div>
               <p className="text-xs text-dark-400">Hybrid terminal for scanning, simulating, and strategy creation.</p>
