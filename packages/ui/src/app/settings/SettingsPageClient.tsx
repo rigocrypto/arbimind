@@ -14,8 +14,9 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { Settings } from '@/lib/settings';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { useSettingsStore, type AppliedMeta } from '@/stores/settingsStore';
 import { useHydrateSettings } from '@/stores/useHydrateSettings';
+import { hasAdminKey } from '@/lib/adminApi';
 
 const CHAIN_OPTIONS = ['Ethereum', 'Arbitrum', 'Optimism', 'Base', 'Polygon'];
 
@@ -35,6 +36,8 @@ export default function SettingsPageClient() {
   const isLoading = useSettingsStore((state) => state.isLoading);
   const error = useSettingsStore((state) => state.error);
   const validationErrors = useSettingsStore((state) => state.validationErrors);
+  const source = useSettingsStore((state) => state.source);
+  const applied = useSettingsStore((state) => state.applied);
   const setSetting = useSettingsStore((state) => state.setSetting);
   const save = useSettingsStore((state) => state.save);
   const resetToDefaults = useSettingsStore((state) => state.resetToDefaults);
@@ -59,14 +62,14 @@ export default function SettingsPageClient() {
     window.setTimeout(() => setJustSaved(false), 2500);
   };
 
-  const handleResetDefaults = useCallback(() => {
+  const handleResetDefaults = useCallback(async () => {
     if (!showResetConfirm) {
       setShowResetConfirm(true);
       return;
     }
-    resetToDefaults();
+    await resetToDefaults();
     setShowResetConfirm(false);
-    toast.success('Defaults restored — click Save to persist');
+    toast.success('Defaults restored');
   }, [showResetConfirm, resetToDefaults]);
 
   const toggleBoolean = (key: BooleanSettingKey) => (value: boolean) => {
@@ -107,7 +110,11 @@ export default function SettingsPageClient() {
                   Settings
                 </h1>
                 <p className="text-sm text-dark-300 sm:text-base">
-                  Local preferences for the ArbiMind dashboard. These settings are saved in your browser only.
+                  {source === 'backend'
+                    ? 'Settings synced with the backend. Changes are persisted server-side.'
+                    : source === 'local-cache'
+                      ? 'Loaded from browser cache — backend sync pending.'
+                      : 'Using defaults — backend not yet connected.'}
                 </p>
               </div>
             </div>
@@ -166,13 +173,13 @@ export default function SettingsPageClient() {
           <div className="mb-6 flex items-center gap-2">
             <Zap className="h-5 w-5 text-cyan-400" />
             <h2 className="text-lg font-bold text-white">Trading Preferences</h2>
-            <LocalBadge />
+            <StatusBadge active={applied.engine} source={source} />
           </div>
           <div className="space-y-4">
             <ToggleRow
               id="auto-trade"
               label="Enable Auto-Trading"
-              description="Your preference for auto-execution — will apply once engine integration is connected."
+              description={applied.engine ? 'Controls live auto-execution on the engine.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.autoTrade}
               onToggle={(checked) => toggleBoolean('autoTrade')(checked)}
             />
@@ -180,7 +187,7 @@ export default function SettingsPageClient() {
             <NumberInput
               id="min-profit"
               label="Minimum Profit Threshold (ETH)"
-              description="Your preferred minimum profit — saved locally for future engine integration."
+              description={applied.engine ? 'Active minimum profit threshold enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.minProfit}
               step={0.001}
               min={0}
@@ -190,7 +197,7 @@ export default function SettingsPageClient() {
             <NumberInput
               id="max-gas"
               label="Maximum Gas Price (Gwei)"
-              description="Your preferred gas cap — saved locally for future engine integration."
+              description={applied.engine ? 'Active gas cap enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.maxGas}
               step={1}
               min={1}
@@ -200,7 +207,7 @@ export default function SettingsPageClient() {
             <NumberInput
               id="slippage"
               label="Slippage Tolerance (%)"
-              description="Your preferred slippage limit — saved locally for future engine integration."
+              description={applied.engine ? 'Active slippage tolerance enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.slippage}
               step={0.05}
               min={0.05}
@@ -221,12 +228,12 @@ export default function SettingsPageClient() {
                 <option value="medium">Medium - Balanced</option>
                 <option value="high">High - Aggressive</option>
               </select>
-              <p className="mt-1 text-xs text-dark-400">Your preferred risk posture — saved locally for future engine integration.</p>
+              <p className="mt-1 text-xs text-dark-400">{applied.engine ? 'Active risk posture enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}</p>
             </div>
 
             <div className="rounded-lg border border-dark-700 bg-dark-800/50 p-4">
               <span className="text-sm font-medium text-white">Preferred Execution Chains</span>
-              <p className="mt-1 text-xs text-dark-400">Networks you prefer — saved locally for future engine integration.</p>
+              <p className="mt-1 text-xs text-dark-400">{applied.scanner ? 'Active scanner chains enforced by the engine.' : 'Saved — will apply once scanner integration is connected.'}</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {CHAIN_OPTIONS.map((chain) => {
                   const checked = chainSelections.has(chain);
@@ -251,13 +258,13 @@ export default function SettingsPageClient() {
           <div className="mb-6 flex items-center gap-2">
             <Shield className="h-5 w-5 text-purple-400" />
             <h2 className="text-lg font-bold text-white">Risk Controls & Limits</h2>
-            <LocalBadge />
+            <StatusBadge active={applied.engine} source={source} />
           </div>
           <div className="space-y-4">
             <NumberInput
               id="tx-confirmations"
               label="Required Confirmations"
-              description="Your preferred confirmation depth — saved locally for future engine integration."
+              description={applied.engine ? 'Active confirmation depth enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.txConfirmations}
               step={1}
               min={1}
@@ -266,7 +273,7 @@ export default function SettingsPageClient() {
             <NumberInput
               id="flashloan-max"
               label="Flashloan Notional Cap (ETH)"
-              description="Your preferred flashloan cap — saved locally for future engine integration."
+              description={applied.engine ? 'Active flashloan cap enforced by the engine.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.flashloanMax}
               step={1}
               min={1}
@@ -275,7 +282,7 @@ export default function SettingsPageClient() {
             <ToggleRow
               id="mev-protection"
               label="MEV Protection"
-              description="Your preference for private relay routing — saved locally for future engine integration."
+              description={applied.engine ? 'Active MEV protection routing on the engine.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.mevProtection}
               onToggle={(checked) => toggleBoolean('mevProtection')(checked)}
             />
@@ -286,13 +293,13 @@ export default function SettingsPageClient() {
           <div className="mb-6 flex items-center gap-2">
             <Bell className="h-5 w-5 text-green-400" />
             <h2 className="text-lg font-bold text-white">Notifications</h2>
-            <LocalBadge />
+            <StatusBadge active={applied.notifications} source={source} />
           </div>
           <div className="space-y-4">
             <ToggleRow
               id="notifications"
               label="Enable Browser Notifications"
-              description="Your preference — browser notification permission and delivery are not yet wired."
+              description={applied.notifications ? 'Browser notifications are active.' : 'Saved — browser notification delivery is not yet wired.'}
               value={settings.notifications}
               onToggle={(checked) => toggleBoolean('notifications')(checked)}
             />
@@ -319,14 +326,14 @@ export default function SettingsPageClient() {
           <div className="mb-6 flex items-center gap-2">
             <Database className="h-5 w-5 text-orange-400" />
             <h2 className="text-lg font-bold text-white">Connectivity</h2>
-            <LocalBadge />
+            <StatusBadge active={applied.engine} source={source} />
           </div>
           <div className="space-y-4">
             <TextInput
               id="rpc-url"
               label="Primary RPC URL"
               placeholder="https://arb1.infura.io/v3/..."
-              description="Saved locally — not yet used by the engine. Will apply once backend config is connected."
+              description={applied.engine ? 'Active RPC endpoint used by the engine.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.rpcUrl}
               onChange={(value) => setSetting('rpcUrl', value)}
             />
@@ -334,7 +341,7 @@ export default function SettingsPageClient() {
               id="private-relay"
               label="Private Relay URL"
               placeholder="https://relay.flashbots.net"
-              description="Saved locally — not yet used by the engine. Will apply once backend config is connected."
+              description={applied.engine ? 'Active relay endpoint used by the engine.' : 'Saved — will apply once engine integration is connected.'}
               value={settings.privateRelay}
               onChange={(value) => setSetting('privateRelay', value)}
             />
@@ -342,7 +349,7 @@ export default function SettingsPageClient() {
               id="wc-project"
               label="WalletConnect Project ID"
               placeholder="Project identifier for WalletConnect session pairing"
-              description="Saved locally — used for WalletConnect pairing when applicable."
+              description={applied.walletconnect ? 'Active WalletConnect project ID.' : 'Saved — WalletConnect pairing is not yet connected.'}
               value={settings.wcProjectId}
               onChange={(value) => setSetting('wcProjectId', value)}
             />
@@ -355,7 +362,12 @@ export default function SettingsPageClient() {
             <h2 className="text-lg font-bold text-white">Operational Notes</h2>
           </div>
           <p className="text-sm text-dark-300">
-            These settings are saved in your browser&apos;s localStorage and sync across open tabs automatically. They are <strong className="text-white">local preferences only</strong> and do not currently control the arbitrage engine or backend services. Once backend integration is connected, relevant values (RPC URL, risk level, etc.) will be pushed to the engine automatically.
+            {source === 'backend' ? (
+              <>Settings are <strong className="text-white">persisted on the backend</strong> and synced across tabs. {hasAdminKey() ? 'Saves go to the backend.' : 'Log in as admin to push changes to the backend.'}</>
+            ) : (
+              <>Settings are cached in your browser&apos;s localStorage and sync across tabs. They will be pushed to the backend once connection is available.</>
+            )}
+            {' '}Fields marked <strong className="text-white">&ldquo;Active&rdquo;</strong> are enforced by the engine; others are saved for future integration.
           </p>
         </div>
       </div>
@@ -473,7 +485,23 @@ function ToggleRow({
   );
 }
 
-function LocalBadge() {
+function StatusBadge({ active, source }: { active: boolean; source: string }) {
+  if (active) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded bg-green-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-400">
+        <Zap className="h-3 w-3" />
+        Active
+      </span>
+    );
+  }
+  if (source === 'backend') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded bg-cyan-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-300">
+        <Info className="h-3 w-3" />
+        Saved (not yet enforced)
+      </span>
+    );
+  }
   return (
     <span className="inline-flex items-center gap-1 rounded bg-dark-700 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-dark-300">
       <Info className="h-3 w-3" />
