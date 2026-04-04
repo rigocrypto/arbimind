@@ -28,13 +28,14 @@ import { getPortfolioErrorDetails, usePortfolioSummary, usePortfolioTimeseries }
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import Image from 'next/image';
-import { notifyWalletStateUpdated } from '@/lib/walletState';
+import { notifyWalletStateUpdated, onCrossTabWalletChange } from '@/lib/walletState';
 import { useQuery } from '@tanstack/react-query';
 import { API_BASE } from '@/lib/apiConfig';
 
 const USDC_BY_CHAIN: Record<number, `0x${string}`> = {
   1: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' as const,
   10: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85' as const,
+  137: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359' as const,
   42161: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' as const,
   8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const,
 };
@@ -311,6 +312,16 @@ export default function WalletPage() {
   } = usePortfolioSummary('evm', address ?? undefined);
   const { data: timeseries, isLoading: timeseriesLoading } = usePortfolioTimeseries('evm', address ?? undefined, '30d');
   const portfolioErrorDetails = getPortfolioErrorDetails(portfolioQueryError);
+
+  // Cross-tab sync: when another tab writes to arbimind:wallet:* localStorage keys,
+  // refresh balances and portfolio so this tab stays up-to-date.
+  useEffect(() => {
+    return onCrossTabWalletChange(() => {
+      void refetchEthBalance();
+      void refetchUsdcBalance();
+      void refetchPortfolio();
+    });
+  }, [refetchEthBalance, refetchUsdcBalance, refetchPortfolio]);
 
   const copyAddress = () => {
     if (address) {
