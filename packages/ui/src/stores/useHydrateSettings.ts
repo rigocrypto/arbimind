@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useSettingsStore } from './settingsStore';
+import { onCrossTabSettingsChange } from '@/lib/settingsSync';
 
 export function useHydrateSettings() {
   const hydrated = useRef(false);
@@ -11,5 +12,12 @@ export function useHydrateSettings() {
       useSettingsStore.getState().hydrate();
       hydrated.current = true;
     }
+
+    // Re-hydrate when another tab writes to the settings key
+    const unsub = onCrossTabSettingsChange(() => {
+      useSettingsStore.getState().hydrate();
+    });
+
+    return unsub;
   }, []);
 }
