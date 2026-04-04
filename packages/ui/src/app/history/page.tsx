@@ -12,11 +12,18 @@ interface Trade {
   timestamp: Date;
   type: 'arbitrage' | 'market-making' | 'trend';
   tokenPair: string;
+  chain?: 'arbitrum' | 'ethereum' | 'solana';
   profit: number;
   profitUsd: number;
   gasUsed: number;
   status: 'success' | 'failed';
   txHash?: string;
+}
+
+function explorerTxUrl(chain: Trade['chain'], hash: string): string {
+  if (chain === 'arbitrum') return `https://arbiscan.io/tx/${hash}`;
+  if (chain === 'solana') return `https://solscan.io/tx/${hash}`;
+  return `https://etherscan.io/tx/${hash}`;
 }
 
 export default function HistoryPage() {
@@ -39,9 +46,14 @@ export default function HistoryPage() {
         <div className="glass-card p-4 sm:p-6 lg:p-8">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold mb-2 bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-                Trading History
-              </h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold mb-2 bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                  Trading History
+                </h1>
+                <span className="inline-flex items-center rounded-full bg-amber-500/20 px-2.5 py-0.5 text-xs font-medium text-amber-400 border border-amber-500/30">
+                  Demo
+                </span>
+              </div>
               <p className="text-dark-300 text-sm sm:text-base">
                 View all your arbitrage trades, profits, and transaction details.
               </p>
@@ -192,7 +204,7 @@ export default function HistoryPage() {
                       <td className="py-3 px-4 text-center">
                         {trade.txHash && (
                           <a
-                            href={`https://etherscan.io/tx/${trade.txHash}`}
+                            href={explorerTxUrl(trade.chain, trade.txHash)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center text-cyan-400 hover:text-cyan-300 transition"
