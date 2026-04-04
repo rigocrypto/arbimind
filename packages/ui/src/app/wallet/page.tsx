@@ -112,6 +112,7 @@ function TransferModal({
   const [token, setToken] = useState<'ETH' | 'USDC'>('ETH');
   const { sendTransactionAsync, isPending: isSendingEth } = useSendTransaction();
   const { writeContractAsync, isPending: isSendingUsdc } = useWriteContract();
+  const { address: connectedAddress, chain: connectedChain } = useAccount();
   const [isSending, setIsSending] = useState(false);
 
   const usdcAddress = chainId ? USDC_BY_CHAIN[chainId] : undefined;
@@ -147,6 +148,8 @@ function TransferModal({
           abi: erc20Abi,
           functionName: 'transfer',
           args: [toAddress as `0x${string}`, parseUnits(amount, 6)],
+          account: connectedAddress,
+          chain: connectedChain,
         });
       }
       toast.success(`Tx submitted: ${hash.slice(0, 10)}…${hash.slice(-8)}`);
@@ -171,7 +174,7 @@ function TransferModal({
     } finally {
       setIsSending(false);
     }
-  }, [toAddress, amount, balance, token, usdcAddress, sendTransactionAsync, writeContractAsync, explorerUrl, onTransferComplete, onClose]);
+  }, [toAddress, amount, balance, token, usdcAddress, sendTransactionAsync, writeContractAsync, connectedAddress, connectedChain, explorerUrl, onTransferComplete, onClose]);
 
   if (!isOpen) return null;
 
