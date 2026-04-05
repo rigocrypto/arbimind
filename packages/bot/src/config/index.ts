@@ -420,6 +420,11 @@ export function validateConfig(): void {
     }
   }
 
+  // Warn about missing BACKEND_URL (settings fetch will fall back to localhost)
+  if (!process.env['BACKEND_URL'] && !process.env['SETTINGS_API_URL']) {
+    logger.warn('⚠️ Neither BACKEND_URL nor SETTINGS_API_URL is set — SettingsReader will default to localhost.');
+  }
+
   // If trading, require private key and treasury
   if (!logOnly) {
     if (!privateKey) {

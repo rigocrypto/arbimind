@@ -417,6 +417,7 @@ export function useEngine() {
   const [activeWalletChain, setActiveWalletChain] = useState<'evm' | 'solana' | ''>('');
   const [activeWalletAddress, setActiveWalletAddress] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [engineBlocked, setEngineBlocked] = useState(false);
 
   const getLocalWalletContext = useCallback(() => {
     if (typeof window === 'undefined') {
@@ -507,6 +508,9 @@ export function useEngine() {
         setIsRunning(true);
         setActiveWalletChain(walletChain === 'evm' || walletChain === 'solana' ? walletChain : '');
         setActiveWalletAddress(typeof walletAddress === 'string' ? walletAddress : '');
+        setEngineBlocked(false);
+      } else if (response.status === 403) {
+        setEngineBlocked(true);
       }
     } catch (error) {
       console.error('Failed to start engine:', error);
@@ -570,6 +574,7 @@ export function useEngine() {
     activeWalletChain,
     activeWalletAddress,
     loading,
+    engineBlocked,
     start,
     stop,
     singleScan,

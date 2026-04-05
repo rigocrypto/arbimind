@@ -10,6 +10,7 @@ interface EngineContextValue {
   activeWalletChain: 'evm' | 'solana' | '';
   activeWalletAddress: string;
   loading: boolean;
+  engineBlocked: boolean;
   start: (strategy?: string) => Promise<void>;
   stop: () => Promise<void>;
   singleScan: (strategy?: string) => Promise<boolean>;
