@@ -1079,25 +1079,7 @@ export default function WalletPage() {
             >
               <Wallet className="w-16 h-16 mx-auto mb-4 text-dark-400" />
               <h2 className="text-xl font-bold text-white mb-2">No Wallet Connected</h2>
-              <p className="text-dark-400 mb-6">Connect your wallet to view balances and activity.</p>
-              <div className="mb-6 flex justify-center">
-                <div className="rounded-lg bg-gradient-to-r from-cyan-500 to-purple-500 p-[1px] shadow-md">
-                  <div className="rounded-[calc(0.5rem-1px)] bg-[#151a29] px-1 py-1">
-                    {isMetaMaskBrowser ? (
-                      <button
-                        type="button"
-                        onClick={() => void handleDirectMetaMaskConnect()}
-                        disabled={isConnectPending}
-                        className="inline-flex min-h-10 items-center justify-center rounded-lg bg-gradient-to-r from-cyan-500 to-purple-500 px-4 py-2 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {isConnectPending ? 'Connecting MetaMask…' : 'Connect MetaMask'}
-                      </button>
-                    ) : (
-                      <ConnectButton label="Open Wallet Connect" showBalance={false} />
-                    )}
-                  </div>
-                </div>
-              </div>
+              <p className="text-dark-400 mb-6">Connect your wallet above to view balances and activity.</p>
               {isMobileBrowser && !isMetaMaskBrowser && (
                 <div className="mb-6 flex justify-center">
                   <a
