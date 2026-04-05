@@ -47,13 +47,11 @@ export function proxy(req: NextRequest) {
       toOrigin(process.env.NEXT_PUBLIC_SOLANA_RPC_URL),
       'https://polygon-rpc.com',
       'https://rpc-amoy.polygon.technology',
-      'https://polygon-amoy.publicnode.com',
-      'https://polygon-bor-rpc.publicnode.com',
+      'https://*.publicnode.com',
       'https://api.devnet.solana.com',
       'https://api.mainnet-beta.solana.com',
       'https://api.testnet.solana.com',
       'https://*.alchemy.com',
-      'https://ethereum-rpc.publicnode.com',
     ].filter(Boolean);
 
     const rpcConnectSrc = Array.from(new Set(rpcOrigins)).join(' ');
