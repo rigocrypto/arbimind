@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface AutoRefreshProps {
   enabled: boolean;
@@ -12,15 +12,10 @@ interface AutoRefreshProps {
 export function AutoRefresh({ enabled, intervalSec, onToggle, onTick }: AutoRefreshProps) {
   const [countdown, setCountdown] = useState(intervalSec);
   const tickRef = useRef(onTick);
-  tickRef.current = onTick;
-
-  const reset = useCallback(() => setCountdown(intervalSec), [intervalSec]);
+  useEffect(() => { tickRef.current = onTick; }, [onTick]);
 
   useEffect(() => {
-    if (!enabled) {
-      reset();
-      return;
-    }
+    if (!enabled) return;
 
     const handle = setInterval(() => {
       setCountdown((prev) => {
@@ -33,7 +28,7 @@ export function AutoRefresh({ enabled, intervalSec, onToggle, onTick }: AutoRefr
     }, 1000);
 
     return () => clearInterval(handle);
-  }, [enabled, intervalSec, reset]);
+  }, [enabled, intervalSec]);
 
   // Pause on tab hidden
   useEffect(() => {
@@ -58,7 +53,7 @@ export function AutoRefresh({ enabled, intervalSec, onToggle, onTick }: AutoRefr
         Auto Refresh: {enabled ? 'ON' : 'OFF'}
       </button>
       {enabled && (
-        <span className="text-dark-500">({countdown}s)</span>
+        <span className="text-dark-500">({countdown > 0 ? countdown : intervalSec}s)</span>
       )}
     </div>
   );

@@ -2,7 +2,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
 import type { AIDexPairResponse, AIPredictionAccuracyRow, AIPredictionRow, AIWatchlistItem } from '@/lib/adminApi';
