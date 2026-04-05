@@ -16,6 +16,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { API_BASE } from '@/lib/apiConfig';
 import { ArbAccountCard, PerformanceCharts, ActivityTable } from '@/components/portfolio';
 import { SolanaBotTab } from '@/components/solana/SolanaBotTab';
+import { DevnetFundingPanel } from '@/components/solana/DevnetFundingPanel';
 import { getPortfolioErrorDetails, usePortfolioSummary, usePortfolioTimeseries } from '@/hooks/usePortfolio';
 import { SOL_EQUIV_DECIMALS } from '@/utils/format';
 import { notifyWalletStateUpdated, onCrossTabWalletChange } from '@/lib/walletState';
@@ -199,7 +200,7 @@ export default function SolanaWalletPageClient() {
   const [engineLastProfit, setEngineLastProfit] = useState(0);
   const [engineActivity, setEngineActivity] = useState<EngineActivityEvent[]>([]);
   const lastEngineActivityTsRef = useRef(0);
-  const [activeTab, setActiveTab] = useState<'wallet' | 'bot'>('wallet');
+  const [activeTab, setActiveTab] = useState<'wallet' | 'bot' | 'funding'>('wallet');
 
   const effectiveTreasuryAddress = backendTreasuryAddress || SOLANA_TREASURY_ADDRESS;
   const treasuryAddressMismatch = Boolean(
@@ -1370,9 +1371,9 @@ export default function SolanaWalletPageClient() {
           )}
         </motion.div>
 
-        {/* Tab switcher: Wallet | Bot */}
+        {/* Tab switcher: Wallet | Bot | Funding */}
         <div className="flex gap-1 bg-dark-900/60 rounded-lg p-1 w-fit">
-          {(['wallet', 'bot'] as const).map((tab) => (
+          {(['wallet', 'bot', 'funding'] as const).map((tab) => (
             <button
               key={tab}
               type="button"
@@ -1383,8 +1384,8 @@ export default function SolanaWalletPageClient() {
                   : 'text-dark-400 hover:text-dark-200'
               }`}
             >
-              {tab === 'wallet' ? '💰 Wallet' : '🤖 Bot'}
-              {tab === 'bot' && (
+              {tab === 'wallet' ? '💰 Wallet' : tab === 'bot' ? '🤖 Bot' : '🪂 Funding'}
+              {(tab === 'bot' || tab === 'funding') && (
                 <span className="ml-1.5 px-1 py-0.5 text-[9px] rounded bg-orange-600/30 text-orange-300">
                   DEV
                 </span>
@@ -1395,6 +1396,8 @@ export default function SolanaWalletPageClient() {
 
         {activeTab === 'bot' ? (
           <SolanaBotTab />
+        ) : activeTab === 'funding' ? (
+          <DevnetFundingPanel treasuryPubkey={effectiveTreasuryAddress} />
         ) : (
         <>
         {!isSolanaConnected ? (
