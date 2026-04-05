@@ -50,6 +50,7 @@ export function SolanaProvider({ children }: { children: React.ReactNode }) {
       toast('Connection cancelled', { icon: '🔒' });
       return;
     }
+    if (/walletnotselectederror|wallet not selected|not found/i.test(msg)) return;
     console.error('[Solana wallet]', err);
     toast.error(msg || 'Wallet error');
   }, []);
