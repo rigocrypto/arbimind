@@ -29,6 +29,11 @@ let botMode: BotMode = 'stopped';
 let tradesExecuted = 0;
 let tradesSucceeded = 0;
 let totalPnlSol = 0;
+let isExecuting = false;
+
+// Keypair resolution cache (set by initializeExecutor)
+let resolvedKeypair: Keypair | null = null;
+let keypairSource: string | null = null;
 
 export interface TradeRecord {
   id: string;
@@ -50,6 +55,63 @@ const tradeHistory: TradeRecord[] = [];
 const MAX_HISTORY = 200;
 
 // ---------------------------------------------------------------------------
+// Keypair resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * Initialize executor: resolve keypair from env vars.
+ * Priority: SOLANA_TREASURY_SECRET_KEY → TREASURY_PRIVATE_KEY
+ * Throws if neither is configured.
+ */
+export function initializeExecutor(): void {
+  if (resolvedKeypair) return; // already initialized
+
+  const hasPrimary = !!process.env.SOLANA_TREASURY_SECRET_KEY?.trim();
+  const hasFallback = !!process.env.TREASURY_PRIVATE_KEY?.trim();
+
+  // Alias TREASURY_PRIVATE_KEY so parseTreasuryDiagnostics can parse it
+  if (!hasPrimary && hasFallback) {
+    process.env.SOLANA_TREASURY_SECRET_KEY = process.env.TREASURY_PRIVATE_KEY;
+  }
+
+  if (!hasPrimary && !hasFallback) {
+    throw new Error(
+      '[EXECUTOR] No keypair configured \u2014 set SOLANA_TREASURY_SECRET_KEY or TREASURY_PRIVATE_KEY'
+    );
+  }
+
+  const diag = parseTreasuryDiagnostics();
+  if (!diag.configured || !diag.keypair) {
+    throw new Error(
+      '[EXECUTOR] Keypair env var found but failed to parse \u2014 check key format'
+    );
+  }
+
+  resolvedKeypair = diag.keypair;
+  keypairSource = hasPrimary ? 'SOLANA_TREASURY_SECRET_KEY' : 'TREASURY_PRIVATE_KEY';
+  addLog('info', `[EXECUTOR] Keypair loaded from ${keypairSource}`);
+}
+
+function getKeypairOrThrow(): Keypair {
+  if (resolvedKeypair) return resolvedKeypair;
+  // Fallback for pre-init calls
+  const diag = parseTreasuryDiagnostics();
+  if (diag.configured && diag.keypair) return diag.keypair;
+  throw new Error('[EXECUTOR] No keypair available \u2014 call initializeExecutor first');
+}
+
+function getKeypairAndAddress(): { keypair: Keypair; address: string } | null {
+  if (resolvedKeypair) {
+    return { keypair: resolvedKeypair, address: resolvedKeypair.publicKey.toBase58() };
+  }
+  const diag = parseTreasuryDiagnostics();
+  if (diag.configured && diag.keypair) {
+    return { keypair: diag.keypair, address: diag.keypair.publicKey.toBase58() };
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Validation
 // ---------------------------------------------------------------------------
 
@@ -63,13 +125,13 @@ export async function validateBeforeExecute(
   settings: { maxSlippage?: number; minSpreadBps?: number }
 ): Promise<ValidationResult> {
   // Check wallet balance
-  const diag = parseTreasuryDiagnostics();
-  if (!diag.configured || !diag.keypair) {
+  const resolved = getKeypairAndAddress();
+  if (!resolved) {
     return { valid: false, reason: 'Treasury keypair not configured' };
   }
 
   const conn = getConnection('devnet');
-  const balanceLamports = await conn.getBalance(diag.keypair.publicKey);
+  const balanceLamports = await conn.getBalance(resolved.keypair.publicKey);
   const balanceSol = balanceLamports / LAMPORTS_PER_SOL;
 
   // tradeSize defaults to 1 SOL for SOL pairs
@@ -111,8 +173,22 @@ export async function validateBeforeExecute(
 
 export async function executeOpportunity(
   opp: ArbitrageOpportunity,
-  mode: 'paper' | 'live'
-): Promise<TradeRecord> {
+  mode: 'paper' | 'live'): Promise<TradeRecord | null> {
+  if (isExecuting) {
+    addLog('warn', '[EXEC] Skipped \u2014 execution in progress');
+    return null;
+  }
+  isExecuting = true;
+  try {
+    return await doExecuteOpportunity(opp, mode);
+  } finally {
+    isExecuting = false;
+  }
+}
+
+async function doExecuteOpportunity(
+  opp: ArbitrageOpportunity,
+  mode: 'paper' | 'live'): Promise<TradeRecord> {
   updateOpportunity(opp.id, { status: 'executing' });
   addLog('info', `[EXEC] ${mode === 'paper' ? 'Paper' : 'Live'} trade: ${opp.pair} — expected +${opp.expectedProfitSol.toFixed(6)} SOL`);
 
@@ -165,8 +241,10 @@ async function executeLive(
   opp: ArbitrageOpportunity,
   record: TradeRecord
 ): Promise<TradeRecord> {
-  const diag = parseTreasuryDiagnostics();
-  if (!diag.configured || !diag.keypair) {
+  let keypair: Keypair;
+  try {
+    keypair = getKeypairOrThrow();
+  } catch {
     record.status = 'failed';
     record.netPnlSol = -record.gasSol;
     record.error = 'Treasury keypair not configured';
@@ -183,8 +261,9 @@ async function executeLive(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         quoteResponse: opp.forwardQuote,
-        userPublicKey: diag.keypair.publicKey.toBase58(),
+        userPublicKey: keypair.publicKey.toBase58(),
         wrapAndUnwrapSol: true,
+        dynamicComputeUnitLimit: true,
       }),
     });
 
@@ -201,7 +280,7 @@ async function executeLive(
     // Step 2: Deserialize, sign, send
     const txBuf = Buffer.from(swapData.swapTransaction, 'base64');
     const tx = VersionedTransaction.deserialize(txBuf);
-    tx.sign([diag.keypair]);
+    tx.sign([keypair]);
 
     const sig = await conn.sendTransaction(tx, {
       skipPreflight: false,
@@ -219,7 +298,7 @@ async function executeLive(
 
     // Step 4: Compute actual PnL from on-chain result
     // For devnet, we approximate using expected values
-    const balanceAfter = await conn.getBalance(diag.keypair.publicKey);
+    const balanceAfter = await conn.getBalance(keypair.publicKey);
     record.gasSol = 0.000_005; // typical fee
     record.actualPnlSol = opp.expectedProfitSol;
     record.netPnlSol = record.actualPnlSol - record.gasSol;
@@ -268,20 +347,20 @@ export async function getWalletBalance(): Promise<{
   treasuryBalance: number;
   address: string | null;
 }> {
-  const diag = parseTreasuryDiagnostics();
-  if (!diag.configured || !diag.keypair) {
+  const resolved = getKeypairAndAddress();
+  if (!resolved) {
     return { walletBalance: 0, treasuryBalance: 0, address: null };
   }
   try {
     const conn = getConnection('devnet');
-    const balance = await conn.getBalance(diag.keypair.publicKey);
+    const balance = await conn.getBalance(resolved.keypair.publicKey);
     return {
       walletBalance: balance / LAMPORTS_PER_SOL,
       treasuryBalance: balance / LAMPORTS_PER_SOL, // same wallet on devnet
-      address: diag.keypair.publicKey.toBase58(),
+      address: resolved.address,
     };
   } catch {
-    return { walletBalance: 0, treasuryBalance: 0, address: diag.publicKeyDerived };
+    return { walletBalance: 0, treasuryBalance: 0, address: resolved.address };
   }
 }
 
@@ -311,4 +390,12 @@ export function getTradeStats(): {
 
 export function getTradeHistory(): TradeRecord[] {
   return [...tradeHistory];
+}
+
+export function getIsExecuting(): boolean {
+  return isExecuting;
+}
+
+export function getKeypairSource(): string | null {
+  return keypairSource;
 }

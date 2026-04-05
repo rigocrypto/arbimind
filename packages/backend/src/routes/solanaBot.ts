@@ -40,6 +40,10 @@ router.get('/bot-status', async (_req: Request, res: Response) => {
       lastScanAt: scanStatus.lastScanAt,
       totalScans: scanStatus.totalScans,
       lastQuoteAge: scanner.getLastQuoteAge(),
+      isExecuting: executor.getIsExecuting(),
+      minProfitBps: scanner.getMinProfitBps(),
+      activePairs: scanner.getActivePairs(),
+      skippedPairs: scanner.getSkippedPairs(),
       queue: queue.map((o) => ({
         id: o.id,
         pair: o.pair,
@@ -79,6 +83,15 @@ router.post('/bot-control', adminAuth, async (req: Request, res: Response) => {
     }
 
     if (body.action === 'start') {
+      try {
+        executor.initializeExecutor();
+      } catch (initErr) {
+        res.status(500).json({
+          ok: false,
+          error: initErr instanceof Error ? initErr.message : 'Executor initialization failed',
+        });
+        return;
+      }
       const currentMode = executor.getBotMode();
       if (currentMode === 'stopped') {
         executor.setBotMode('paper'); // default to paper when starting

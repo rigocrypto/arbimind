@@ -26,6 +26,10 @@ export interface BotStatus {
   lastScanAt: number;
   totalScans: number;
   lastQuoteAge: number;
+  isExecuting: boolean;
+  minProfitBps: number;
+  activePairs: string[];
+  skippedPairs: string[];
   queue: QueueItem[];
   tradeHistory: TradeRecord[];
   logs: LogEntry[];
@@ -90,6 +94,7 @@ function computeReadiness(status: BotStatus | null): ReadinessCheck[] {
       { label: 'DEX quotes', ok: false, detail: 'Loading...' },
       { label: 'Bot loop', ok: false, detail: 'Loading...' },
       { label: 'Settings loaded', ok: false, detail: 'Loading...' },
+      { label: 'Active pairs', ok: false, detail: 'Loading...' },
     ];
   }
   return [
@@ -125,6 +130,14 @@ function computeReadiness(status: BotStatus | null): ReadinessCheck[] {
       label: 'Settings loaded',
       ok: true,
       detail: 'OK',
+    },
+    {
+      label: 'Active pairs',
+      ok: (status.activePairs?.length ?? 0) >= 2,
+      detail:
+        (status.activePairs?.length ?? 0) < 2
+          ? `${status.activePairs?.length ?? 0} — low coverage`
+          : `${status.activePairs?.length ?? 0}/${(status.activePairs?.length ?? 0) + (status.skippedPairs?.length ?? 0)}`,
     },
   ];
 }

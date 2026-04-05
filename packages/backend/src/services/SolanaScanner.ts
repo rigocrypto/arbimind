@@ -12,12 +12,18 @@ export const DEVNET_MINTS: Record<string, string> = {
   SOL: 'So11111111111111111111111111111111111111112',
   USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
   USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+  RAY: '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R',
+  JUP: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN',
+  ORCA: 'orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE',
 };
 
 export const SCAN_PAIRS = [
   { a: 'SOL', b: 'USDC' },
   { a: 'SOL', b: 'USDT' },
+  { a: 'SOL', b: 'RAY' },
+  { a: 'SOL', b: 'ORCA' },
   { a: 'USDC', b: 'USDT' },
+  { a: 'RAY', b: 'USDC' },
 ];
 
 export interface JupiterQuote {
@@ -83,7 +89,11 @@ let scannerStatus: ScannerStatus = {
   totalScans: 0,
 };
 let lastQuoteAt = 0;
-let minSpreadBps = 10; // configurable from settings
+let minSpreadBps = 15; // configurable from settings, default 15bps min profit
+
+// Consecutive failure tracking per pair — skip after MAX_CONSECUTIVE_FAILURES
+const pairFailures = new Map<string, number>();
+const MAX_CONSECUTIVE_FAILURES = 5;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -143,6 +153,7 @@ export async function scanJupiter(
     outputMint,
     amount: String(amount),
     slippageBps: '50',
+    swapMode: 'ExactIn',
   });
   const url = `${JUPITER_API_BASE}/quote?${params}`;
   try {
@@ -172,6 +183,12 @@ export async function scanJupiter(
 export async function detectArbitrageOpportunities(): Promise<ArbitrageOpportunity[]> {
   const opps: ArbitrageOpportunity[] = [];
   for (const { a, b } of SCAN_PAIRS) {
+    const pairKey = `${a}/${b}`;
+    const failures = pairFailures.get(pairKey) ?? 0;
+
+    // Skip pairs that consistently fail (no route on devnet)
+    if (failures >= MAX_CONSECUTIVE_FAILURES) continue;
+
     const mintA = DEVNET_MINTS[a];
     const mintB = DEVNET_MINTS[b];
     if (!mintA || !mintB) continue;
@@ -179,10 +196,25 @@ export async function detectArbitrageOpportunities(): Promise<ArbitrageOpportuni
     // Use 1 SOL equivalent for SOL pairs, 1 USDC for stablecoin pairs
     const amountIn = a === 'SOL' ? 1_000_000_000 : 1_000_000; // lamports or micro-units
     const forward = await scanJupiter(mintA, mintB, amountIn);
-    if (!forward || Number(forward.outAmount) === 0) continue;
+    if (!forward || Number(forward.outAmount) === 0) {
+      pairFailures.set(pairKey, failures + 1);
+      if (failures + 1 >= MAX_CONSECUTIVE_FAILURES) {
+        log('warn', `[SCAN] No route available for ${pairKey} on devnet — removing from active rotation`);
+      } else {
+        log('info', `[SCAN] No route available for ${pairKey} on devnet — skipping (${failures + 1}/${MAX_CONSECUTIVE_FAILURES})`);
+      }
+      continue;
+    }
 
     const reverse = await scanJupiter(mintB, mintA, Number(forward.outAmount));
-    if (!reverse || Number(reverse.outAmount) === 0) continue;
+    if (!reverse || Number(reverse.outAmount) === 0) {
+      pairFailures.set(pairKey, failures + 1);
+      log('info', `[SCAN] No reverse route for ${pairKey} on devnet — skipping`);
+      continue;
+    }
+
+    // Successful quotes — reset failure counter
+    pairFailures.set(pairKey, 0);
 
     const spreadBps = Math.round(
       ((Number(reverse.outAmount) - amountIn) / amountIn) * 10000
@@ -216,6 +248,8 @@ export async function detectArbitrageOpportunities(): Promise<ArbitrageOpportuni
       };
       opps.push(opp);
       log('info', `[OPP] Detected ${a}/${b} ${spreadBps}bps — queued`);
+    } else {
+      log('info', `[SCAN] Below threshold: ${pairKey} ${spreadBps}bps < ${minSpreadBps}bps — skipping`);
     }
   }
   return opps;
@@ -315,4 +349,20 @@ export function addLog(level: LogEntry['level'], message: string): void {
 export function updateOpportunity(id: string, update: Partial<ArbitrageOpportunity>): void {
   const opp = opportunityQueue.find((o) => o.id === id);
   if (opp) Object.assign(opp, update);
+}
+
+export function getActivePairs(): string[] {
+  return SCAN_PAIRS
+    .map(({ a, b }) => `${a}/${b}`)
+    .filter((p) => (pairFailures.get(p) ?? 0) < MAX_CONSECUTIVE_FAILURES);
+}
+
+export function getSkippedPairs(): string[] {
+  return SCAN_PAIRS
+    .map(({ a, b }) => `${a}/${b}`)
+    .filter((p) => (pairFailures.get(p) ?? 0) >= MAX_CONSECUTIVE_FAILURES);
+}
+
+export function getMinProfitBps(): number {
+  return minSpreadBps;
 }
