@@ -104,7 +104,7 @@ export function AdminCharts({ pnlSeries, txsByStrategy, range }: AdminChartsProp
                   cx="50%"
                   cy="50%"
                   outerRadius={70}
-                  label={({ strategy, profit }) => `${strategy}: ${(profit ?? 0).toFixed(3)} ETH`}
+                  label={((props: { strategy?: string; profit?: number }) => `${props.strategy}: ${(props.profit ?? 0).toFixed(3)} ETH`) as unknown as React.ComponentProps<typeof Pie>['label']}
                 >
                   {txsByStrategy.map((_, i) => (
                     <Cell key={i} fill={COLORS[i % COLORS.length]} />
