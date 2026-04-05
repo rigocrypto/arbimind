@@ -41,11 +41,14 @@ function maskSensitive(s: EngineSettings): EngineSettings {
 router.get('/', async (_req: Request, res: Response) => {
   try {
     const settings = await getSettings();
+    const engineMode: 'simulation' | 'live' | 'unknown' =
+      process.env.SIMULATED_ENGINE_ENABLED === 'true' ? 'simulation' : 'unknown';
     return res.json({
       ok: true,
       settings: maskSensitive(settings),
       source: 'backend',
       applied: APPLIED_META,
+      engineMode,
     });
   } catch (err) {
     console.error('[SETTINGS-ROUTE] GET error:', err);
@@ -80,11 +83,18 @@ router.put('/', writeLimiter, adminAuth, async (req: Request, res: Response) => 
 router.post('/reset', writeLimiter, adminAuth, async (_req: Request, res: Response) => {
   try {
     const settings = await resetSettings();
+    const engineMode: 'simulation' | 'live' | 'unknown' =
+      process.env.SIMULATED_ENGINE_ENABLED === 'true'
+        ? 'simulation'
+        : process.env.ENGINE_MODE === 'live'
+          ? 'live'
+          : 'unknown';
     return res.json({
       ok: true,
       settings: maskSensitive(settings),
       source: 'backend',
       applied: APPLIED_META,
+      engineMode,
     });
   } catch (err) {
     console.error('[SETTINGS-ROUTE] POST /reset error:', err);

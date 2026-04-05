@@ -7,7 +7,22 @@ import { AdminCharts } from './AdminCharts';
 import { CtaAbFunnelCard } from './CtaAbFunnelCard';
 import { AdminTxTable } from './AdminTxTable';
 import { AdminAuditLog } from './AdminAuditLog';
-import { adminApi, getCtaAbReport, getSnapshotsHealth, type AdminMetrics, type AdminTx, type AdminWallets, type CtaAbReport } from '@/lib/adminApi';
+import { SimulationBanner } from './SimulationBanner';
+import { EngineHealthPanel } from './EngineHealthPanel';
+import { RiskControlsPanel } from './RiskControlsPanel';
+import { EmergencyStopButton } from './EmergencyStopButton';
+import { PnlDeltaRow } from './PnlDeltaRow';
+import { CapitalEfficiencyCard } from './CapitalEfficiencyCard';
+import {
+  adminApi,
+  getCtaAbReport,
+  getSnapshotsHealth,
+  type AdminMetrics,
+  type AdminTx,
+  type AdminWallets,
+  type CtaAbReport,
+  type EngineSettingsResponse,
+} from '@/lib/adminApi';
 import { Pause, Play, Database } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -38,10 +53,31 @@ export function AdminDashboard() {
     solana: { lastOkAt: string | null; stale: boolean } | null;
   }>({ evm: null, solana: null });
 
+  // New state for Groups 1-4
+  const [engineMode, setEngineMode] = useState<'simulation' | 'live' | 'unknown'>('unknown');
+  const [settings, setSettings] = useState<EngineSettingsResponse | null>(null);
+  const [settingsApplied, setSettingsApplied] = useState<Record<string, boolean> | null>(null);
+  const [engineDetail, setEngineDetail] = useState<{
+    active: string;
+    walletChain: string | null;
+    walletAddress: string | null;
+    oppsCount: number;
+    lastProfit: number;
+    lastScanAt: number | null;
+    uptime: number;
+    timestamp: number;
+  } | null>(null);
+  const [rpcHealth, setRpcHealth] = useState<{
+    ok: boolean;
+    health: Record<string, string>;
+    details: Record<string, { status: string; rpcUrl: string | null; latencyMs?: number; error?: string }>;
+  } | null>(null);
+  const [engineBlocked, setEngineBlocked] = useState(false);
+
   const fetchAll = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [mRes, tRes, wRes, eRes, evmHealth, solHealth, abCta] = await Promise.all([
+    const [mRes, tRes, wRes, eRes, evmHealth, solHealth, abCta, settingsRes, engineDetailRes, rpcRes] = await Promise.all([
       adminApi.getMetrics(range),
       adminApi.getTxs({ limit: 50 }),
       adminApi.getWallets(),
@@ -49,6 +85,9 @@ export function AdminDashboard() {
       getSnapshotsHealth('evm'),
       getSnapshotsHealth('solana'),
       getCtaAbReport(range),
+      adminApi.getSettings(),
+      adminApi.getEngineDetail(),
+      adminApi.getRpcHealth('evm,solana'),
     ]);
     if (mRes.ok && mRes.data) setMetrics(mRes.data);
     else if (!mRes.ok) setError(mRes.error ?? 'Failed to fetch metrics');
@@ -56,6 +95,27 @@ export function AdminDashboard() {
     if (wRes.ok && wRes.data) setWallets(wRes.data);
     setCtaAbReport(abCta);
     if (eRes.ok && eRes.data) setEnginePaused(eRes.data.paused);
+
+    // Settings & simulation mode
+    if (settingsRes.ok && settingsRes.data) {
+      setSettings(settingsRes.data.settings);
+      setSettingsApplied(settingsRes.data.applied ?? null);
+      setEngineMode(settingsRes.data.engineMode ?? 'unknown');
+    }
+
+    // Engine detail (403 = blocked)
+    if (engineDetailRes.ok && engineDetailRes.data) {
+      setEngineDetail(engineDetailRes.data);
+      setEngineBlocked(false);
+    } else if (engineDetailRes.status === 403) {
+      setEngineBlocked(true);
+    }
+
+    // RPC health
+    if (rpcRes.ok && rpcRes.data) {
+      setRpcHealth(rpcRes.data);
+    }
+
     setSnapshotHealth({
       evm: evmHealth ? { lastOkAt: evmHealth.lastOkAt, stale: evmHealth.stale } : null,
       solana: solHealth ? { lastOkAt: solHealth.lastOkAt, stale: solHealth.stale } : null,
@@ -121,6 +181,9 @@ export function AdminDashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Simulation mode banner — always at top */}
+      <SimulationBanner engineMode={engineMode} />
+
       {/* Snapshots badge */}
       <div className="card flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -146,31 +209,49 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      {/* Engine controls */}
-      <div className="card flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-white">Engine Control</h2>
-          <p className="text-sm text-dark-400 mt-1">
-            {enginePaused === true ? 'Engine is paused' : enginePaused === false ? 'Engine is running' : '—'}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={handlePause}
-            disabled={enginePaused === true}
-            className="btn flex items-center gap-2 disabled:opacity-50"
-          >
-            <Pause className="w-4 h-4" /> Pause
-          </button>
-          <button
-            onClick={handleResume}
-            disabled={enginePaused === false}
-            className="btn btn-success flex items-center gap-2 disabled:opacity-50"
-          >
-            <Play className="w-4 h-4" /> Resume
-          </button>
+      {/* Engine controls + emergency stop */}
+      <div className="card">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Engine Control</h2>
+            <p className="text-sm text-dark-400 mt-1">
+              {engineBlocked
+                ? 'Engine blocked (SIMULATED_ENGINE_ENABLED not set)'
+                : enginePaused === true
+                  ? 'Engine is paused'
+                  : enginePaused === false
+                    ? 'Engine is running'
+                    : '—'}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handlePause}
+              disabled={enginePaused === true || engineBlocked}
+              className="btn flex items-center gap-2 disabled:opacity-50"
+            >
+              <Pause className="w-4 h-4" /> Pause
+            </button>
+            <button
+              onClick={handleResume}
+              disabled={enginePaused === false || engineBlocked}
+              className="btn btn-success flex items-center gap-2 disabled:opacity-50"
+            >
+              <Play className="w-4 h-4" /> Resume
+            </button>
+            <EmergencyStopButton onStopped={() => { setEnginePaused(true); void fetchAll(); }} />
+          </div>
         </div>
       </div>
+
+      {/* Engine health panel */}
+      <EngineHealthPanel
+        engineDetail={engineDetail}
+        rpcHealth={rpcHealth}
+        engineBlocked={engineBlocked}
+        blockedReason={engineBlocked ? 'SIMULATED_ENGINE_ENABLED not set to true on backend' : undefined}
+        engineMode={engineMode}
+      />
 
       {/* Range tabs */}
       <div className="flex gap-2">
@@ -207,6 +288,19 @@ export function AdminDashboard() {
           txCount={m.txCount}
         />
       )}
+
+      {/* PnL delta row — real-time PnL context */}
+      {txs.length > 0 && <PnlDeltaRow txs={txs} />}
+
+      {/* Capital efficiency */}
+      <CapitalEfficiencyCard wallets={wallets} txs={txs} />
+
+      {/* Risk controls */}
+      <RiskControlsPanel
+        settings={settings}
+        applied={settingsApplied}
+        onSettingsUpdated={(s) => setSettings(s)}
+      />
 
       <CtaAbFunnelCard report={ctaAbReport} range={range} />
 
