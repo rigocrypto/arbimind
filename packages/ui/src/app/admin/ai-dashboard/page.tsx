@@ -2,7 +2,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { DashboardLayout } from '@/components/Layout/DashboardLayout';
 import type { AIDexPairResponse, AIPredictionAccuracyRow, AIPredictionRow, AIWatchlistItem } from '@/lib/adminApi';
@@ -12,13 +12,22 @@ import { MetricsGrid } from './components/MetricsGrid';
 import { AccuracyCards } from './components/AccuracyCards';
 import { HitRateChart } from './components/HitRateChart';
 import { AvgReturnChart } from './components/AvgReturnChart';
+import { fetchPair, type DexPairData } from '@/lib/dexscreener';
+import { computeSignals, opportunityScore, recommendation, type AlertSignal } from '@/lib/aiSignals';
+import { AlertPanel } from '@/components/admin/ai/AlertPanel';
+import { KpiRow } from '@/components/admin/ai/KpiRow';
+import { OpportunityScore } from '@/components/admin/ai/OpportunityScore';
+import { PairHeader } from '@/components/admin/ai/PairHeader';
+import { AiSummary } from '@/components/admin/ai/AiSummary';
+import { AutoRefresh } from '@/components/admin/ai/AutoRefresh';
+import { SimulationBanner } from '@/components/admin/SimulationBanner';
 
 export default function AIDashboardPage() {
   const [pair, setPair] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<AIDexPairResponse | null>(null);
-  const [window, setWindow] = useState<'6h' | '24h' | '7d'>('6h');
+  const [timeWindow, setTimeWindow] = useState<'6h' | '24h' | '7d'>('6h');
   const [historyPoints, setHistoryPoints] = useState<Array<{ ts: number; priceUsd?: number; liquidityUsd?: number; volumeH24?: number; buysH1?: number; sellsH1?: number }>>([]);
   const [historyMeta, setHistoryMeta] = useState<{ returnedPoints: number; totalPointsForPair: number; samplingSeconds: number; retentionHours: number; newestTs?: number; oldestTs?: number } | null>(null);
   const [lastLiveFetchAt, setLastLiveFetchAt] = useState<number | null>(null);
@@ -33,15 +42,55 @@ export default function AIDashboardPage() {
   const [watchlistItems, setWatchlistItems] = useState<AIWatchlistItem[]>([]);
   const [watchingCount, setWatchingCount] = useState(0);
 
+  // New: DexScreener direct fetch state
+  const [dexPair, setDexPair] = useState<DexPairData | null>(null);
+  const [prevDexPair, setPrevDexPair] = useState<DexPairData | null>(null);
+  const [dexLoaded, setDexLoaded] = useState(false);
+  const [dexError, setDexError] = useState<string | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [engineMode, setEngineMode] = useState<'simulation' | 'live' | 'unknown'>('unknown');
+
+  // Derived signals
+  const signals: AlertSignal[] | null = useMemo(
+    () => (dexPair ? computeSignals(dexPair, prevDexPair) : null),
+    [dexPair, prevDexPair],
+  );
+  const oppScore = useMemo(() => (dexPair ? opportunityScore(dexPair) : null), [dexPair]);
+  const rec = useMemo(() => recommendation(oppScore ?? 0), [oppScore]);
+
   const authed = useMemo(() => hasAdminKey(), []);
+
+  // Fetch DexScreener directly + backend data
+  const refreshDexPair = useCallback(async (addr: string) => {
+    const result = await fetchPair(addr);
+    if (!result) {
+      setDexError('Pair not found on DexScreener');
+      return;
+    }
+    setDexError(null);
+    setPrevDexPair((prev) => prev);
+    setPrevDexPair(dexPair);
+    setDexPair(result);
+    setDexLoaded(true);
+  }, [dexPair]);
 
   const handleLoad = async (pairAddress: string) => {
     if (!authed || !pairAddress) return;
     setLoading(true);
     setError(null);
+    setDexError(null);
     setPair(pairAddress);
 
-    const historyRes = await adminApi.getAIDexHistory(pairAddress, window);
+    // Fetch DexScreener directly
+    await refreshDexPair(pairAddress);
+
+    // Fetch engine mode from settings
+    const settingsRes = await adminApi.getSettings();
+    if (settingsRes.ok && settingsRes.data?.engineMode) {
+      setEngineMode(settingsRes.data.engineMode);
+    }
+
+    const historyRes = await adminApi.getAIDexHistory(pairAddress, timeWindow);
     if (!historyRes.ok) {
       setError(historyRes.error ?? 'Failed to load history');
       setHistoryPoints([]);
@@ -60,10 +109,10 @@ export default function AIDashboardPage() {
       setLastLiveFetchAt(Date.now());
     }
 
-    const predRes = await adminApi.getAIPredictions(pairAddress, window, 200);
+    const predRes = await adminApi.getAIPredictions(pairAddress, timeWindow, 200);
     if (predRes.ok) setPredictions(predRes.data?.rows ?? []);
 
-    const accRes = await adminApi.getAIPredictionAccuracy(pairAddress, window);
+    const accRes = await adminApi.getAIPredictionAccuracy(pairAddress, timeWindow);
     if (accRes.ok) setAccuracyRows(accRes.data?.rows ?? []);
 
     const watchRes = await adminApi.getAIWatchlist();
@@ -73,7 +122,14 @@ export default function AIDashboardPage() {
     }
 
     setLoading(false);
+    setAutoRefresh(true);
   };
+
+  // Auto-refresh tick: refresh DexScreener + backend data
+  const handleRefreshTick = useCallback(async () => {
+    if (!pair.trim()) return;
+    await refreshDexPair(pair.trim());
+  }, [pair, refreshDexPair]);
 
   useEffect(() => {
     if (!authed || !pair.trim()) return;
@@ -94,7 +150,7 @@ export default function AIDashboardPage() {
       };
 
       setHistoryPoints((prev) => {
-        const windowMs = window === '6h' ? 6 * 60 * 60 * 1000 : window === '24h' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+        const windowMs = timeWindow === '6h' ? 6 * 60 * 60 * 1000 : timeWindow === '24h' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
         const trimmed = prev.filter((pt) => pt.ts >= now - windowMs);
         const last = trimmed[trimmed.length - 1];
         if (last && Math.abs(nextPoint.ts - last.ts) < 20000) {
@@ -103,15 +159,15 @@ export default function AIDashboardPage() {
         return [...trimmed, nextPoint];
       });
 
-      const predRes = await adminApi.getAIPredictions(pair.trim(), window, 200);
+      const predRes = await adminApi.getAIPredictions(pair.trim(), timeWindow, 200);
       if (predRes.ok) setPredictions(predRes.data?.rows ?? []);
 
-      const accRes = await adminApi.getAIPredictionAccuracy(pair.trim(), window);
+      const accRes = await adminApi.getAIPredictionAccuracy(pair.trim(), timeWindow);
       if (accRes.ok) setAccuracyRows(accRes.data?.rows ?? []);
     }, 20000);
 
     return () => clearInterval(interval);
-  }, [authed, pair, window]);
+  }, [authed, pair, timeWindow]);
 
   const priceUsd = Number(data?.pair?.priceUsd ?? 0);
   const liquidityUsd = Number(data?.pair?.liquidity?.usd ?? 0);
@@ -197,9 +253,9 @@ export default function AIDashboardPage() {
     if (!pair) return;
     setEvaluating(true);
     await adminApi.evaluateAIPredictions(pair);
-    const predRes = await adminApi.getAIPredictions(pair, window, 200);
+    const predRes = await adminApi.getAIPredictions(pair, timeWindow, 200);
     if (predRes.ok) setPredictions(predRes.data?.rows ?? []);
-    const accRes = await adminApi.getAIPredictionAccuracy(pair, window);
+    const accRes = await adminApi.getAIPredictionAccuracy(pair, timeWindow);
     if (accRes.ok) setAccuracyRows(accRes.data?.rows ?? []);
     setEvaluating(false);
   };
@@ -237,7 +293,7 @@ export default function AIDashboardPage() {
       reason: 'dev_manual',
       alertContext: { source: 'manual' },
     });
-    const predRes = await adminApi.getAIPredictions(pair, window, 200);
+    const predRes = await adminApi.getAIPredictions(pair, timeWindow, 200);
     if (predRes.ok) setPredictions(predRes.data?.rows ?? []);
   };
 
@@ -250,10 +306,11 @@ export default function AIDashboardPage() {
 
   return (
     <DashboardLayout>
+      {/* 1. Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-white">AI Monitoring Dashboard</h1>
-          <p className="text-sm text-dark-400">DexScreener live metrics + AI alert flags</p>
+          <p className="text-sm text-dark-400">DexScreener live metrics + AI alert flags + heuristic signals</p>
         </div>
         <Link href="/admin" className="btn btn-ghost text-dark-300 hover:text-white">
           Back to Admin
@@ -270,6 +327,7 @@ export default function AIDashboardPage() {
 
       {authed && (
         <div className="space-y-6">
+          {/* Header row: pair input + window + auto-refresh */}
           <div className="flex flex-col sm:flex-row sm:items-end gap-3">
             <div className="flex-1">
               <PairSearch defaultValue={pair} onSubmit={handleLoad} loading={loading} />
@@ -277,8 +335,8 @@ export default function AIDashboardPage() {
             <div className="card sm:w-48">
               <label className="block text-sm font-medium text-dark-300 mb-2">Window</label>
               <select
-                value={window}
-                onChange={(e) => setWindow(e.target.value as '6h' | '24h' | '7d')}
+                value={timeWindow}
+                onChange={(e) => setTimeWindow(e.target.value as '6h' | '24h' | '7d')}
                 className="input-field w-full"
               >
                 <option value="6h">6h</option>
@@ -286,12 +344,27 @@ export default function AIDashboardPage() {
                 <option value="7d">7d</option>
               </select>
             </div>
+            <div className="card sm:w-auto flex items-center">
+              <AutoRefresh
+                enabled={autoRefresh}
+                intervalSec={15}
+                onToggle={setAutoRefresh}
+                onTick={handleRefreshTick}
+              />
+            </div>
           </div>
-          {error && <p className="text-sm text-red-400">{error}</p>}
 
+          {/* 2. SimulationBanner */}
+          <SimulationBanner engineMode={engineMode} />
+
+          {/* Errors */}
+          {error && <p className="text-sm text-red-400">{error}</p>}
+          {dexError && <p className="text-sm text-red-400">{dexError}</p>}
+
+          {/* Meta line */}
           {pair && (
             <div className="text-xs text-dark-500">
-              Window: {window}
+              Window: {timeWindow}
               {historyMeta ? ` · Points: ${historyMeta.returnedPoints}/${historyMeta.totalPointsForPair}` : ` · Points: ${historyPoints.length}`}
               {historyMeta ? ` · Sampling: ${historyMeta.samplingSeconds}s` : ' · Sampling: ~20s'}
               {historyMeta ? ` · Retention: ${historyMeta.retentionHours}h` : ''}
@@ -300,6 +373,7 @@ export default function AIDashboardPage() {
             </div>
           )}
 
+          {/* Skeleton while loading */}
           {loading && (
             <div className="card animate-pulse">
               <div className="h-6 w-40 bg-dark-700 rounded mb-3" />
@@ -307,6 +381,29 @@ export default function AIDashboardPage() {
             </div>
           )}
 
+          {/* 3. AlertPanel (full width) */}
+          <AlertPanel signals={signals} loaded={dexLoaded} />
+
+          {/* 4. AiSummary (full width) */}
+          <AiSummary pair={dexPair} loaded={dexLoaded} />
+
+          {/* 5. KpiRow (6 cards) */}
+          <KpiRow pair={dexPair} loaded={dexLoaded} />
+
+          {/* 6. OpportunityScore + PairHeader (side by side) */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <OpportunityScore
+              score={oppScore}
+              confidence={rec.confidence}
+              type={rec.type}
+              loaded={dexLoaded}
+            />
+            <div className="lg:col-span-2">
+              <PairHeader pair={dexPair} loaded={dexLoaded} />
+            </div>
+          </div>
+
+          {/* 7. Existing charts (DexScreener backend proxy data) */}
           {data?.pair && (
             <MetricsGrid
               priceSeries={priceSeries}
@@ -320,6 +417,12 @@ export default function AIDashboardPage() {
             />
           )}
 
+          {/* 8. Data source attribution */}
+          <div className="text-xs text-dark-500 text-center">
+            Price data: DexScreener · Signals: Heuristic · Summary: Claude
+          </div>
+
+          {/* Accuracy + Predictions (existing) */}
           {pair && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
