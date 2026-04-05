@@ -6,6 +6,7 @@ import { getAdminKey } from '@/lib/adminApi';
 import { BotControlPanel } from './BotControlPanel';
 import { OpportunityFeed } from './OpportunityFeed';
 import { BotLogsPanel } from './BotLogsPanel';
+import { TreasuryFundPanel } from './TreasuryFundPanel';
 import type { BotStatus, TradeRecord } from './BotControlPanel';
 
 // ---------------------------------------------------------------------------
@@ -72,6 +73,13 @@ export function SolanaBotTab() {
           Backend unreachable: {error}
         </div>
       )}
+
+      {/* Treasury funding — deposit / withdraw / balance */}
+      <TreasuryFundPanel
+        treasuryAddress={status?.walletAddress ?? null}
+        treasuryBalance={status?.treasuryBalance ?? 0}
+        onRefresh={fetchStatus}
+      />
 
       {/* Control panel */}
       <BotControlPanel status={status} onRefresh={fetchStatus} />
