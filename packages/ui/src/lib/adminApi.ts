@@ -349,6 +349,7 @@ export const adminApi = {
       settings: EngineSettingsResponse;
       source: string;
       applied: Record<string, boolean>;
+      engineMode: 'simulation' | 'live' | 'unknown';
     }>('/settings');
   },
 

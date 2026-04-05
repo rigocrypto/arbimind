@@ -20,6 +20,7 @@ interface EngineHealthPanelProps {
   } | null;
   engineBlocked: boolean;
   blockedReason?: string;
+  engineMode?: 'simulation' | 'live' | 'unknown';
 }
 
 function formatUptime(seconds: number): string {
@@ -38,15 +39,26 @@ function formatTimeAgo(ts: number | null): string {
   return `${Math.floor(ms / 3600000)}h ago`;
 }
 
-export function EngineHealthPanel({ engineDetail, rpcHealth, engineBlocked, blockedReason }: EngineHealthPanelProps) {
+const MODE_BADGE: Record<string, { label: string; className: string }> = {
+  simulation: { label: 'SIMULATION', className: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
+  live: { label: 'LIVE', className: 'bg-green-500/20 text-green-400 border-green-500/30' },
+  unknown: { label: 'UNKNOWN', className: 'bg-dark-600 text-dark-400 border-dark-500' },
+};
+
+export function EngineHealthPanel({ engineDetail, rpcHealth, engineBlocked, blockedReason, engineMode }: EngineHealthPanelProps) {
   const evmLatency = rpcHealth?.details?.evm?.latencyMs;
   const solLatency = rpcHealth?.details?.solana?.latencyMs;
+  const badge = MODE_BADGE[engineMode ?? 'unknown'];
+  const isRunning = !!engineDetail?.active;
 
   return (
     <div className="card">
       <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
         <Activity className="w-5 h-5 text-cyan-400" />
         Engine Health
+        <span className={`ml-2 inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${badge.className}`}>
+          {isRunning ? 'RUNNING' : 'STOPPED'} ({badge.label})
+        </span>
       </h3>
 
       {engineBlocked && (

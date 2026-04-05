@@ -54,7 +54,7 @@ export function AdminDashboard() {
   }>({ evm: null, solana: null });
 
   // New state for Groups 1-4
-  const [isSimulated, setIsSimulated] = useState<boolean | null>(null);
+  const [engineMode, setEngineMode] = useState<'simulation' | 'live' | 'unknown'>('unknown');
   const [settings, setSettings] = useState<EngineSettingsResponse | null>(null);
   const [settingsApplied, setSettingsApplied] = useState<Record<string, boolean> | null>(null);
   const [engineDetail, setEngineDetail] = useState<{
@@ -100,6 +100,7 @@ export function AdminDashboard() {
     if (settingsRes.ok && settingsRes.data) {
       setSettings(settingsRes.data.settings);
       setSettingsApplied(settingsRes.data.applied ?? null);
+      setEngineMode(settingsRes.data.engineMode ?? 'unknown');
     }
 
     // Engine detail (403 = blocked)
@@ -108,22 +109,11 @@ export function AdminDashboard() {
       setEngineBlocked(false);
     } else if (engineDetailRes.status === 403) {
       setEngineBlocked(true);
-      setIsSimulated(null); // unknown — engine blocked
     }
 
     // RPC health
     if (rpcRes.ok && rpcRes.data) {
       setRpcHealth(rpcRes.data);
-    }
-
-    // Determine simulation mode from engine status:
-    // If engine returns 403, the simulated engine is disabled.
-    // If it responds normally, that means SIMULATED_ENGINE_ENABLED=true → simulated mode is on.
-    if (engineDetailRes.status === 403) {
-      setIsSimulated(null); // engine not enabled, status unknown
-    } else if (engineDetailRes.ok) {
-      // Engine is accessible → simulated engine is enabled
-      setIsSimulated(true);
     }
 
     setSnapshotHealth({
@@ -192,7 +182,7 @@ export function AdminDashboard() {
   return (
     <div className="space-y-6">
       {/* Simulation mode banner — always at top */}
-      <SimulationBanner isSimulated={isSimulated} />
+      <SimulationBanner engineMode={engineMode} />
 
       {/* Snapshots badge */}
       <div className="card flex items-center justify-between">
@@ -260,6 +250,7 @@ export function AdminDashboard() {
         rpcHealth={rpcHealth}
         engineBlocked={engineBlocked}
         blockedReason={engineBlocked ? 'SIMULATED_ENGINE_ENABLED not set to true on backend' : undefined}
+        engineMode={engineMode}
       />
 
       {/* Range tabs */}
