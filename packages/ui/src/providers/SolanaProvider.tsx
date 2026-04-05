@@ -17,19 +17,42 @@ function normalizeCluster(raw?: string | null): SolanaCluster {
   return 'mainnet-beta';
 }
 
+/** Strip API-key query params so secrets in NEXT_PUBLIC_ env vars never reach the browser. */
+function stripApiKeys(url: string): string {
+  if (!url) return url;
+  try {
+    const u = new URL(url);
+    const sensitive = ['api-key', 'api_key', 'apikey', 'apiKey'];
+    let stripped = false;
+    for (const key of sensitive) {
+      if (u.searchParams.has(key)) {
+        u.searchParams.delete(key);
+        stripped = true;
+      }
+    }
+    if (stripped && process.env.NODE_ENV === 'development') {
+      console.warn('[SolanaProvider] Stripped API key query param from RPC URL — use a server-side proxy instead');
+    }
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 function resolveRpcOverride(cluster: SolanaCluster): string {
   const generic = process.env.NEXT_PUBLIC_SOLANA_RPC_URL?.trim() || '';
+  let url: string;
   if (cluster === 'mainnet-beta') {
-    return (
+    url =
       process.env.NEXT_PUBLIC_SOLANA_RPC_URL_MAINNET_BETA?.trim() ||
       process.env.NEXT_PUBLIC_SOLANA_RPC_URL_MAINNET?.trim() ||
-      generic
-    );
+      generic;
+  } else if (cluster === 'testnet') {
+    url = process.env.NEXT_PUBLIC_SOLANA_RPC_URL_TESTNET?.trim() || generic;
+  } else {
+    url = process.env.NEXT_PUBLIC_SOLANA_RPC_URL_DEVNET?.trim() || generic;
   }
-  if (cluster === 'testnet') {
-    return process.env.NEXT_PUBLIC_SOLANA_RPC_URL_TESTNET?.trim() || generic;
-  }
-  return process.env.NEXT_PUBLIC_SOLANA_RPC_URL_DEVNET?.trim() || generic;
+  return stripApiKeys(url);
 }
 
 export function SolanaProvider({ children }: { children: React.ReactNode }) {

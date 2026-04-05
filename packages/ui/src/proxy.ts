@@ -52,6 +52,7 @@ export function proxy(req: NextRequest) {
       'https://api.mainnet-beta.solana.com',
       'https://api.testnet.solana.com',
       'https://*.alchemy.com',
+      'https://*.helius-rpc.com',
     ].filter(Boolean);
 
     const rpcConnectSrc = Array.from(new Set(rpcOrigins)).join(' ');
