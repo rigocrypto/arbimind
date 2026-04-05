@@ -15,7 +15,7 @@
     "dev": "tsx watch src/index.ts",
     "canary": "tsx src/canary.ts",
     "start": "node dist/index.js",
-    "test": "vitest",
+    "test": "vitest run",
     "test:ui": "vitest --ui",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest run --coverage",
