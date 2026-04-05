@@ -327,6 +327,61 @@ export const adminApi = {
       body: JSON.stringify({ prediction }),
     });
   },
+
+  /** Fetch engine status from /api/engine/status (public, no admin key needed for read). */
+  async getEngineDetail() {
+    return adminFetch<{
+      active: string;
+      walletChain: string | null;
+      walletAddress: string | null;
+      oppsCount: number;
+      lastProfit: number;
+      lastScanAt: number | null;
+      uptime: number;
+      timestamp: number;
+    }>('/engine/status');
+  },
+
+  /** Fetch settings from /api/settings (public read). */
+  async getSettings() {
+    return adminFetch<{
+      ok: boolean;
+      settings: EngineSettingsResponse;
+      source: string;
+      applied: Record<string, boolean>;
+    }>('/settings');
+  },
+
+  /** Update settings via PUT /api/settings (admin-only). */
+  async updateSettings(patch: Partial<EngineSettingsResponse>) {
+    return adminFetch<{
+      ok: boolean;
+      settings: EngineSettingsResponse;
+      source: string;
+      applied: Record<string, boolean>;
+    }>('/settings', {
+      method: 'PUT',
+      body: JSON.stringify(patch),
+    });
+  },
+
+  /** Fetch RPC health from /api/rpc/health. */
+  async getRpcHealth(chains?: string) {
+    const q = chains ? `?chain=${chains}` : '';
+    return adminFetch<{
+      ok: boolean;
+      health: Record<string, string>;
+      details: Record<string, { status: string; rpcUrl: string | null; latencyMs?: number; error?: string }>;
+    }>(`/rpc/health${q}`);
+  },
+
+  /** Emergency stop (force stop engine). */
+  async emergencyStop() {
+    return adminFetch<{ status: string; active: boolean; timestamp: number }>('/engine/stop', {
+      method: 'POST',
+      body: JSON.stringify({ force: true }),
+    });
+  },
 };
 
 /** Public endpoint – no admin key required. */
@@ -369,4 +424,24 @@ export interface AdminAuditEvent {
   action?: string;
   success: boolean;
   meta?: Record<string, unknown>;
+}
+
+export interface EngineSettingsResponse {
+  autoTrade: boolean;
+  minProfitEth: number;
+  maxGasGwei: number;
+  slippagePct: number;
+  riskLevel: 'low' | 'medium' | 'high';
+  preferredChains: string[];
+  requiredConfirmations: number;
+  flashloanMaxEth: number;
+  mevProtection: boolean;
+  browserNotifications: boolean;
+  emailAlerts: boolean;
+  discordAlerts: boolean;
+  discordWebhookUrl: string | null;
+  primaryRpcUrl: string | null;
+  privateRelayUrl: string | null;
+  walletConnectProjectId: string | null;
+  updatedAt: string;
 }

@@ -1,5 +1,6 @@
 import express, { Request, Response, Router } from 'express';
 import rateLimit from 'express-rate-limit';
+import { ethers } from 'ethers';
 import { adminAuth } from '../middleware/adminAuth';
 import { adminStore } from '../store/adminStore';
 import { dispatchAlert, AlertWebhooks, AlertPrediction } from '../services/AlertService';
@@ -284,7 +285,49 @@ router.get('/txs', (req: Request, res: Response) => {
 /**
  * GET /api/admin/wallets
  */
-router.get('/wallets', (req: Request, res: Response) => {
+router.get('/wallets', async (req: Request, res: Response) => {
+  const rpcUrl = process.env.ETHEREUM_RPC_URL;
+  const USDC_ADDRESS = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'; // Mainnet USDC
+  const ERC20_BALANCE_ABI = ['function balanceOf(address) view returns (uint256)'];
+
+  async function fetchBalances(address: string, provider: ethers.JsonRpcProvider): Promise<{
+    balanceEth: number | null;
+    balanceUsdc: number | null;
+  }> {
+    if (!address || address === '0x0000000000000000000000000000000000000000') {
+      return { balanceEth: null, balanceUsdc: null };
+    }
+    try {
+      const usdcContract = new ethers.Contract(USDC_ADDRESS, ERC20_BALANCE_ABI, provider);
+      const [ethBal, usdcBal] = await Promise.all([
+        provider.getBalance(address),
+        (usdcContract.getFunction('balanceOf'))(address).catch(() => null),
+      ]);
+      return {
+        balanceEth: Number(ethers.formatEther(ethBal)),
+        balanceUsdc: usdcBal != null ? Number(ethers.formatUnits(usdcBal, 6)) : null,
+      };
+    } catch (err) {
+      console.warn(`[WALLETS] RPC balance fetch failed for ${address.slice(0, 10)}:`, err);
+      return { balanceEth: null, balanceUsdc: null };
+    }
+  }
+
+  let execBalances = { balanceEth: null as number | null, balanceUsdc: null as number | null };
+  let treasuryBalances = { balanceEth: null as number | null, balanceUsdc: null as number | null };
+
+  if (rpcUrl) {
+    try {
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      [execBalances, treasuryBalances] = await Promise.all([
+        fetchBalances(EXECUTION, provider),
+        fetchBalances(TREASURY, provider),
+      ]);
+    } catch (err) {
+      console.warn('[WALLETS] RPC provider init failed:', err);
+    }
+  }
+
   return res.json({
     ok: true,
     version: '1.0',
@@ -292,18 +335,16 @@ router.get('/wallets', (req: Request, res: Response) => {
     wallets: {
       execution: {
         address: EXECUTION,
-        balanceEth: null,
-        balanceUsdc: null,
+        ...execBalances,
         lastUpdated: new Date().toISOString(),
       },
       treasury: {
         address: TREASURY,
-        balanceEth: null,
-        balanceUsdc: null,
+        ...treasuryBalances,
         lastUpdated: new Date().toISOString(),
       },
     },
-    note: 'Balances require RPC; add ethers getBalance when ready',
+    ...(rpcUrl ? {} : { note: 'ETHEREUM_RPC_URL not set — balances unavailable' }),
   });
 });
 
