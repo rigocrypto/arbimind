@@ -30,6 +30,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile --prefer-offline
 
+      - name: Security audit (high-severity)
+        run: pnpm audit --audit-level=high
+
       # Keep the existing lint gate shape: only UI lint is currently clean on main.
       - run: pnpm --filter @arbimind/ui lint
 
