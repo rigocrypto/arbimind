@@ -51,6 +51,7 @@ export class SettingsReader {
     this.apiUrl =
       opts.apiUrl ||
       process.env['SETTINGS_API_URL'] ||
+      (process.env['BACKEND_URL'] ? `${process.env['BACKEND_URL'].replace(/\/+$/, '')}/api/settings` : '') ||
       'http://localhost:8000/api/settings';
     this.refreshMs = (opts.refreshSec ?? 30) * 1000;
     this.envDefaults = opts.envDefaults;

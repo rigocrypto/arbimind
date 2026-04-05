@@ -566,17 +566,15 @@ export class ArbitrageBot {
       }
     }
 
-    const v3Quote = quotes.find((q) => q.dex === 'UNISWAP_V3');
-    const v2Quote = quotes.find((q) => q.dex === 'UNISWAP_V2');
     const amountInNum = Number(amountIn.toString());
+    const quotesByDex: Record<string, number | 'null'> = {};
+    for (const q of quotes) {
+      quotesByDex[q.dex] =
+        (Number(q.amountOut) / 10 ** decimalsOut) / (amountInNum / 10 ** decimalsIn);
+    }
     console.log('[QUOTE_RESULT]', {
       pair: `${tokenA}/${tokenB}`,
-      v3: v3Quote
-        ? (Number(v3Quote.amountOut) / 10 ** decimalsOut) / (amountInNum / 10 ** decimalsIn)
-        : 'null',
-      v2: v2Quote
-        ? (Number(v2Quote.amountOut) / 10 ** decimalsOut) / (amountInNum / 10 ** decimalsIn)
-        : 'null',
+      ...quotesByDex,
     });
 
     // Update cached ETH/USD price from WETH→stablecoin quotes
