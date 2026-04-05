@@ -15,6 +15,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 import { API_BASE } from '@/lib/apiConfig';
 import { ArbAccountCard, PerformanceCharts, ActivityTable } from '@/components/portfolio';
+import { SolanaBotTab } from '@/components/solana/SolanaBotTab';
 import { getPortfolioErrorDetails, usePortfolioSummary, usePortfolioTimeseries } from '@/hooks/usePortfolio';
 import { SOL_EQUIV_DECIMALS } from '@/utils/format';
 import { notifyWalletStateUpdated, onCrossTabWalletChange } from '@/lib/walletState';
@@ -198,6 +199,7 @@ export default function SolanaWalletPageClient() {
   const [engineLastProfit, setEngineLastProfit] = useState(0);
   const [engineActivity, setEngineActivity] = useState<EngineActivityEvent[]>([]);
   const lastEngineActivityTsRef = useRef(0);
+  const [activeTab, setActiveTab] = useState<'wallet' | 'bot'>('wallet');
 
   const effectiveTreasuryAddress = backendTreasuryAddress || SOLANA_TREASURY_ADDRESS;
   const treasuryAddressMismatch = Boolean(
@@ -1368,6 +1370,33 @@ export default function SolanaWalletPageClient() {
           )}
         </motion.div>
 
+        {/* Tab switcher: Wallet | Bot */}
+        <div className="flex gap-1 bg-dark-900/60 rounded-lg p-1 w-fit">
+          {(['wallet', 'bot'] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-1.5 rounded-md text-xs font-semibold transition ${
+                activeTab === tab
+                  ? 'bg-dark-700 text-white shadow-sm'
+                  : 'text-dark-400 hover:text-dark-200'
+              }`}
+            >
+              {tab === 'wallet' ? '💰 Wallet' : '🤖 Bot'}
+              {tab === 'bot' && (
+                <span className="ml-1.5 px-1 py-0.5 text-[9px] rounded bg-orange-600/30 text-orange-300">
+                  DEV
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === 'bot' ? (
+          <SolanaBotTab />
+        ) : (
+        <>
         {!isSolanaConnected ? (
           <>
             <motion.div
@@ -1905,6 +1934,8 @@ export default function SolanaWalletPageClient() {
               </div>
             </motion.div>
           </>
+        )}
+        </>
         )}
       </div>
 
