@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, ReactNode } from 'react';
-import { useEngine } from '@/hooks/useArbiApi';
+import { useEngine, type EngineStatus } from '@/hooks/useArbiApi';
 import { useBalanceGuard } from '@/hooks/useBalanceGuard';
 
 interface EngineContextValue {
@@ -10,7 +10,8 @@ interface EngineContextValue {
   activeWalletChain: 'evm' | 'solana' | '';
   activeWalletAddress: string;
   loading: boolean;
-  engineBlocked: boolean;
+  engineStatus: EngineStatus;
+  engineError: string;
   start: (strategy?: string) => Promise<void>;
   stop: () => Promise<void>;
   singleScan: (strategy?: string) => Promise<boolean>;

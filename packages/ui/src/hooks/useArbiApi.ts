@@ -411,13 +411,16 @@ export function useOpportunities() {
   return { opportunities, loading };
 }
 
+export type EngineStatus = 'idle' | 'starting' | 'running' | 'blocked' | 'error';
+
 export function useEngine() {
   const [isRunning, setIsRunning] = useState(false);
   const [activeStrategy, setActiveStrategy] = useState<string>('');
   const [activeWalletChain, setActiveWalletChain] = useState<'evm' | 'solana' | ''>('');
   const [activeWalletAddress, setActiveWalletAddress] = useState<string>('');
   const [loading, setLoading] = useState(false);
-  const [engineBlocked, setEngineBlocked] = useState(false);
+  const [engineStatus, setEngineStatus] = useState<EngineStatus>('idle');
+  const [engineError, setEngineError] = useState<string>('');
 
   const getLocalWalletContext = useCallback(() => {
     if (typeof window === 'undefined') {
@@ -482,6 +485,8 @@ export function useEngine() {
   const start = useCallback(async (strategy: string = 'arbitrage') => {
     if (!ENABLE_ENGINE_UI) return;
     setLoading(true);
+    setEngineStatus('starting');
+    setEngineError('');
     try {
       const referrer =
         typeof window !== 'undefined' ? localStorage.getItem('arbimind_ref') : null;
@@ -508,11 +513,18 @@ export function useEngine() {
         setIsRunning(true);
         setActiveWalletChain(walletChain === 'evm' || walletChain === 'solana' ? walletChain : '');
         setActiveWalletAddress(typeof walletAddress === 'string' ? walletAddress : '');
-        setEngineBlocked(false);
+        setEngineStatus('running');
+        setEngineError('');
       } else if (response.status === 403) {
-        setEngineBlocked(true);
+        setEngineStatus('blocked');
+        setEngineError('Simulated engine disabled in this environment');
+      } else {
+        setEngineStatus('error');
+        setEngineError(`Engine start failed (HTTP ${response.status})`);
       }
     } catch (error) {
+      setEngineStatus('error');
+      setEngineError(error instanceof Error ? error.message : 'Network error');
       console.error('Failed to start engine:', error);
     } finally {
       setLoading(false);
@@ -531,6 +543,8 @@ export function useEngine() {
         setIsRunning(false);
         setActiveWalletChain('');
         setActiveWalletAddress('');
+        setEngineStatus('idle');
+        setEngineError('');
       }
     } catch (error) {
       console.error('Failed to stop engine:', error);
@@ -574,7 +588,8 @@ export function useEngine() {
     activeWalletChain,
     activeWalletAddress,
     loading,
-    engineBlocked,
+    engineStatus,
+    engineError,
     start,
     stop,
     singleScan,

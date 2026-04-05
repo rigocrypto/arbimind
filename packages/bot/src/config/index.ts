@@ -420,9 +420,22 @@ export function validateConfig(): void {
     }
   }
 
-  // Warn about missing BACKEND_URL (settings fetch will fall back to localhost)
+  // ── Startup env audit: warn about vars that cause silent runtime failures ──
+  const envWarnings: string[] = [];
   if (!process.env['BACKEND_URL'] && !process.env['SETTINGS_API_URL']) {
-    logger.warn('⚠️ Neither BACKEND_URL nor SETTINGS_API_URL is set — SettingsReader will default to localhost.');
+    envWarnings.push('BACKEND_URL / SETTINGS_API_URL — settings polling will fall back to localhost');
+  }
+  if (!ethereumRpcUrl) {
+    envWarnings.push('ETHEREUM_RPC_URL (or chain-specific *_RPC_URL) — no RPC provider configured');
+  }
+  if (!privateKey && !walletAddress) {
+    envWarnings.push('PRIVATE_KEY / WALLET_ADDRESS — no wallet identity available');
+  }
+  if (!treasuryAddress && !logOnly) {
+    envWarnings.push('TREASURY_ADDRESS — required for live trading');
+  }
+  if (envWarnings.length > 0) {
+    logger.warn(`[CONFIG] Missing env vars that may cause runtime issues:\n  • ${envWarnings.join('\n  • ')}`);
   }
 
   // If trading, require private key and treasury
