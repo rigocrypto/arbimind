@@ -17,6 +17,16 @@ export const DEVNET_MINTS: Record<string, string> = {
   ORCA: 'orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE',
 };
 
+/** Token decimal places — critical for correct PnL math */
+export const DEVNET_DECIMALS: Record<string, number> = {
+  SOL: 9,
+  USDC: 6,
+  USDT: 6,
+  RAY: 6,
+  JUP: 6,
+  ORCA: 6,
+};
+
 export const SCAN_PAIRS = [
   { a: 'SOL', b: 'USDC' },
   { a: 'SOL', b: 'USDT' },
@@ -165,6 +175,13 @@ export async function scanJupiter(
       routePlan?: unknown[];
     };
     lastQuoteAt = Date.now();
+    log(
+      'info',
+      `[JUPITER] route found ${inputMint.slice(0, 6)}→${outputMint.slice(0, 6)} inAmount: ${data.inAmount} outAmount: ${data.outAmount} swapMode: ExactIn routes: ${(data.routePlan ?? []).length}`
+    );
+    if (data.outAmount === '0' || data.outAmount === undefined) {
+      log('warn', `[JUPITER] outAmount=0 for ${inputMint.slice(0, 6)}→${outputMint.slice(0, 6)} — mint may be invalid on devnet`);
+    }
     return {
       inputMint,
       outputMint,
@@ -193,8 +210,9 @@ export async function detectArbitrageOpportunities(): Promise<ArbitrageOpportuni
     const mintB = DEVNET_MINTS[b];
     if (!mintA || !mintB) continue;
 
-    // Use 1 SOL equivalent for SOL pairs, 1 USDC for stablecoin pairs
-    const amountIn = a === 'SOL' ? 1_000_000_000 : 1_000_000; // lamports or micro-units
+    // Use 1 unit of token A, scaled by its decimals
+    const decimalsA = DEVNET_DECIMALS[a] ?? 9;
+    const amountIn = 10 ** decimalsA;
     const forward = await scanJupiter(mintA, mintB, amountIn);
     if (!forward || Number(forward.outAmount) === 0) {
       pairFailures.set(pairKey, failures + 1);
@@ -220,10 +238,9 @@ export async function detectArbitrageOpportunities(): Promise<ArbitrageOpportuni
       ((Number(reverse.outAmount) - amountIn) / amountIn) * 10000
     );
 
+    // Profit is in token A's native units (SOL for SOL pairs, USDC for USDC pairs, etc.)
     const expectedProfitSol =
-      a === 'SOL'
-        ? (Number(reverse.outAmount) - amountIn) / 1e9
-        : (Number(reverse.outAmount) - amountIn) / 1e6;
+      (Number(reverse.outAmount) - amountIn) / (10 ** decimalsA);
 
     log(
       'info',

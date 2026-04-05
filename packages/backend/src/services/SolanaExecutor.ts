@@ -18,6 +18,7 @@ const JUPITER_API_BASE =
   process.env.SOLANA_JUPITER_DEVNET_API_BASE?.trim() || 'https://quote-api.jup.ag/v6';
 const ESTIMATED_GAS_SOL = 0.000_005; // ~5000 lamports typical Solana tx fee
 const CONFIRMATION_TIMEOUT_MS = 30_000;
+const MAX_TRADE_SOL = 0.2; // hard cap per trade — prevents full-balance accidents
 
 export type BotMode = 'paper' | 'live' | 'stopped';
 
@@ -134,8 +135,9 @@ export async function validateBeforeExecute(
   const balanceLamports = await conn.getBalance(resolved.keypair.publicKey);
   const balanceSol = balanceLamports / LAMPORTS_PER_SOL;
 
-  // tradeSize defaults to 1 SOL for SOL pairs
-  const tradeSize = opp.pair.startsWith('SOL') ? 1 : 0.01;
+  // tradeSize: clamped to min(balance*20%, MAX_TRADE_SOL) for safety
+  const rawTradeSize = opp.pair.startsWith('SOL') ? 1 : 0.01;
+  const tradeSize = Math.min(rawTradeSize, balanceSol * 0.2, MAX_TRADE_SOL);
   const requiredSol = tradeSize + ESTIMATED_GAS_SOL + 0.01; // 0.01 SOL buffer
 
   if (balanceSol < requiredSol) {
@@ -179,10 +181,12 @@ export async function executeOpportunity(
     return null;
   }
   isExecuting = true;
+  addLog('info', '[EXEC] Lock acquired');
   try {
     return await doExecuteOpportunity(opp, mode);
   } finally {
     isExecuting = false;
+    addLog('info', '[EXEC] Lock released');
   }
 }
 
