@@ -1,10 +1,42 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { TrendingUp, Clock, Zap } from 'lucide-react';
 import type { AdminTx } from '@/lib/adminApi';
 
 interface PnlDeltaRowProps {
   txs: AdminTx[];
+}
+
+interface PnlMetrics {
+  lastTradePnl: number;
+  lastTrade: AdminTx | undefined;
+  last1hPnl: number;
+  pnlVelocity: number;
+}
+
+function computeMetrics(txs: AdminTx[]): PnlMetrics {
+  const now = Date.now();
+  const oneHourAgo = now - 3600_000;
+  const twentyFourHoursAgo = now - 86400_000;
+
+  const successTxs = txs.filter((t) => t.status === 'success');
+  const lt = successTxs[0];
+
+  const h1 = successTxs
+    .filter((t) => t.time >= oneHourAgo)
+    .reduce((sum, t) => sum + t.netProfit, 0);
+
+  const last24hTxs = successTxs.filter((t) => t.time >= twentyFourHoursAgo);
+  const last24hPnl = last24hTxs.reduce((sum, t) => sum + t.netProfit, 0);
+  const hoursActive = Math.max(1, (now - twentyFourHoursAgo) / 3600_000);
+
+  return {
+    lastTrade: lt,
+    lastTradePnl: lt?.netProfit ?? 0,
+    last1hPnl: h1,
+    pnlVelocity: last24hPnl / hoursActive,
+  };
 }
 
 function fmtEth(v: number) {
@@ -13,22 +45,13 @@ function fmtEth(v: number) {
 }
 
 export function PnlDeltaRow({ txs }: PnlDeltaRowProps) {
-  const now = Date.now();
-  const oneHourAgo = now - 3600_000;
-  const twentyFourHoursAgo = now - 86400_000;
+  const [metrics, setMetrics] = useState<PnlMetrics>(() => computeMetrics(txs));
 
-  const successTxs = txs.filter((t) => t.status === 'success');
-  const lastTrade = successTxs[0];
-  const lastTradePnl = lastTrade?.netProfit ?? 0;
+  useEffect(() => {
+    setMetrics(computeMetrics(txs));
+  }, [txs]);
 
-  const last1hPnl = successTxs
-    .filter((t) => t.time >= oneHourAgo)
-    .reduce((sum, t) => sum + t.netProfit, 0);
-
-  const last24hTxs = successTxs.filter((t) => t.time >= twentyFourHoursAgo);
-  const last24hPnl = last24hTxs.reduce((sum, t) => sum + t.netProfit, 0);
-  const hoursActive = Math.max(1, (now - twentyFourHoursAgo) / 3600_000);
-  const pnlVelocity = last24hPnl / hoursActive;
+  const { lastTradePnl, lastTrade, last1hPnl, pnlVelocity } = metrics;
 
   const cards = [
     {
