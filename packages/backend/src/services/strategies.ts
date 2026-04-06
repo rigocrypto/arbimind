@@ -43,7 +43,7 @@ export async function runTrend(_opts?: StrategyOpts): Promise<StrategyRunSummary
 export async function runMarketMaking(_opts?: StrategyOpts): Promise<StrategyRunSummary> {
   // TODO: MM positions, Uniswap V3 liquidity
   const spread = (0.2 + Math.random() * 0.2).toFixed(2);
-  console.log(`💧 MM: WETH/USDC ±${spread}% spread → Monitoring`);
+  console.debug(`💧 MM: WETH/USDC ±${spread}% spread → Monitoring`);
   return {
     oppsCount: 0,
     lastProfitSol: 0,
