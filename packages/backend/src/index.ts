@@ -19,6 +19,7 @@ import analyticsRoutes from './routes/analytics';
 import aiRoutes, { setAIService } from './routes/ai';
 import settingsRoutes from './routes/settings';
 import evmSwapRoutes from './routes/evmSwap';
+import botHeartbeatRoutes from './routes/botHeartbeat';
 import { AIService } from './services/AIService';
 import { resolveRpcUrl } from './utils/rpc';
 import { captureSentryException, initializeSentry } from './utils/sentry';
@@ -152,6 +153,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/evm/swap', evmSwapRoutes);
+app.use('/api/bot', botHeartbeatRoutes);
 
 const PORT = parseInt(process.env.PORT || '8000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
