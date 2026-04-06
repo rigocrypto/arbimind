@@ -37,6 +37,9 @@ export interface BotRunResult {
   opportunitiesFound: number;
   executed: number;
   scoredOpps: number;
+  quotesOk: number;
+  quotesFailed: number;
+  scanDurationMs: number;
 }
 
 export class ArbitrageBot {
@@ -64,6 +67,7 @@ export class ArbitrageBot {
    *  costs when the input token is not ETH (e.g. USDC/USDT stable pairs). */
   private cachedEthPriceUsd: number = 2000; // conservative fallback
   // last scan timestamp removed (not currently read anywhere)
+  private heartbeatUrl: string | null = null;
 
   constructor(deps: ArbitrageBotDependencies = {}) {
     this.logger = deps.logger ?? new Logger('ArbitrageBot');
@@ -166,6 +170,14 @@ export class ArbitrageBot {
         requiredConfirmations: 1,   // ethers tx.wait() default
       },
     });
+
+    // Heartbeat URL — POST scan metrics to the backend after each cycle
+    const backendBase = (
+      process.env['BACKEND_URL'] ||
+      process.env['SETTINGS_API_URL']?.replace(/\/api\/settings\/?$/, '') ||
+      ''
+    ).replace(/\/+$/, '');
+    this.heartbeatUrl = backendBase ? `${backendBase}/api/bot/heartbeat` : null;
   }
 
   /**
@@ -243,13 +255,46 @@ export class ArbitrageBot {
       try {
         await this.refreshGasPrice();
         await this.maybeRunSanityTransfer();
-        await this.scanForOpportunities();
+        const result = await this.scanForOpportunities();
+        this.sendHeartbeat(result);   // fire-and-forget
         await this.sleep(this.botConfig.scanIntervalMs);
       } catch (error) {
         this.logger.error('Error in main loop', { error: error instanceof Error ? error.message : error });
         await this.sleep(1000); // Wait longer on error
       }
     }
+  }
+
+  /**
+   * Fire-and-forget heartbeat POST to the backend after each scan cycle.
+   * Failures are silently logged at debug level — never blocks the main loop.
+   */
+  private sendHeartbeat(result: BotRunResult): void {
+    if (!this.heartbeatUrl) return;
+
+    const payload = {
+      service: 'evm-arbitrage',
+      status: 'running',
+      mode: this.botConfig.logOnly ? 'dry-run' : 'live',
+      lastScanAt: new Date().toISOString(),
+      scanDurationMs: result.scanDurationMs,
+      pairsChecked: this.tokenPairs.length,
+      quotesOk: result.quotesOk,
+      quotesFailed: result.quotesFailed,
+      opportunitiesFound: result.opportunitiesFound,
+      autoTrade: !this.botConfig.logOnly,
+    };
+
+    fetch(this.heartbeatUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(this.botConfig.aiServiceKey ? { 'X-SERVICE-KEY': this.botConfig.aiServiceKey } : {}),
+      },
+      body: JSON.stringify(payload),
+    }).catch((err) => {
+      console.debug('[HEARTBEAT_FAIL]', err instanceof Error ? err.message : err);
+    });
   }
 
   private async maybeRunSanityTransfer(): Promise<void> {
@@ -393,7 +438,7 @@ export class ArbitrageBot {
       durationMs: scanDuration,
     });
 
-    return { opportunitiesFound, executed, scoredOpps };
+    return { opportunitiesFound, executed, scoredOpps, quotesOk, quotesFailed, scanDurationMs: scanDuration };
   }
 
   /**
