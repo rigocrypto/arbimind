@@ -61,6 +61,12 @@ export function EngineHealthPanel({ engineDetail, rpcHealth, engineBlocked, bloc
         </span>
       </h3>
 
+      {engineMode !== 'live' && (
+        <p className="mb-3 text-xs text-dark-400">
+          Reflects the backend simulated engine only — the production bot runs independently.
+        </p>
+      )}
+
       {engineBlocked && (
         <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
           Engine blocked: {blockedReason || 'SIMULATED_ENGINE_ENABLED not set to true'}
