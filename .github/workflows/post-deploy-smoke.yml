@@ -38,8 +38,6 @@ jobs:
         with:
           path: ~\AppData\Local\ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            playwright-${{ runner.os }}-
 
       - name: Resolve endpoints
         id: resolve

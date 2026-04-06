@@ -339,7 +339,9 @@ if ($UiBase) {
           continue
         }
 
-        $browserBinary = Get-ChildItem -Path $root -Recurse -Filter 'chrome-headless-shell*' -ErrorAction SilentlyContinue | Select-Object -First 1
+        $browserBinary = Get-ChildItem -Path $root -Recurse -File -ErrorAction SilentlyContinue |
+          Where-Object { $_.Name -match '^chrome-headless-shell(\.exe)?$' } |
+          Select-Object -First 1
         if ($browserBinary) {
           $hasPlaywrightBrowser = $true
           break
@@ -347,7 +349,7 @@ if ($UiBase) {
       }
 
       if (-not $hasPlaywrightBrowser) {
-        Write-Host 'Playwright browser not found, installing...' -ForegroundColor Yellow
+        Write-Host 'Playwright browser not found or stale cache, installing...' -ForegroundColor Yellow
         & pnpm --filter @arbimind/ui exec playwright install chromium
         if ($LASTEXITCODE -ne 0) {
           throw "playwright install failed with exit code $LASTEXITCODE"

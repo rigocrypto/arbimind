@@ -24,8 +24,6 @@ jobs:
         with:
           path: ~\AppData\Local\ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            playwright-${{ runner.os }}-
 
       - name: Validate required secrets
         shell: pwsh
