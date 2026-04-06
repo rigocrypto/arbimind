@@ -154,6 +154,7 @@ interface BotControlPanelProps {
 export function BotControlPanel({ status, onRefresh }: BotControlPanelProps) {
   const [showLiveModal, setShowLiveModal] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [needsAdmin, setNeedsAdmin] = useState(false);
 
   const checks = computeReadiness(status);
   const walletFunded = status ? status.walletBalance > 0.05 : false;
@@ -165,14 +166,17 @@ export function BotControlPanel({ status, onRefresh }: BotControlPanelProps) {
       setActionLoading(action);
       try {
         const adminKey = getAdminKey();
+        if (!adminKey) { setNeedsAdmin(true); return; }
         const res = await fetch(`${API_BASE}/solana/bot-control`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...(adminKey ? { 'X-ADMIN-KEY': adminKey } : {}),
+            'X-ADMIN-KEY': adminKey,
           },
           body: JSON.stringify({ action, ...extra }),
         });
+        if (res.status === 401 || res.status === 403) { setNeedsAdmin(true); return; }
+        setNeedsAdmin(false);
         await res.json();
         onRefresh();
       } catch {
@@ -215,6 +219,12 @@ export function BotControlPanel({ status, onRefresh }: BotControlPanelProps) {
       )}
 
       <h3 className="text-sm font-semibold text-dark-100">Bot Control</h3>
+
+      {needsAdmin && (
+        <div className="bg-yellow-600/15 border border-yellow-500/30 rounded-lg px-3 py-2 text-yellow-300 text-xs font-medium">
+          🔒 Admin key required — log in via the admin page to control the bot
+        </div>
+      )}
 
       {/* Readiness checklist */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">

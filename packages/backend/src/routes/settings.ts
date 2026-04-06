@@ -42,7 +42,11 @@ router.get('/', async (_req: Request, res: Response) => {
   try {
     const settings = await getSettings();
     const engineMode: 'simulation' | 'live' | 'unknown' =
-      process.env.SIMULATED_ENGINE_ENABLED === 'true' ? 'simulation' : 'unknown';
+      process.env.SIMULATED_ENGINE_ENABLED === 'true'
+        ? 'simulation'
+        : process.env.ENGINE_MODE === 'live' || process.env.AUTO_TRADE === 'true'
+          ? 'live'
+          : 'unknown';
     return res.json({
       ok: true,
       settings: maskSensitive(settings),
