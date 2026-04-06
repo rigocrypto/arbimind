@@ -217,8 +217,8 @@ export async function detectArbitrageOpportunities(): Promise<ArbitrageOpportuni
     if (!forward || Number(forward.outAmount) === 0) {
       pairFailures.set(pairKey, failures + 1);
       if (failures + 1 >= MAX_CONSECUTIVE_FAILURES) {
-        log('warn', `[SCAN] No route available for ${pairKey} on devnet — removing from active rotation`);
-      } else {
+        log('info', `[SCAN] No route available for ${pairKey} on devnet — removing from active rotation`);
+      } else if (process.env.LOG_LEVEL === 'debug') {
         log('info', `[SCAN] No route available for ${pairKey} on devnet — skipping (${failures + 1}/${MAX_CONSECUTIVE_FAILURES})`);
       }
       continue;
@@ -227,7 +227,9 @@ export async function detectArbitrageOpportunities(): Promise<ArbitrageOpportuni
     const reverse = await scanJupiter(mintB, mintA, Number(forward.outAmount));
     if (!reverse || Number(reverse.outAmount) === 0) {
       pairFailures.set(pairKey, failures + 1);
-      log('info', `[SCAN] No reverse route for ${pairKey} on devnet — skipping`);
+      if (process.env.LOG_LEVEL === 'debug') {
+        log('info', `[SCAN] No reverse route for ${pairKey} on devnet — skipping`);
+      }
       continue;
     }
 
@@ -265,7 +267,7 @@ export async function detectArbitrageOpportunities(): Promise<ArbitrageOpportuni
       };
       opps.push(opp);
       log('info', `[OPP] Detected ${a}/${b} ${spreadBps}bps — queued`);
-    } else {
+    } else if (process.env.LOG_LEVEL === 'debug') {
       log('info', `[SCAN] Below threshold: ${pairKey} ${spreadBps}bps < ${minSpreadBps}bps — skipping`);
     }
   }
@@ -312,6 +314,14 @@ export function startScanLoop(): void {
     log('warn', 'Scanner already running');
     return;
   }
+
+  // On devnet there are no viable Jupiter routes — scanning is pure noise.
+  const cluster = (process.env.SOLANA_CLUSTER || process.env.NEXT_PUBLIC_SOLANA_CLUSTER || '').toLowerCase();
+  if (cluster === 'devnet') {
+    log('info', '[SCAN] Solana devnet scanner disabled in production — no viable routes');
+    return;
+  }
+
   running = true;
   scannerStatus.running = true;
   log('info', '[SCAN] Starting scan loop (5s interval)');
