@@ -633,7 +633,18 @@ export class ArbitrageBot {
     }
 
     // Find arbitrage opportunities between different DEXes (with spread threshold)
-    const minEdgeBps = this.botConfig.minEdgeBps ?? 10;
+    // Dynamic threshold: floor is gas cost in bps diluted by trade size, plus a safety buffer.
+    // gasGasUnits * gasPrice / (swapAmountEth * ETH_PRICE_USD) * 10000, rounded up to configured floor.
+    const configMinEdgeBps = this.botConfig.minEdgeBps ?? 8;
+    const swapAmountEthNum = this.botConfig.swapAmountEth ?? 0.1;
+    const ARB_GAS_UNITS = 350_000; // conservative estimate for a two-leg arb on Arbitrum
+    const ethPriceUsd = this.cachedEthPriceUsd > 0 ? this.cachedEthPriceUsd : 2200;
+    const gasCostEth = (ARB_GAS_UNITS * this.cachedGasPriceWei) / 1e18;
+    const gasCostBps = swapAmountEthNum > 0
+      ? Math.ceil((gasCostEth / swapAmountEthNum) * 10_000)
+      : configMinEdgeBps;
+    // Floor: at least configMinEdgeBps; add 2 bps safety margin above pure gas cost
+    const minEdgeBps = Math.max(configMinEdgeBps, gasCostBps + 2);
 
     for (let i = 0; i < quotes.length; i++) {
       for (let j = i + 1; j < quotes.length; j++) {
@@ -657,9 +668,26 @@ export class ArbitrageBot {
           v2Price,
           spreadBps: spreadBps.toFixed(2),
           threshold: minEdgeBps,
+          gasCostBps,
+          gasPriceGwei: (this.cachedGasPriceWei / 1e9).toFixed(4),
+          swapAmountEth: swapAmountEthNum,
+          ethPriceUsd: ethPriceUsd.toFixed(2),
         });
 
-        if (spreadBps < minEdgeBps) continue;
+        if (spreadBps < minEdgeBps) {
+          // [OPP_NEAR]: log when spread is within 60% of threshold — useful for tuning
+          if (spreadBps >= minEdgeBps * 0.6) {
+            console.log('[OPP_NEAR]', {
+              pair: `${tokenA}/${tokenB}`,
+              dex1: quote1.dex,
+              dex2: quote2.dex,
+              spreadBps: spreadBps.toFixed(2),
+              threshold: minEdgeBps,
+              gapBps: (minEdgeBps - spreadBps).toFixed(2),
+            });
+          }
+          continue;
+        }
 
         // Reject suspiciously large spreads — likely bad quote or thin liquidity
         if (spreadBps > MAX_SANE_SPREAD_BPS) {

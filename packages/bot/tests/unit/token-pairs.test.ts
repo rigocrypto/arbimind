@@ -61,8 +61,14 @@ describe('getEffectiveTokenPairs', () => {
 
     const { getEffectiveTokenPairs } = await importTokens();
     const pairs = getEffectiveTokenPairs();
+    const pairStrings = pairs.map((p: { tokenA: string; tokenB: string }) => `${p.tokenA}/${p.tokenB}`);
 
-    expect(pairs.length).toBe(3);
+    expect(pairs.length).toBe(5);
+    expect(pairStrings).toContain('WETH/USDC');
+    expect(pairStrings).toContain('WETH/USDC.e');
+    expect(pairStrings).toContain('WETH/USDT');
+    expect(pairStrings).toContain('WETH/ARB');
+    expect(pairStrings).toContain('USDC/DAI');
   });
 
   it('handles reverse pair order in SCAN_PAIRS (USDC.e/WETH)', async () => {
@@ -78,7 +84,7 @@ describe('getEffectiveTokenPairs', () => {
 
   it('warns when SCAN_PAIRS excludes available pairs', async () => {
     setArbitrumProfile();
-    process.env['SCAN_PAIRS'] = 'WETH/USDC,USDC/DAI'; // missing WETH/USDC.e
+    process.env['SCAN_PAIRS'] = 'WETH/USDC,USDC/DAI'; // missing WETH/USDC.e, WETH/USDT, WETH/ARB
 
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -89,7 +95,7 @@ describe('getEffectiveTokenPairs', () => {
     expect(warnSpy).toHaveBeenCalledWith(
       '[SCAN_PAIRS_EXCLUSION]',
       expect.objectContaining({
-        excluded: ['WETH/USDC.e'],
+        excluded: expect.arrayContaining(['WETH/USDC.e', 'WETH/USDT', 'WETH/ARB']),
         reason: 'not in SCAN_PAIRS env var',
       }),
     );
