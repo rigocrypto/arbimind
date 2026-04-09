@@ -66,11 +66,21 @@ async function main(): Promise<void> {
     const solanaModule = await import('./solana/Scanner.js');
     console.error('[BOOT] imported solana/Scanner');
 
+    console.error('[BOOT] importing solana/config');
+    const solanaConfigModule = await import('./solana/config.js');
+    console.error('[BOOT] imported solana/config');
+
+    console.error('[BOOT] importing solana/solanaRpcGuard');
+    const solanaRpcGuardModule = await import('./solana/solanaRpcGuard.js');
+    console.error('[BOOT] imported solana/solanaRpcGuard');
+
     const { refreshConfig, validateConfig, config } = configModule;
     const { getIdentitySource, shortAddress } = identityModule;
     const { Logger } = loggerModule;
     const { ArbitrageBot } = botModule;
     const { SolanaScanner } = solanaModule;
+    const { solanaExecutorConfig } = solanaConfigModule;
+    const { checkSolanaRpcHealth } = solanaRpcGuardModule;
 
     const logger = new Logger('Main');
 
@@ -112,6 +122,21 @@ async function main(): Promise<void> {
       });
     }
 
+    const effectiveSolanaNotionalUsd = solanaExecutorConfig.canaryMode
+      ? Math.min(solanaExecutorConfig.maxNotionalUsd, 5)
+      : solanaExecutorConfig.maxNotionalUsd;
+    logger.info('🧮 Solana notional gate', {
+      configuredMaxNotionalUsd: solanaExecutorConfig.maxNotionalUsd,
+      effectiveMaxNotionalUsd: effectiveSolanaNotionalUsd,
+      canaryMode: solanaExecutorConfig.canaryMode,
+    });
+
+    const solanaRpcGuard = await checkSolanaRpcHealth(solanaExecutorConfig);
+    Object.assign(solanaExecutorConfig, solanaRpcGuard.config);
+    if (solanaRpcGuard.forced) {
+      logger.error('⚠️ Solana trading was enabled but RPC is unhealthy; forcing LOG_ONLY mode');
+    }
+
     // Structured boot summary for observability
     console.log('[BOOT_SUMMARY]', JSON.stringify({
       ts: new Date().toISOString(),
@@ -129,9 +154,14 @@ async function main(): Promise<void> {
       minEdgeBps: config.minEdgeBps,
       swapAmountEth: config.swapAmountEth,
       solanaEnabled: Boolean(process.env['SOLANA_SCANNER_ENABLED'] === 'true'),
-      solanaTradingEnabled: Boolean(process.env['SOLANA_TRADING_ENABLED'] === 'true'),
-      solanaLogOnly: process.env['SOLANA_LOG_ONLY'] !== 'false',
-      solanaCanaryMode: process.env['SOLANA_CANARY_MODE'] !== 'false',
+      solanaTradingEnabled: solanaExecutorConfig.tradingEnabled,
+      solanaLogOnly: solanaExecutorConfig.logOnly,
+      solanaCanaryMode: solanaExecutorConfig.canaryMode,
+      solanaConfiguredMaxNotionalUsd: solanaExecutorConfig.maxNotionalUsd,
+      solanaEffectiveMaxNotionalUsd: effectiveSolanaNotionalUsd,
+      solanaRpcHealthyAtBoot: solanaRpcGuard.healthy,
+      solanaRpcGuardForcedLogOnly: solanaRpcGuard.forced,
+      solanaRpcSlotAtCheck: solanaRpcGuard.slotAtCheck,
     }));
 
     // Create and start the arbitrage bot

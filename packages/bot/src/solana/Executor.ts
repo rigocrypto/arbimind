@@ -71,6 +71,16 @@ export class SolanaExecutor {
 
   constructor(config: SolanaExecutorConfig) {
     this.config = config;
+
+    const effectiveMaxNotionalUsd = this.config.canaryMode
+      ? Math.min(this.config.maxNotionalUsd, CANARY_MAX_NOTIONAL_USD)
+      : this.config.maxNotionalUsd;
+
+    this.logger.info('[SOLANA] runtime notional', {
+      configuredMaxNotionalUsd: this.config.maxNotionalUsd,
+      effectiveMaxNotionalUsd,
+      canaryMode: this.config.canaryMode,
+    });
   }
 
   async execute(opportunity: SwapOpportunity): Promise<ExecutionResult> {
