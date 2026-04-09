@@ -37,6 +37,10 @@ Troubleshooting:
 
 A professional MEV/searcher system for detecting and executing arbitrage opportunities across multiple DEXes with intelligent risk management and profit optimization.
 
+## 🖼️ Live-Ready Strategy Overview
+
+![ArbiMind live-ready strategy overview](packages/ui/public/ArbiMind_4.jpg)
+
 Ops: [Ops Snapshot](OPS_SNAPSHOT.md)
 
 ## 🔄 Nightly Smoke (Auto-Alerts)
