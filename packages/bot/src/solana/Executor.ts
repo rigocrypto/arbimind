@@ -115,6 +115,10 @@ export class SolanaExecutor {
       };
     }
 
+    if (!quoteResponse.outAmount || quoteResponse.outAmount === '0') {
+      return this.skip('Jupiter quote returned zero outAmount', opportunity);
+    }
+
     const wallet = this.getWallet();
     if (!wallet) {
       return this.skip('missing or invalid SOLANA_PRIVATE_KEY_BASE58', opportunity);
