@@ -28,7 +28,7 @@
   "dependencies": {
     "@solana/web3.js": "^1.98.4",
     "@tensorflow/tfjs-node": "^4.22.0",
-    "axios": "^1.14.0",
+    "axios": "^1.15.0",
     "big.js": "^7.0.1",
     "bs58": "^6.0.0",
     "decimal.js": "^10.4.3",
