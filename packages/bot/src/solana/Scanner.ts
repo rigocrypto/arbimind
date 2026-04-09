@@ -3,17 +3,24 @@
  * Polls watched pools from DexScreener, scores with AI, logs predictions
  */
 
-import { solanaConfig } from './config';
+import { SolanaExecutor, type SwapOpportunity } from './Executor';
+import { solanaConfig, solanaExecutorConfig } from './config';
 import { config } from '../config';
 import { Logger } from '../utils/Logger';
 import { AiScoringService, AiScoringConfig } from '../services/AiScoringService';
 
 const logger = new Logger('SolanaScanner');
+const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
+const STABLE_SYMBOLS = new Set(['USDC', 'USDT']);
 
 type DexPairData = {
   volumeH24?: number;
   liquidityUsd?: number;
   priceUsd?: number;
+  baseMint?: string;
+  baseSymbol?: string;
+  quoteMint?: string;
+  quoteSymbol?: string;
 };
 
 type DexScreenerResponse = {
@@ -21,6 +28,8 @@ type DexScreenerResponse = {
     volume?: { h24?: number };
     liquidity?: { usd?: number };
     priceUsd?: number;
+    baseToken?: { address?: string; symbol?: string };
+    quoteToken?: { address?: string; symbol?: string };
   };
 };
 
@@ -42,6 +51,7 @@ type AlertPredictionPayload = {
 
 export class SolanaScanner {
   private aiScoringService: AiScoringService;
+  private executor: SolanaExecutor | null;
   private isRunning = false;
 
   constructor() {
@@ -54,6 +64,7 @@ export class SolanaScanner {
     if (config.aiModelTag) aiConfig.modelTag = config.aiModelTag;
     
     this.aiScoringService = new AiScoringService(aiConfig);
+    this.executor = solanaExecutorConfig.tradingEnabled ? new SolanaExecutor(solanaExecutorConfig) : null;
   }
 
   /**
@@ -77,6 +88,14 @@ export class SolanaScanner {
 
     this.isRunning = true;
     logger.info(`🪐 Starting Solana scanner (interval: ${solanaConfig.scanIntervalSec}s, pools: ${solanaConfig.watchedPools.length})`);
+    if (solanaExecutorConfig.tradingEnabled) {
+      logger.warn('🧪 Solana executor armed', {
+        logOnly: solanaExecutorConfig.logOnly,
+        canaryMode: solanaExecutorConfig.canaryMode,
+        maxNotionalUsd: solanaExecutorConfig.maxNotionalUsd,
+        maxDailyLossUsd: solanaExecutorConfig.maxDailyLossUsd,
+      });
+    }
 
     this.scanLoop();
   }
@@ -159,6 +178,7 @@ export class SolanaScanner {
       if (score.successProb > config.aiMinSuccessProb) {
         const signal = score.expectedProfitPct > 0 ? 'LONG' : 'SHORT';
         await this.logPrediction(poolAddress, signal, score.successProb, pairData);
+        await this.maybeExecuteTrade(poolAddress, signal, pairData, score.successProb, score.expectedProfitPct);
         logger.info(`✅ [SOLANA] Scored ${poolAddress}: ${signal} (${(score.successProb * 100).toFixed(1)}%)`);
       }
     } catch (error) {
@@ -171,13 +191,7 @@ export class SolanaScanner {
   /**
    * Fetch pair data from DexScreener
    */
-  private async fetchDexPair(
-    poolAddress: string
-  ): Promise<{
-    volumeH24?: number;
-    liquidityUsd?: number;
-    priceUsd?: number;
-  } | null> {
+  private async fetchDexPair(poolAddress: string): Promise<DexPairData | null> {
     try {
       const resp = await fetch(`https://api.dexscreener.com/latest/dex/pairs/solana/${poolAddress}`, {
         headers: { 'User-Agent': 'ArbiMind-Bot/1.0' },
@@ -198,6 +212,10 @@ export class SolanaScanner {
         volumeH24: pair.volume?.h24,
         liquidityUsd: pair.liquidity?.usd,
         priceUsd: pair.priceUsd,
+        baseMint: pair.baseToken?.address,
+        baseSymbol: pair.baseToken?.symbol,
+        quoteMint: pair.quoteToken?.address,
+        quoteSymbol: pair.quoteToken?.symbol,
       };
     } catch (error) {
       logger.debug(`Failed to fetch DexScreener data for ${poolAddress}`, {
@@ -297,5 +315,107 @@ export class SolanaScanner {
         error: error instanceof Error ? error.message : error,
       });
     }
+  }
+
+  private async maybeExecuteTrade(
+    poolAddress: string,
+    signal: 'LONG' | 'SHORT' | 'NEUTRAL',
+    pairData: DexPairData,
+    confidence: number,
+    expectedProfitPct: number
+  ): Promise<void> {
+    if (!this.executor) {
+      return;
+    }
+
+    const opportunity = this.buildSwapOpportunity(poolAddress, signal, pairData, confidence, expectedProfitPct);
+    if (!opportunity) {
+      return;
+    }
+
+    const result = await this.executor.execute(opportunity);
+    if (result.skipped) {
+      logger.info('Solana execution skipped', {
+        poolAddress,
+        reason: result.skipReason,
+      });
+      return;
+    }
+
+    if (result.logOnly) {
+      logger.info('Solana log-only execution simulated', {
+        poolAddress,
+        label: opportunity.label,
+      });
+      return;
+    }
+
+    if (result.success) {
+      logger.info('Solana execution confirmed', {
+        poolAddress,
+        signature: result.signature,
+      });
+      return;
+    }
+
+    logger.error('Solana execution failed', {
+      poolAddress,
+      error: result.error,
+    });
+  }
+
+  private buildSwapOpportunity(
+    poolAddress: string,
+    signal: 'LONG' | 'SHORT' | 'NEUTRAL',
+    pairData: DexPairData,
+    confidence: number,
+    expectedProfitPct: number
+  ): SwapOpportunity | null {
+    if (signal === 'NEUTRAL') {
+      return null;
+    }
+
+    if (!pairData.baseMint || !pairData.quoteMint || !pairData.baseSymbol || !pairData.quoteSymbol) {
+      logger.debug(`Skipping Solana execution for ${poolAddress}: missing token metadata`);
+      return null;
+    }
+
+    const baseSymbol = pairData.baseSymbol.toUpperCase();
+    const quoteSymbol = pairData.quoteSymbol.toUpperCase();
+    const priceUsd = Number(pairData.priceUsd ?? 0);
+    const cappedNotionalUsd = solanaExecutorConfig.canaryMode
+      ? Math.min(solanaExecutorConfig.maxNotionalUsd, 5)
+      : solanaExecutorConfig.maxNotionalUsd;
+    const expectedProfitUsd = Math.abs(expectedProfitPct) * cappedNotionalUsd / 100;
+
+    if (baseSymbol !== 'SOL' || !STABLE_SYMBOLS.has(quoteSymbol) || priceUsd <= 0) {
+      logger.debug(`Skipping Solana execution for ${poolAddress}: unsupported pair ${baseSymbol}/${quoteSymbol}`);
+      return null;
+    }
+
+    if (confidence < Math.max(config.aiMinSuccessProb, 0.85)) {
+      logger.debug(`Skipping Solana execution for ${poolAddress}: confidence ${confidence.toFixed(2)} below execution threshold`);
+      return null;
+    }
+
+    if (signal === 'LONG') {
+      return {
+        inputMint: pairData.quoteMint,
+        outputMint: pairData.baseMint === WRAPPED_SOL_MINT ? pairData.baseMint : WRAPPED_SOL_MINT,
+        amountLamports: Math.max(1, Math.round(cappedNotionalUsd * 1_000_000)),
+        estimatedNotionalUsd: cappedNotionalUsd,
+        expectedProfitUsd,
+        label: `${quoteSymbol}->SOL @ ${poolAddress}`,
+      };
+    }
+
+    return {
+      inputMint: pairData.baseMint,
+      outputMint: pairData.quoteMint,
+      amountLamports: Math.max(1, Math.round((cappedNotionalUsd / priceUsd) * 1_000_000_000)),
+      estimatedNotionalUsd: cappedNotionalUsd,
+      expectedProfitUsd,
+      label: `SOL->${quoteSymbol} @ ${poolAddress}`,
+    };
   }
 }

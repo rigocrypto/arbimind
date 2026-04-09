@@ -129,6 +129,9 @@ async function main(): Promise<void> {
       minEdgeBps: config.minEdgeBps,
       swapAmountEth: config.swapAmountEth,
       solanaEnabled: Boolean(process.env['SOLANA_SCANNER_ENABLED'] === 'true'),
+      solanaTradingEnabled: Boolean(process.env['SOLANA_TRADING_ENABLED'] === 'true'),
+      solanaLogOnly: process.env['SOLANA_LOG_ONLY'] !== 'false',
+      solanaCanaryMode: process.env['SOLANA_CANARY_MODE'] !== 'false',
     }));
 
     // Create and start the arbitrage bot
