@@ -318,8 +318,8 @@ function createConfig(): BotConfig {
     sanityTxWei,
     sanityTxTo,
 
-    minEdgeBps: parseInt(process.env['MIN_EDGE_BPS'] || '10', 10),
-    swapAmountEth: parseFloat(process.env['SWAP_AMOUNT_ETH'] || '0.001'),
+    minEdgeBps: parseInt(process.env['MIN_EDGE_BPS'] || '8', 10),
+    swapAmountEth: parseFloat(process.env['SWAP_AMOUNT_ETH'] || '0.1'),
   };
 }
 

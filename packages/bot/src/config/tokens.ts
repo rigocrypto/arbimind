@@ -205,6 +205,8 @@ const ARBITRUM_ALLOWLISTED_TOKENS: Record<string, TokenConfig> = {
 const ARBITRUM_TOKEN_PAIRS = [
   { tokenA: 'WETH', tokenB: 'USDC' },
   { tokenA: 'WETH', tokenB: 'USDC.e' },
+  { tokenA: 'WETH', tokenB: 'USDT' },
+  { tokenA: 'WETH', tokenB: 'ARB' },
   { tokenA: 'USDC', tokenB: 'DAI' },
 ];
 
