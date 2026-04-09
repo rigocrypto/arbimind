@@ -11,7 +11,7 @@ overrides:
   glob: '>=10.5.0'
   test-exclude@6.0.0>glob: 7.2.3
   preact: '>=10.28.2'
-  hono: 4.12.8
+  hono: 4.12.12
   h3: 1.15.9
   qs: 6.14.2
   rollup: 4.59.0
@@ -5832,8 +5832,8 @@ packages:
   hmac-drbg@1.0.1:
     resolution: {integrity: sha512-Tti3gMqLdZfhOQY1Mzf/AanLiqh1WTiJgEj26ZuYQ9fbkLomzGchCws4FyrSd4VkpBfiNhaE1On+lOz894jvXg==}
 
-  hono@4.12.8:
-    resolution: {integrity: sha512-VJCEvtrezO1IAR+kqEYnxUOoStaQPGrCmX3j4wDTNOcD1uRPFpGlwQUIW8niPuvHXaTUxeOUl5MMDGrl+tmO9A==}
+  hono@4.12.12:
+    resolution: {integrity: sha512-p1JfQMKaceuCbpJKAPKVqyqviZdS0eUxH9v82oWo1kb9xjQ5wA6iP3FNVAPDFlz5/p7d45lO+BpSk1tuSZMF4Q==}
     engines: {node: '>=16.9.0'}
 
   html-encoding-sniffer@6.0.0:
@@ -16882,7 +16882,7 @@ snapshots:
       minimalistic-assert: 1.0.1
       minimalistic-crypto-utils: 1.0.1
 
-  hono@4.12.8:
+  hono@4.12.12:
     optional: true
 
   html-encoding-sniffer@6.0.0(@noble/hashes@2.0.1):
@@ -18890,7 +18890,7 @@ snapshots:
   porto@0.2.35(@tanstack/react-query@5.96.2(react@19.2.4))(@types/react@19.2.14)(@wagmi/core@3.4.1(@tanstack/query-core@5.96.2)(@types/react@19.2.14)(immer@11.1.4)(ox@0.12.1(typescript@5.9.3)(zod@4.3.6))(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.4))(viem@2.45.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)))(immer@11.1.4)(react-native@0.83.1(@babel/core@7.29.0)(@types/react@19.2.14)(bufferutil@4.1.0)(react@19.2.4)(utf-8-validate@5.0.10))(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.4))(viem@2.45.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6))(wagmi@3.6.0):
     dependencies:
       '@wagmi/core': 3.4.1(@tanstack/query-core@5.96.2)(@types/react@19.2.14)(immer@11.1.4)(ox@0.12.1(typescript@5.9.3)(zod@4.3.6))(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.4))(viem@2.45.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6))
-      hono: 4.12.8
+      hono: 4.12.12
       idb-keyval: 6.2.2
       mipd: 0.0.7(typescript@5.9.3)
       ox: 0.12.1(typescript@5.9.3)(zod@4.3.6)
