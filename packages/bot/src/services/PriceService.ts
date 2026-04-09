@@ -6,6 +6,7 @@ import { Contract, getAddress, type Provider } from 'ethers';
 import type { PriceQuote } from '../types';
 import { getTokenAddress, getTokenConfig } from '../config/tokens';
 import { DEX_CONFIG } from '../config/dexes';
+import { retryQuote } from '../utils/retryQuote.js';
 
 const QUOTER_V2_ABI = [
   'function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96)) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)',
@@ -30,6 +31,7 @@ export class PriceService {
   private lastRateLimitLogMs: number = 0;
   private readonly v3Enabled: boolean;
   private v3QuoterVersion: 'v2' | 'v1' | 'unknown' = 'unknown';
+  private readonly consecutiveFailures = new Map<string, number>();
 
   constructor(provider: Provider) {
     this.provider = provider;
@@ -244,13 +246,37 @@ export class PriceService {
     _decimalsIn: number,
     _decimalsOut: number
   ): Promise<{ amountOut: bigint } | null> {
-    try {
-      const amounts = await router.getAmountsOut.staticCall(amountIn, [tokenIn, tokenOut]);
-      const amountOut = Array.isArray(amounts) ? (amounts as bigint[])[1] : amounts[1];
-      if (amountOut && amountOut > 0n) return { amountOut };
-    } catch (error) {
-      this.handleRpcError(dexName, `${tokenIn}/${tokenOut}`, error);
+    const pairKey = `${dexName}:${tokenIn}/${tokenOut}`;
+    const label = `${dexName}/${tokenIn.slice(0, 10)}/${tokenOut.slice(0, 10)}`;
+
+    // First check if this is a rate-limited period before calling out.
+    const nowMs = Date.now();
+    if (nowMs < this.rateLimitedUntilMs) return null;
+
+    const amounts = await retryQuote(
+      () => router.getAmountsOut.staticCall(amountIn, [tokenIn, tokenOut]) as Promise<bigint[]>,
+      { attempts: 2, delayMs: 350, label },
+    );
+
+    if (amounts === null) {
+      const failures = (this.consecutiveFailures.get(pairKey) ?? 0) + 1;
+      this.consecutiveFailures.set(pairKey, failures);
+      if (failures >= 10 && failures % 10 === 0) {
+        console.warn('[QUOTE_DEAD_POOL]', {
+          dex: dexName,
+          pair: pairKey,
+          consecutiveFailures: failures,
+          hint: 'Pool may be illiquid or the V2 pair may not exist on this network.',
+        });
+      }
+      return null;
     }
+
+    // Reset failure streak on success.
+    this.consecutiveFailures.set(pairKey, 0);
+
+    const amountOut = Array.isArray(amounts) ? amounts[1] : (amounts as unknown as Record<number, bigint>)[1];
+    if (amountOut && amountOut > 0n) return { amountOut };
     return null;
   }
 
