@@ -6,6 +6,8 @@
 **/.git
 .env*
 logs
+.codex-worktrees
+.codex-worktrees/**
 
 # Exclude UI and contracts packages
 packages/ui

@@ -1,0 +1,10 @@
+# Keep Railway upload context focused on deployable sources
+.codex-worktrees/
+.git/
+**/node_modules/
+**/.next/
+**/.turbo/
+**/.vercel/
+**/dist/
+logs/
+.env*
