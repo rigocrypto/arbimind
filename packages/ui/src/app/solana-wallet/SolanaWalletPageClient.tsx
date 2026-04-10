@@ -1476,7 +1476,42 @@ export default function SolanaWalletPageClient() {
               className="glass-card p-4 sm:p-6"
             >
               <h2 className="text-lg font-bold text-white mb-4">Recent Bot Trades <span className="text-xs text-yellow-500/80 font-normal ml-1">(Demo)</span></h2>
-              <div className="overflow-x-auto">
+              <div className="space-y-2.5 sm:hidden">
+                {botTrades.map((trade) => (
+                  <div key={trade.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-mono text-xs text-dark-300">{trade.id}</p>
+                        <p className="mt-0.5 text-sm font-semibold text-white">{trade.pair}</p>
+                      </div>
+                      <span className={`rounded-full px-2 py-1 text-xs ${trade.status === 'success' ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
+                        {trade.status}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                      <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
+                        <p className="text-dark-400">Side</p>
+                        <p className="uppercase text-white">{trade.side}</p>
+                      </div>
+                      <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
+                        <p className="text-dark-400">Volume</p>
+                        <p className="text-white">{(trade.volumeSol ?? 0).toFixed(3)} SOL</p>
+                      </div>
+                      <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
+                        <p className="text-dark-400">PnL</p>
+                        <p className={(trade.pnlSol ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}>
+                          {(trade.pnlSol ?? 0) >= 0 ? '+' : ''}{(trade.pnlSol ?? 0).toFixed(4)} SOL
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 text-xs text-dark-400">{trade.at}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="hidden overflow-x-auto sm:block">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-dark-400 border-b border-dark-700">
@@ -1615,7 +1650,42 @@ export default function SolanaWalletPageClient() {
               className="glass-card p-4 sm:p-6"
             >
               <h2 className="text-lg font-bold text-white mb-4">Recent Bot Trades <span className="text-xs text-yellow-500/80 font-normal ml-1">(Demo)</span></h2>
-              <div className="overflow-x-auto">
+              <div className="space-y-2.5 sm:hidden">
+                {botTrades.map((trade) => (
+                  <div key={trade.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-mono text-xs text-dark-300">{trade.id}</p>
+                        <p className="mt-0.5 text-sm font-semibold text-white">{trade.pair}</p>
+                      </div>
+                      <span className={`rounded-full px-2 py-1 text-xs ${trade.status === 'success' ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
+                        {trade.status}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                      <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
+                        <p className="text-dark-400">Side</p>
+                        <p className="uppercase text-white">{trade.side}</p>
+                      </div>
+                      <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
+                        <p className="text-dark-400">Volume</p>
+                        <p className="text-white">{(trade.volumeSol ?? 0).toFixed(3)} SOL</p>
+                      </div>
+                      <div className="rounded-lg border border-white/10 bg-black/20 px-2.5 py-2">
+                        <p className="text-dark-400">PnL</p>
+                        <p className={(trade.pnlSol ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}>
+                          {(trade.pnlSol ?? 0) >= 0 ? '+' : ''}{(trade.pnlSol ?? 0).toFixed(4)} SOL
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 text-xs text-dark-400">{trade.at}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="hidden overflow-x-auto sm:block">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-dark-400 border-b border-dark-700">
