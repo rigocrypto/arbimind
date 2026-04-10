@@ -109,7 +109,57 @@ function TradeHistoryTable({ trades }: { trades: TradeRecord[] }) {
   return (
     <div className="bg-dark-800 rounded-xl border border-dark-700 p-4">
       <h3 className="text-sm font-semibold text-dark-100 mb-3">Trade History</h3>
-      <div className="overflow-x-auto">
+
+      {/* Mobile cards */}
+      <div className="space-y-2.5 sm:hidden">
+        {trades.map((t) => {
+          // CRITICAL: failed trades MUST NOT show positive PnL
+          const displayPnl = t.status === 'failed' ? -Math.abs(t.gasSol) : t.netPnlSol;
+          return (
+            <div key={t.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-white">{t.pair}</p>
+                  <p className="mt-0.5 text-xs text-dark-400">{new Date(t.executedAt).toLocaleTimeString()}</p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                    t.mode === 'live' ? 'bg-orange-600/20 text-orange-300' : 'bg-blue-600/20 text-blue-300'
+                  }`}>
+                    {t.mode.toUpperCase()}
+                  </span>
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                    t.status === 'success' ? 'bg-green-600/20 text-green-300' : 'bg-red-600/20 text-red-300'
+                  }`}>
+                    {t.status}
+                  </span>
+                </div>
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                <div className="rounded-lg border border-white/10 bg-black/20 px-2 py-1.5">
+                  <p className="text-dark-400">Expected</p>
+                  <p className="text-dark-300">{t.expectedProfitSol.toFixed(5)}</p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-black/20 px-2 py-1.5">
+                  <p className="text-dark-400">Actual</p>
+                  <p className={t.actualPnlSol >= 0 ? 'text-green-400' : 'text-red-400'}>
+                    {t.actualPnlSol >= 0 ? '+' : ''}{t.actualPnlSol.toFixed(5)}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-black/20 px-2 py-1.5">
+                  <p className="text-dark-400">Net PnL</p>
+                  <p className={`font-bold ${displayPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {displayPnl >= 0 ? '+' : ''}{displayPnl.toFixed(5)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden overflow-x-auto sm:block">
         <table className="w-full text-xs">
           <thead>
             <tr className="text-dark-400 border-b border-dark-700">

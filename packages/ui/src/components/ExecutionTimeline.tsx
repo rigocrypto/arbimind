@@ -33,7 +33,41 @@ export function ExecutionTimeline({ currentStep, status }: ExecutionTimelineProp
         </span>
       </div>
 
-      <div className="overflow-x-auto">
+      {/* Mobile: vertical step list */}
+      <ol className="sm:hidden space-y-1.5">
+        {STEPS.map((label, index) => {
+          const isComplete = index < currentStep || status === 'complete';
+          const isActive = index === currentStep && status === 'running';
+          const isError = index === currentStep && status === 'error';
+          return (
+            <li key={label} className="flex items-center gap-2 text-xs">
+              {isError ? (
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-300" />
+              ) : isComplete ? (
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-300" />
+              ) : (
+                <Circle className="h-3.5 w-3.5 shrink-0 text-dark-500" />
+              )}
+              <span
+                className={[
+                  isComplete
+                    ? 'text-green-200'
+                    : isActive
+                    ? 'text-cyan-200 timeline-active-step'
+                    : isError
+                    ? 'text-red-200'
+                    : 'text-dark-400',
+                ].join(' ')}
+              >
+                {label}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+
+      {/* Desktop: horizontal pipeline */}
+      <div className="hidden overflow-x-auto sm:block">
         <ol className="flex min-w-[680px] items-center">
           {STEPS.map((label, index) => {
             const isComplete = index < currentStep || status === 'complete';
@@ -52,7 +86,7 @@ export function ExecutionTimeline({ currentStep, status }: ExecutionTimelineProp
                   )}
                   <span
                     className={[
-                      'text-xs sm:text-sm',
+                      'text-sm',
                       isComplete
                         ? 'text-green-200'
                         : isActive
