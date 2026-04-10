@@ -1122,13 +1122,20 @@ export default function WalletPage() {
               <h2 className="text-xl font-bold text-white mb-2">No Wallet Connected</h2>
               <p className="text-dark-400 mb-6">Connect your wallet above to view balances and activity.</p>
               {isMobileBrowser && !isMetaMaskBrowser && (
-                <div className="mb-6 flex justify-center">
+                <div className="mb-6 flex flex-col items-center gap-2 sm:flex-row sm:justify-center">
                   <a
                     href={buildMetaMaskDappLink('/wallet')}
                     className="inline-flex items-center rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-4 py-2.5 text-sm font-medium text-cyan-200 transition hover:bg-cyan-500/20"
                   >
-                    Open in MetaMask App Browser
+                    Open in MetaMask
                   </a>
+                  <button
+                    type="button"
+                    onClick={() => void handleWalletConnectConnect()}
+                    className="inline-flex items-center rounded-lg border border-purple-400/40 bg-purple-500/10 px-4 py-2.5 text-sm font-medium text-purple-200 transition hover:bg-purple-500/20"
+                  >
+                    Use WalletConnect
+                  </button>
                 </div>
               )}
               <div className="mx-auto max-w-2xl rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-left text-sm text-amber-200">

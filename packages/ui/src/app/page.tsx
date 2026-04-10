@@ -13,6 +13,7 @@ import { ProfitTicker } from '@/components/ProfitTicker';
 import { AIExplainPanel, type ExplainabilityMetrics } from '@/components/AIExplainPanel';
 import { AIConfidenceRadar } from '@/components/AIConfidenceRadar';
 import { NotificationsPanel, type NotificationItem } from '@/components/NotificationsPanel';
+import { ProfitCalculator } from '@/components/ProfitCalculator';
 import { useMetrics, useStrategies, useOpportunities, type Opportunity } from '@/hooks/useArbiApi';
 import { useAccount } from 'wagmi';
 import { useEngineContext } from '@/contexts/EngineContext';
@@ -716,6 +717,9 @@ export default function HomePage() {
               </div>
             )}
           </div>
+
+          {/* Profit Calculator */}
+          <ProfitCalculator />
 
           {/* Live Opportunities */}
           <div className="glass-card p-4 sm:p-6 space-y-3 sm:space-y-4">
