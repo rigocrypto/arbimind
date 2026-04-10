@@ -35,10 +35,15 @@ export interface RuntimeSettings {
 export class SettingsReader {
   private readonly logger = new Logger('SettingsReader');
   private readonly apiUrl: string;
+  private readonly backendBaseUrl: string;
   private readonly refreshMs: number;
+  private readonly authRefreshMs: number;
 
   private cached: RuntimeSettings | null = null;
   private lastFetchMs = 0;
+  private botAuthorized = true;
+  private lastAuthFetchMs = 0;
+  private walletAddress: string | null;
 
   /** Env-var fallback when backend is unreachable. */
   private readonly envDefaults: RuntimeSettings;
@@ -46,6 +51,7 @@ export class SettingsReader {
   constructor(opts: {
     apiUrl?: string;
     refreshSec?: number;
+    authRefreshSec?: number;
     envDefaults: RuntimeSettings;
   }) {
     this.apiUrl =
@@ -53,8 +59,11 @@ export class SettingsReader {
       process.env['SETTINGS_API_URL'] ||
       (process.env['BACKEND_URL'] ? `${process.env['BACKEND_URL'].replace(/\/+$/, '')}/api/settings` : '') ||
       'http://localhost:8000/api/settings';
+    this.backendBaseUrl = this.apiUrl.replace(/\/api\/settings\/?$/, '');
     this.refreshMs = (opts.refreshSec ?? 30) * 1000;
+    this.authRefreshMs = (opts.authRefreshSec ?? 15) * 1000;
     this.envDefaults = opts.envDefaults;
+    this.walletAddress = process.env['WALLET_ADDRESS']?.trim() || null;
   }
 
   /**
@@ -117,5 +126,70 @@ export class SettingsReader {
   private fallback(): RuntimeSettings {
     if (this.cached) return this.cached;   // stale cache > nothing
     return this.envDefaults;
+  }
+
+  async refreshBotAuthorization(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastAuthFetchMs < this.authRefreshMs) {
+      return;
+    }
+    this.lastAuthFetchMs = now;
+
+    if (!this.walletAddress) {
+      this.setBotAuthorized(true, 'wallet_missing_dev_mode');
+      return;
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000);
+      const res = await fetch(
+        `${this.backendBaseUrl}/api/activate-bot/${encodeURIComponent(this.walletAddress)}`,
+        { signal: controller.signal }
+      );
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        this.setBotAuthorized(false, `activation_status_${res.status}`);
+        return;
+      }
+
+      const payload = await res.json() as {
+        ok?: boolean;
+        user?: {
+          paymentStatus?: string;
+          botActive?: boolean;
+          botRunning?: boolean;
+        };
+      };
+
+      const user = payload.user;
+      const authorized = Boolean(
+        payload.ok &&
+        user?.paymentStatus === 'paid' &&
+        user?.botActive === true &&
+        user?.botRunning === true
+      );
+
+      this.setBotAuthorized(authorized, authorized ? 'authorized' : 'activation_not_paid_or_inactive');
+    } catch (err) {
+      // Fail-open: do not block execution solely due to temporary backend outage.
+      this.setBotAuthorized(true, 'activation_check_unreachable_fail_open');
+      this.logger.debug('Activation check failed, fail-open applied', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  isBotAuthorized(): boolean {
+    return this.botAuthorized;
+  }
+
+  private setBotAuthorized(next: boolean, reason: string): void {
+    const previous = this.botAuthorized;
+    this.botAuthorized = next;
+    if (previous !== next) {
+      this.logger.warn(`BOT_GATE authorization changed: ${previous} -> ${next}`, { reason });
+    }
   }
 }
