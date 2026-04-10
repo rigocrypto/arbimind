@@ -185,3 +185,40 @@ export async function getActivationByWallet(wallet: string): Promise<ActivationR
     return null;
   }
 }
+
+export async function confirmActivationPayment(wallet: string): Promise<ActivationRecord | null> {
+  const p = getPool();
+  if (!p) return null;
+
+  await initActivationSchema();
+
+  try {
+    const { rows } = await p.query<{
+      wallet: string;
+      plan: string;
+      capital: number;
+      risk: string;
+      speed: string;
+      session_token: string;
+      payment_status: string;
+      bot_active: boolean;
+      created_at: Date;
+      updated_at: Date;
+    }>(
+      `UPDATE activations
+       SET payment_status = 'paid',
+           bot_active = true,
+           updated_at = now()
+       WHERE wallet = $1
+       RETURNING wallet, plan, capital, risk, speed, session_token, payment_status, bot_active, created_at, updated_at`,
+      [wallet]
+    );
+
+    const row = rows[0];
+    if (!row) return null;
+    return rowToRecord(row);
+  } catch (error) {
+    console.error('[ACTIVATION-STORE] confirmActivationPayment error:', error);
+    return null;
+  }
+}

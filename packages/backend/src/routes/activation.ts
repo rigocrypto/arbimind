@@ -1,6 +1,6 @@
 import { Request, Response, Router } from 'express';
 import { randomBytes } from 'crypto';
-import { getActivationByWallet, upsertActivation } from '../store/activationStore';
+import { confirmActivationPayment, getActivationByWallet, upsertActivation } from '../store/activationStore';
 
 type PlanName = 'Auto Trader' | 'Passive Income' | 'Elite';
 type RiskName = 'Conservative' | 'Balanced' | 'Aggressive';
@@ -27,6 +27,14 @@ const PLAN_PRICE_USDC: Record<PlanName, number> = {
 
 const isEvmAddress = (value: string): boolean => /^0x[a-fA-F0-9]{40}$/.test(value);
 const isSolanaAddress = (value: string): boolean => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value);
+
+function normalizeWallet(value: string): string {
+  const trimmed = value.trim();
+  if (isEvmAddress(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+  return trimmed;
+}
 
 router.post('/activate-bot', async (req: Request, res: Response) => {
   const body = (req.body || {}) as Partial<ActivationBody>;
@@ -60,7 +68,7 @@ router.post('/activate-bot', async (req: Request, res: Response) => {
   const sessionToken = randomBytes(24).toString('hex');
 
   const saved = await upsertActivation({
-    wallet: wallet.toLowerCase(),
+    wallet: normalizeWallet(wallet),
     plan: selectedPlan,
     capital: Math.floor(capital),
     risk,
@@ -105,7 +113,7 @@ router.post('/activate-bot', async (req: Request, res: Response) => {
 });
 
 router.get('/activate-bot/:wallet', async (req: Request, res: Response) => {
-  const wallet = String(req.params.wallet || '').trim().toLowerCase();
+  const wallet = normalizeWallet(String(req.params.wallet || ''));
   const session = await getActivationByWallet(wallet);
 
   if (!session) {
@@ -122,6 +130,39 @@ router.get('/activate-bot/:wallet', async (req: Request, res: Response) => {
       paymentStatus: session.paymentStatus,
       updatedAt: session.updatedAt,
     },
+  });
+});
+
+router.post('/activate-bot/confirm-payment', async (req: Request, res: Response) => {
+  const adminSecret = String(req.headers['x-admin-secret'] || '').trim();
+  const expected = String(process.env.ADMIN_SECRET || '').trim();
+
+  if (!expected) {
+    return res.status(503).json({ ok: false, error: 'ADMIN_SECRET is not configured' });
+  }
+
+  if (!adminSecret || adminSecret !== expected) {
+    return res.status(401).json({ ok: false, error: 'unauthorized' });
+  }
+
+  const walletRaw = typeof req.body?.wallet === 'string' ? req.body.wallet : '';
+  const wallet = normalizeWallet(walletRaw);
+
+  if (!wallet || (!isEvmAddress(wallet) && !isSolanaAddress(wallet))) {
+    return res.status(400).json({ ok: false, error: 'wallet required' });
+  }
+
+  const updated = await confirmActivationPayment(wallet);
+  if (!updated) {
+    return res.status(404).json({ ok: false, error: 'Activation session not found' });
+  }
+
+  return res.json({
+    ok: true,
+    wallet: updated.wallet,
+    paymentStatus: updated.paymentStatus,
+    botActive: updated.botActive,
+    updatedAt: updated.updatedAt,
   });
 });
 
