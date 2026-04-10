@@ -61,6 +61,7 @@ export interface BotConfig {
   network: 'mainnet' | 'testnet';
   evmChain: 'arbitrum' | 'polygon' | 'ethereum';
   evmChainId: number;
+  evmTradingEnabled: boolean;
   logOnly: boolean;
   allowTestnetTrades: boolean;
   
@@ -266,6 +267,7 @@ function createConfig(): BotConfig {
     network: isTestnet ? 'testnet' : 'mainnet',
     evmChain: evmChain === 'polygon' || evmChain === 'ethereum' ? (evmChain as 'polygon' | 'ethereum') : 'arbitrum',
     evmChainId: chainConfig.chainId,
+    evmTradingEnabled: !isEnvFalse(process.env['EVM_TRADING_ENABLED']),
     logOnly: forcedLogOnlyForSafety || explicitLogOnly || (isTestnet && !allowTestnetTrades),
     allowTestnetTrades,
     
@@ -347,6 +349,7 @@ export function validateConfig(): void {
     isEnvTrue(process.env['BOT_LOG_ONLY']) ||
     (normalizeEnvValue(process.env['NETWORK'] || 'mainnet').toLowerCase() === 'testnet' && !isEnvTrue(process.env['ALLOW_TESTNET_TRADES'])) ||
     (isEthereumSepoliaProfile() && !hasValidSepoliaProfile());
+  const evmTradingEnabled = !isEnvFalse(process.env['EVM_TRADING_ENABLED']);
 
   // Always require RPC URL
   if (!ethereumRpcUrl) {
@@ -431,15 +434,19 @@ export function validateConfig(): void {
   if (!privateKey && !walletAddress) {
     envWarnings.push('PRIVATE_KEY / WALLET_ADDRESS — no wallet identity available');
   }
-  if (!treasuryAddress && !logOnly) {
+  if (!treasuryAddress && !logOnly && evmTradingEnabled) {
     envWarnings.push('TREASURY_ADDRESS — required for live trading');
   }
   if (envWarnings.length > 0) {
     logger.warn(`[CONFIG] Missing env vars that may cause runtime issues:\n  • ${envWarnings.join('\n  • ')}`);
   }
 
-  // If trading, require private key and treasury
-  if (!logOnly) {
+  if (evmTradingEnabled && logOnly) {
+    logger.warn('⚠️ EVM_TRADING_ENABLED=true while LOG_ONLY=true; EVM execution remains disabled by LOG_ONLY.');
+  }
+
+  // If EVM trading is enabled and not in LOG_ONLY, require key and treasury
+  if (evmTradingEnabled && !logOnly) {
     if (!privateKey) {
       throw new Error('Missing required configuration: privateKey (set PRIVATE_KEY or LOG_ONLY=true for logging-only mode)');
     }
@@ -464,6 +471,11 @@ export function validateConfig(): void {
       }
     }
   }
+}
+
+function isEnvFalse(value: string | undefined): boolean {
+  const normalized = normalizeEnvValue(value).toLowerCase();
+  return normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off';
 }
 
 // Export all configurations

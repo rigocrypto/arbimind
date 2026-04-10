@@ -216,7 +216,7 @@ export class ArbitrageBot {
 
     // One-time token approvals for Sepolia routers (before scan loop)
     const isSepolia = this.botConfig.network === 'testnet' && this.botConfig.evmChain === 'ethereum';
-    if (isSepolia && this.executionService && !this.botConfig.logOnly) {
+    if (isSepolia && this.executionService && !this.botConfig.logOnly && this.botConfig.evmTradingEnabled) {
       try {
         await this.executionService.ensureSepoliaRouterApprovals();
       } catch (e) {
@@ -1054,6 +1054,15 @@ export class ArbitrageBot {
       return true;
     }
 
+    if (!this.botConfig.evmTradingEnabled) {
+      this.logger.info('EVM execution disabled by EVM_TRADING_ENABLED=false; skipping EVM trade execution', {
+        tokenA: opportunity.tokenA,
+        tokenB: opportunity.tokenB,
+        route: opportunity.route,
+      });
+      return false;
+    }
+
     if (!this.settingsReader.isBotAuthorized()) {
       this.logger.warn('[BOT_GATE] unauthorized wallet state, skipping execution', {
         wallet: this.walletAddress || 'unknown',
@@ -1243,18 +1252,19 @@ export class ArbitrageBot {
    */
   private validateSetup(): void {
     const walletAddress = this.wallet?.address ?? this.walletAddress;
+    const evmExecutionEnabled = !this.botConfig.logOnly && this.botConfig.evmTradingEnabled;
     if (!walletAddress) {
-      if (!this.botConfig.logOnly) {
+      if (evmExecutionEnabled) {
         throw new Error('Wallet not configured for execution mode (set a valid PRIVATE_KEY or enable LOG_ONLY/BOT_LOG_ONLY=true)');
       }
-      this.logger.warn('⚠️ LOG_ONLY: Wallet identity not configured (set WALLET_ADDRESS for identity-only mode); bot will scan only and skip trade execution.');
+      this.logger.warn('⚠️ EVM execution disabled or LOG_ONLY: wallet identity not configured (set WALLET_ADDRESS for identity-only mode); bot will scan only and skip EVM trade execution.');
     }
 
     if (!this.botConfig.arbExecutorAddress) {
-      if (!this.botConfig.logOnly) {
+      if (evmExecutionEnabled) {
         throw new Error('ArbExecutor address not configured for execution mode (set ARB_EXECUTOR_ADDRESS or enable LOG_ONLY/BOT_LOG_ONLY=true)');
       } else {
-        this.logger.warn('⚠️ LOG_ONLY: ArbExecutor address not configured; bot will scan only and not execute trades.');
+        this.logger.warn('⚠️ EVM execution disabled or LOG_ONLY: ArbExecutor address not configured; bot will scan only and not execute EVM trades.');
       }
     }
 
