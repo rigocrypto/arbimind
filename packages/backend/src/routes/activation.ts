@@ -1,5 +1,6 @@
 import { Request, Response, Router } from 'express';
 import { randomBytes } from 'crypto';
+import { getActivationByWallet, upsertActivation } from '../store/activationStore';
 
 type PlanName = 'Auto Trader' | 'Passive Income' | 'Elite';
 type RiskName = 'Conservative' | 'Balanced' | 'Aggressive';
@@ -13,30 +14,21 @@ interface ActivationBody {
   speed: SpeedName;
 }
 
-interface ActivationSession {
-  wallet: string;
-  selectedPlan: PlanName;
-  capital: number;
-  risk: RiskName;
-  speed: SpeedName;
-  botActive: boolean;
-  sessionToken: string;
-  createdAt: number;
-  updatedAt: number;
-}
-
 const router: Router = Router();
 
 const PLAN_SET = new Set<PlanName>(['Auto Trader', 'Passive Income', 'Elite']);
 const RISK_SET = new Set<RiskName>(['Conservative', 'Balanced', 'Aggressive']);
 const SPEED_SET = new Set<SpeedName>(['Standard', 'Priority', 'Ultra']);
-
-const activationSessions = new Map<string, ActivationSession>();
+const PLAN_PRICE_USDC: Record<PlanName, number> = {
+  'Auto Trader': 19,
+  'Passive Income': 49,
+  Elite: 99,
+};
 
 const isEvmAddress = (value: string): boolean => /^0x[a-fA-F0-9]{40}$/.test(value);
 const isSolanaAddress = (value: string): boolean => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value);
 
-router.post('/activate-bot', (req: Request, res: Response) => {
+router.post('/activate-bot', async (req: Request, res: Response) => {
   const body = (req.body || {}) as Partial<ActivationBody>;
 
   const wallet = typeof body.wallet === 'string' ? body.wallet.trim() : '';
@@ -65,45 +57,56 @@ router.post('/activate-bot', (req: Request, res: Response) => {
     return res.status(400).json({ ok: false, error: 'Invalid speed' });
   }
 
-  const normalizedWallet = wallet.toLowerCase();
-  const previous = activationSessions.get(normalizedWallet);
-  const now = Date.now();
   const sessionToken = randomBytes(24).toString('hex');
 
-  const session: ActivationSession = {
-    wallet,
-    selectedPlan,
-    capital,
+  const saved = await upsertActivation({
+    wallet: wallet.toLowerCase(),
+    plan: selectedPlan,
+    capital: Math.floor(capital),
     risk,
     speed,
-    botActive: true,
     sessionToken,
-    createdAt: previous?.createdAt ?? now,
-    updatedAt: now,
-  };
+  });
 
-  activationSessions.set(normalizedWallet, session);
+  if (!saved) {
+    return res.status(500).json({ ok: false, error: 'Failed to persist activation session' });
+  }
+
+  const paymentAddress =
+    process.env.USDC_PAYMENT_ADDRESS?.trim() ||
+    process.env.TREASURY_ADDRESS?.trim() ||
+    null;
+
+  const paymentRequired = saved.paymentStatus !== 'paid';
 
   return res.json({
     ok: true,
-    sessionToken,
+    sessionToken: saved.sessionToken,
     user: {
-      wallet: session.wallet,
-      selectedPlan: session.selectedPlan,
-      botActive: session.botActive,
-      updatedAt: session.updatedAt,
+      wallet: saved.wallet,
+      selectedPlan: saved.plan,
+      botActive: saved.botActive,
+      paymentStatus: saved.paymentStatus,
+      updatedAt: saved.updatedAt,
+    },
+    payment: {
+      paymentRequired,
+      amount: PLAN_PRICE_USDC[selectedPlan],
+      currency: 'USDC',
+      address: paymentAddress,
+      provider: 'manual_usdc',
     },
     warmup: {
-      status: 'warming_up',
+      status: paymentRequired ? 'awaiting_payment' : 'warming_up',
       etaMinutesMin: 2,
       etaMinutesMax: 5,
     },
   });
 });
 
-router.get('/activate-bot/:wallet', (req: Request, res: Response) => {
+router.get('/activate-bot/:wallet', async (req: Request, res: Response) => {
   const wallet = String(req.params.wallet || '').trim().toLowerCase();
-  const session = activationSessions.get(wallet);
+  const session = await getActivationByWallet(wallet);
 
   if (!session) {
     return res.status(404).json({ ok: false, error: 'Activation session not found' });
@@ -111,10 +114,12 @@ router.get('/activate-bot/:wallet', (req: Request, res: Response) => {
 
   return res.json({
     ok: true,
+    sessionToken: session.sessionToken,
     user: {
       wallet: session.wallet,
-      selectedPlan: session.selectedPlan,
+      selectedPlan: session.plan,
       botActive: session.botActive,
+      paymentStatus: session.paymentStatus,
       updatedAt: session.updatedAt,
     },
   });

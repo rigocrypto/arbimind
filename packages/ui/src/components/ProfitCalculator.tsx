@@ -33,6 +33,14 @@ const MAX_BOTS_FALLBACK = Number(process.env.NEXT_PUBLIC_MAX_CONCURRENT_BOTS || 
 type WalletKey = 'metamask' | 'walletconnect' | 'coinbase' | 'phantom';
 type ModalStep = 'wallet' | 'connecting' | 'plan' | 'summary' | 'success';
 
+interface ActivationPaymentInfo {
+  paymentRequired: boolean;
+  amount: number;
+  currency: string;
+  address: string | null;
+  provider: string;
+}
+
 const BOT_STATS = [
   { trades: '~6', winRate: '71%' },
   { trades: '~18', winRate: '74%' },
@@ -80,6 +88,10 @@ export function ProfitCalculator() {
   const [selectedPlanIndex, setSelectedPlanIndex] = useState<number>(2);
   const [activating, setActivating] = useState(false);
   const [activationToken, setActivationToken] = useState<string | null>(null);
+  const [paymentInfo, setPaymentInfo] = useState<ActivationPaymentInfo | null>(null);
+  const [paymentCopied, setPaymentCopied] = useState(false);
+  const [activationBotActive, setActivationBotActive] = useState(false);
+  const [selectedPlanAtActivation, setSelectedPlanAtActivation] = useState<string | null>(null);
 
   const { address, isConnected } = useAccount();
   const { connectAsync, connectors, isPending: isConnectPending } = useConnect();
@@ -171,8 +183,25 @@ export function ProfitCalculator() {
 
   const handleOpenModal = () => {
     setSelectedPlanIndex(recommended.index);
+    setPaymentInfo(null);
+    setPaymentCopied(false);
+    setActivationToken(null);
+    setActivationBotActive(false);
+    setSelectedPlanAtActivation(null);
     setModalStep(isConnected ? 'plan' : 'wallet');
     setModalOpen(true);
+  };
+
+  const copyPaymentAddress = async () => {
+    if (!paymentInfo?.address) return;
+    try {
+      await navigator.clipboard.writeText(paymentInfo.address);
+      setPaymentCopied(true);
+      toast.success('Payment address copied');
+      setTimeout(() => setPaymentCopied(false), 1500);
+    } catch {
+      toast.error('Unable to copy address');
+    }
   };
 
   const connectorForWallet = (wallet: WalletKey) => {
@@ -229,12 +258,29 @@ export function ProfitCalculator() {
         throw new Error(typeof data?.error === 'string' ? data.error : `Activation failed (HTTP ${response.status})`);
       }
 
+      const parsedPayment: ActivationPaymentInfo = {
+        paymentRequired: Boolean(data?.payment?.paymentRequired),
+        amount: Number(data?.payment?.amount ?? 0),
+        currency: typeof data?.payment?.currency === 'string' ? data.payment.currency : 'USDC',
+        address: typeof data?.payment?.address === 'string' && data.payment.address.trim().length > 0
+          ? data.payment.address.trim()
+          : null,
+        provider: typeof data?.payment?.provider === 'string' ? data.payment.provider : 'manual_usdc',
+      };
+
       if (typeof window !== 'undefined' && typeof data?.sessionToken === 'string') {
         window.localStorage.setItem('arbimind:activation:token', data.sessionToken);
       }
       setActivationToken(typeof data?.sessionToken === 'string' ? data.sessionToken : null);
+      setPaymentInfo(parsedPayment);
+      setActivationBotActive(Boolean(data?.user?.botActive));
+      setSelectedPlanAtActivation(typeof data?.user?.selectedPlan === 'string' ? data.user.selectedPlan : selectedPlan.name);
       setModalStep('success');
-      toast.success('Activation started');
+      if (parsedPayment.paymentRequired) {
+        toast.success('Activation saved. Payment required to start trading.');
+      } else {
+        toast.success('Activation started');
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Activation failed';
       toast.error(message);
@@ -706,15 +752,54 @@ export function ProfitCalculator() {
                   <div className="mx-auto mb-3 inline-flex h-11 w-11 items-center justify-center rounded-full bg-green-500/20">
                     <CheckCircle2 className="h-6 w-6 text-green-400" />
                   </div>
-                  <p className="text-base font-bold text-white">Bot activation started</p>
+                  <p className="text-base font-bold text-white">
+                    {paymentInfo?.paymentRequired ? 'Activation saved' : 'Bot activation started'}
+                  </p>
                   <p className="mt-1 text-xs font-semibold text-cyan-300">Bot warming up...</p>
                   <p className="mt-1 text-xs text-dark-300">First trades expected in ~2-5 minutes</p>
                   <p className="mt-1 text-xs text-dark-400">
-                    Your wallet is connected and {selectedPlan.name} is selected.
+                    Your wallet is connected and {(selectedPlanAtActivation ?? selectedPlan.name)} is selected.
                   </p>
                   {activationToken && (
                     <p className="mt-2 text-[10px] text-dark-500">Session: {activationToken.slice(0, 10)}...</p>
                   )}
+
+                  {paymentInfo?.paymentRequired && (
+                    <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-left">
+                      <p className="text-xs font-semibold text-amber-200">To enable live trading, complete subscription.</p>
+                      <p className="mt-1 text-[11px] text-amber-100/90">
+                        Pay {formatUSD(paymentInfo.amount)} {paymentInfo.currency} to:
+                      </p>
+                      <p className="mt-1 break-all rounded border border-dark-600 bg-dark-900 px-2 py-1 text-[11px] text-dark-200">
+                        {paymentInfo.address ?? 'Set USDC_PAYMENT_ADDRESS on backend'}
+                      </p>
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void copyPaymentAddress()}
+                          disabled={!paymentInfo.address}
+                          className="rounded-md border border-amber-400/40 bg-amber-500/10 px-2 py-1.5 text-[11px] font-semibold text-amber-100 transition hover:bg-amber-500/20 disabled:opacity-60"
+                        >
+                          {paymentCopied ? 'Copied' : 'Pay with USDC'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled
+                          className="rounded-md border border-dark-600 bg-dark-800 px-2 py-1.5 text-[11px] font-semibold text-dark-300"
+                        >
+                          Stripe (coming soon)
+                        </button>
+                      </div>
+                      <p className="mt-2 text-[10px] text-dark-400">
+                        Bot activates within ~10 minutes after payment confirmation.
+                      </p>
+                    </div>
+                  )}
+
+                  {!paymentInfo?.paymentRequired && activationBotActive && (
+                    <p className="mt-2 text-[11px] text-green-300">Live trading is active.</p>
+                  )}
+
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     <button
                       type="button"
