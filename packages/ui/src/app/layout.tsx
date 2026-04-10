@@ -67,7 +67,7 @@ export default function RootLayout({
                 <div className="relative z-20">
                   <Header />
                 </div>
-                <main className="flex-1 flex flex-col min-h-0 pt-16 relative z-10">
+                <main className="flex-1 flex flex-col min-h-0 pt-16 pb-16 sm:pb-0 relative z-10">
                   <Suspense fallback={<LoadingFallback />}>
                     {children}
                   </Suspense>
