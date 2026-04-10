@@ -68,6 +68,11 @@ export class ArbitrageBot {
   private cachedEthPriceUsd: number = 2000; // conservative fallback
   // last scan timestamp removed (not currently read anywhere)
   private heartbeatUrl: string | null = null;
+  private activationStatusUrl: string | null = null;
+  private activationStateRefreshMs = 15_000;
+  private lastActivationStateFetchMs = 0;
+  private lastActivationState: { hasSession: boolean; paymentStatus: string; botActive: boolean; botRunning: boolean } | null = null;
+  private lastActivationSkipReason: string | null = null;
 
   constructor(deps: ArbitrageBotDependencies = {}) {
     this.logger = deps.logger ?? new Logger('ArbitrageBot');
@@ -178,6 +183,9 @@ export class ArbitrageBot {
       ''
     ).replace(/\/+$/, '');
     this.heartbeatUrl = backendBase ? `${backendBase}/api/bot/heartbeat` : null;
+    this.activationStatusUrl = backendBase && this.walletAddress
+      ? `${backendBase}/api/activate-bot/${encodeURIComponent(this.walletAddress)}`
+      : null;
   }
 
   /**
@@ -253,6 +261,20 @@ export class ArbitrageBot {
   private async runMainLoop(): Promise<void> {
     while (this.isRunning) {
       try {
+        const activationGate = await this.canRunFromActivationState();
+        if (!activationGate.allowed) {
+          if (this.lastActivationSkipReason !== activationGate.reason) {
+            this.logger.info('Bot loop paused by activation state', {
+              reason: activationGate.reason,
+              wallet: this.walletAddress || 'unknown',
+            });
+            this.lastActivationSkipReason = activationGate.reason;
+          }
+          await this.sleep(this.botConfig.scanIntervalMs);
+          continue;
+        }
+
+        this.lastActivationSkipReason = null;
         await this.refreshGasPrice();
         await this.maybeRunSanityTransfer();
         const result = await this.scanForOpportunities();
@@ -263,6 +285,76 @@ export class ArbitrageBot {
         await this.sleep(1000); // Wait longer on error
       }
     }
+  }
+
+  private async canRunFromActivationState(): Promise<{ allowed: boolean; reason: string }> {
+    if (!this.activationStatusUrl) {
+      return { allowed: true, reason: 'activation_status_not_configured' };
+    }
+
+    const now = Date.now();
+    const shouldRefresh =
+      !this.lastActivationState ||
+      now - this.lastActivationStateFetchMs >= this.activationStateRefreshMs;
+
+    if (shouldRefresh) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4000);
+        const response = await fetch(this.activationStatusUrl, { signal: controller.signal });
+        clearTimeout(timeout);
+
+        if (response.status === 404) {
+          this.lastActivationState = {
+            hasSession: false,
+            paymentStatus: 'missing',
+            botActive: false,
+            botRunning: false,
+          };
+          this.lastActivationStateFetchMs = now;
+        } else if (response.ok) {
+          const payload = await response.json() as {
+            ok?: boolean;
+            user?: {
+              paymentStatus?: string;
+              botActive?: boolean;
+              botRunning?: boolean;
+            };
+          };
+
+          this.lastActivationState = {
+            hasSession: Boolean(payload.ok && payload.user),
+            paymentStatus: payload.user?.paymentStatus || 'unknown',
+            botActive: Boolean(payload.user?.botActive),
+            botRunning: Boolean(payload.user?.botRunning),
+          };
+          this.lastActivationStateFetchMs = now;
+        }
+      } catch (error) {
+        this.logger.debug('Activation status fetch failed, using cached state', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    const state = this.lastActivationState;
+    if (!state) {
+      return { allowed: true, reason: 'activation_state_unavailable' };
+    }
+    if (!state.hasSession) {
+      return { allowed: false, reason: 'activation_missing' };
+    }
+    if (state.paymentStatus !== 'paid') {
+      return { allowed: false, reason: `payment_${state.paymentStatus}` };
+    }
+    if (!state.botActive) {
+      return { allowed: false, reason: 'bot_inactive' };
+    }
+    if (!state.botRunning) {
+      return { allowed: false, reason: 'bot_running_false' };
+    }
+
+    return { allowed: true, reason: 'ok' };
   }
 
   /**

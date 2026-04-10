@@ -11,6 +11,7 @@ export interface ActivationRecord {
   sessionToken: string;
   paymentStatus: PaymentStatus;
   botActive: boolean;
+  botRunning: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -53,6 +54,9 @@ CREATE TABLE IF NOT EXISTS activations (
 
 CREATE INDEX IF NOT EXISTS idx_activations_payment_status
 ON activations (payment_status, updated_at DESC);
+
+ALTER TABLE activations
+ADD COLUMN IF NOT EXISTS bot_running boolean NOT NULL DEFAULT false;
 `;
 
 export async function initActivationSchema(): Promise<void> {
@@ -76,6 +80,7 @@ function rowToRecord(row: {
   session_token: string;
   payment_status: string;
   bot_active: boolean;
+  bot_running: boolean;
   created_at: Date;
   updated_at: Date;
 }): ActivationRecord {
@@ -92,6 +97,7 @@ function rowToRecord(row: {
     sessionToken: row.session_token,
     paymentStatus: normalizedStatus,
     botActive: Boolean(row.bot_active),
+    botRunning: Boolean(row.bot_running),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -110,6 +116,7 @@ export async function upsertActivation(input: UpsertActivationInput): Promise<Ac
       sessionToken: input.sessionToken,
       paymentStatus: 'pending',
       botActive: false,
+      botRunning: false,
       createdAt: now,
       updatedAt: now,
     };
@@ -127,6 +134,7 @@ export async function upsertActivation(input: UpsertActivationInput): Promise<Ac
       session_token: string;
       payment_status: string;
       bot_active: boolean;
+      bot_running: boolean;
       created_at: Date;
       updated_at: Date;
     }>(
@@ -139,7 +147,7 @@ export async function upsertActivation(input: UpsertActivationInput): Promise<Ac
          speed = EXCLUDED.speed,
          session_token = EXCLUDED.session_token,
          updated_at = now()
-       RETURNING wallet, plan, capital, risk, speed, session_token, payment_status, bot_active, created_at, updated_at`,
+       RETURNING wallet, plan, capital, risk, speed, session_token, payment_status, bot_active, bot_running, created_at, updated_at`,
       [input.wallet, input.plan, input.capital, input.risk, input.speed, input.sessionToken]
     );
 
@@ -168,10 +176,11 @@ export async function getActivationByWallet(wallet: string): Promise<ActivationR
       session_token: string;
       payment_status: string;
       bot_active: boolean;
+      bot_running: boolean;
       created_at: Date;
       updated_at: Date;
     }>(
-      `SELECT wallet, plan, capital, risk, speed, session_token, payment_status, bot_active, created_at, updated_at
+      `SELECT wallet, plan, capital, risk, speed, session_token, payment_status, bot_active, bot_running, created_at, updated_at
        FROM activations
        WHERE wallet = $1`,
       [wallet]
@@ -202,6 +211,7 @@ export async function confirmActivationPayment(wallet: string): Promise<Activati
       session_token: string;
       payment_status: string;
       bot_active: boolean;
+      bot_running: boolean;
       created_at: Date;
       updated_at: Date;
     }>(
@@ -210,7 +220,7 @@ export async function confirmActivationPayment(wallet: string): Promise<Activati
            bot_active = true,
            updated_at = now()
        WHERE wallet = $1
-       RETURNING wallet, plan, capital, risk, speed, session_token, payment_status, bot_active, created_at, updated_at`,
+       RETURNING wallet, plan, capital, risk, speed, session_token, payment_status, bot_active, bot_running, created_at, updated_at`,
       [wallet]
     );
 
@@ -219,6 +229,43 @@ export async function confirmActivationPayment(wallet: string): Promise<Activati
     return rowToRecord(row);
   } catch (error) {
     console.error('[ACTIVATION-STORE] confirmActivationPayment error:', error);
+    return null;
+  }
+}
+
+export async function setBotRunningState(wallet: string, botRunning: boolean): Promise<ActivationRecord | null> {
+  const p = getPool();
+  if (!p) return null;
+
+  await initActivationSchema();
+
+  try {
+    const { rows } = await p.query<{
+      wallet: string;
+      plan: string;
+      capital: number;
+      risk: string;
+      speed: string;
+      session_token: string;
+      payment_status: string;
+      bot_active: boolean;
+      bot_running: boolean;
+      created_at: Date;
+      updated_at: Date;
+    }>(
+      `UPDATE activations
+       SET bot_running = $2,
+           updated_at = now()
+       WHERE wallet = $1
+       RETURNING wallet, plan, capital, risk, speed, session_token, payment_status, bot_active, bot_running, created_at, updated_at`,
+      [wallet, botRunning]
+    );
+
+    const row = rows[0];
+    if (!row) return null;
+    return rowToRecord(row);
+  } catch (error) {
+    console.error('[ACTIVATION-STORE] setBotRunningState error:', error);
     return null;
   }
 }

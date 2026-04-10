@@ -94,6 +94,7 @@ router.post('/activate-bot', async (req: Request, res: Response) => {
       wallet: saved.wallet,
       selectedPlan: saved.plan,
       botActive: saved.botActive,
+      botRunning: saved.botRunning,
       paymentStatus: saved.paymentStatus,
       updatedAt: saved.updatedAt,
     },
@@ -127,6 +128,7 @@ router.get('/activate-bot/:wallet', async (req: Request, res: Response) => {
       wallet: session.wallet,
       selectedPlan: session.plan,
       botActive: session.botActive,
+      botRunning: session.botRunning,
       paymentStatus: session.paymentStatus,
       updatedAt: session.updatedAt,
     },
@@ -162,6 +164,7 @@ router.post('/activate-bot/confirm-payment', async (req: Request, res: Response)
     wallet: updated.wallet,
     paymentStatus: updated.paymentStatus,
     botActive: updated.botActive,
+    botRunning: updated.botRunning,
     updatedAt: updated.updatedAt,
   });
 });
