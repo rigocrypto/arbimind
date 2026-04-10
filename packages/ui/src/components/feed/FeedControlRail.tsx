@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Activity, Radio, SlidersHorizontal } from 'lucide-react';
 
 import { HelpTooltip } from '@/components/HelpTooltip';
@@ -32,6 +33,7 @@ export default function FeedControlRail() {
   const setChain = useFeedStore((state) => state.setChain);
   const setSource = useFeedStore((state) => state.setSource);
   const setFilters = useFeedStore((state) => state.setFilters);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   const streamTone =
     streamStatus === 'DEMO'
@@ -123,7 +125,20 @@ export default function FeedControlRail() {
             </span>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setShowMobileFilters((prev) => !prev)}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-dark-200 transition hover:text-white lg:hidden"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5 text-cyan-300" />
+            {showMobileFilters ? 'Hide quick filters' : 'Show quick filters'}
+          </button>
+
+          <div className={[
+            'w-full flex-wrap gap-2 lg:w-auto lg:flex',
+            showMobileFilters ? 'flex' : 'hidden',
+            'lg:flex',
+          ].join(' ')}>
             <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-dark-300">
               <SlidersHorizontal className="h-4 w-4 text-cyan-300" />
               <span>Min $</span>

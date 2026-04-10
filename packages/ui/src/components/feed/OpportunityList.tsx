@@ -16,11 +16,11 @@ export default function OpportunityList({ items }: OpportunityListProps) {
 
   return (
     <section className="glass-card overflow-hidden">
-      <div className="border-b border-white/10 px-4 py-4 sm:px-6">
+      <div className="sticky top-0 z-10 border-b border-white/10 bg-[#111625]/95 px-4 py-3 backdrop-blur sm:px-6 sm:py-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-white">Opportunity Feed</h2>
-            <p className="text-sm text-dark-400">Real-time market terminal layout with wallet-aware execution states.</p>
+            <h2 className="text-base font-semibold text-white sm:text-lg">Opportunity Feed</h2>
+            <p className="text-xs text-dark-400 sm:text-sm">Real-time market terminal layout with wallet-aware execution states.</p>
           </div>
           <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-medium text-dark-300">
             {items.length} routes
@@ -28,7 +28,7 @@ export default function OpportunityList({ items }: OpportunityListProps) {
         </div>
       </div>
 
-      <div className="space-y-3 p-4 sm:p-6">
+      <div className="space-y-2.5 p-3 sm:space-y-3 sm:p-6">
         {items.map((item) => (
           <OpportunityRow
             key={item.id}

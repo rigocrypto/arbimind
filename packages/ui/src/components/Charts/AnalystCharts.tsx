@@ -104,6 +104,13 @@ export function AnalystCharts({ strategies, timestamps, totalTrades }: AnalystCh
             </PieChart>
           </SafeResponsiveContainer>
         </div>
+        <div className="mt-3 overflow-hidden rounded-lg border border-dark-700 bg-dark-900/40">
+          <img
+            src="/ArbiMind_4.jpg"
+            alt="ArbiMind live-ready strategy overview"
+            className="h-auto w-full object-cover"
+          />
+        </div>
       </div>
       <div>
         <h4 className="text-xs font-semibold text-dark-400 uppercase tracking-wider mb-2">Trades by period</h4>
