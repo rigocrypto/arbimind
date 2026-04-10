@@ -40,6 +40,11 @@ function isValidSolanaAddress(s: string): boolean {
   return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s);
 }
 
+function shortSolanaAddress(addr?: string | null): string {
+  if (!addr) return '';
+  return `${addr.slice(0, 6)}...${addr.slice(-6)}`;
+}
+
 const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const SOLANA_TREASURY_ADDRESS =
   process.env.NEXT_PUBLIC_SOLANA_ARB_ACCOUNT || '9FxVFhrdWMj4ptKoBJjUmS1R24JGh4dMZu6eiPynf7z3';
@@ -1282,7 +1287,8 @@ export default function SolanaWalletPageClient() {
               {isSolanaConnected && address && (
                 <div className="rounded-xl bg-dark-900/80 border border-cyan-500/30 px-6 py-4 flex flex-col items-center gap-2 shadow-md mt-4">
                   <span className="text-xs text-dark-400">Connected as</span>
-                  <span className="font-mono text-cyan-300 text-sm break-all">{address}</span>
+                  <span className="font-mono text-cyan-300 text-sm sm:hidden">{shortSolanaAddress(address)}</span>
+                  <span className="hidden font-mono text-cyan-300 text-sm break-all sm:block">{address}</span>
                 </div>
               )}
             </div>
@@ -1725,7 +1731,7 @@ export default function SolanaWalletPageClient() {
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="glass-card p-4 sm:p-6"
+              className="glass-card p-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:p-6 sm:pb-6"
             >
               <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
                 <Send className="w-5 h-5 text-cyan-400" />
@@ -1734,7 +1740,7 @@ export default function SolanaWalletPageClient() {
               <div className="space-y-4">
                 <fieldset className="space-y-4">
                   <legend className="block text-sm font-medium text-dark-300 mb-2">Destination</legend>
-                  <div className="flex gap-3">
+                  <div className="flex flex-wrap gap-3">
                     <label htmlFor="sol-dest-arb" className="flex items-center gap-2 cursor-pointer">
                       <input
                         id="sol-dest-arb"
@@ -1806,7 +1812,7 @@ export default function SolanaWalletPageClient() {
                   type="button"
                   onClick={handleTransfer}
                   disabled={transferLifecycle === 'signing' || transferLifecycle === 'broadcast' || transferLifecycle === 'pending'}
-                  className="w-full xs:w-auto px-4 py-3 rounded-lg bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 text-cyan-400 font-medium hover:from-cyan-500/30 hover:to-purple-500/30 transition disabled:opacity-50"
+                  className="w-full px-4 py-3 rounded-lg bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 text-cyan-400 font-medium hover:from-cyan-500/30 hover:to-purple-500/30 transition disabled:opacity-50"
                 >
                   {transferLifecycle === 'signing'
                     ? 'Signing…'
