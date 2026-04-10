@@ -104,12 +104,21 @@ export function AnalystCharts({ strategies, timestamps, totalTrades }: AnalystCh
             </PieChart>
           </SafeResponsiveContainer>
         </div>
-        <div className="mt-3 overflow-hidden rounded-lg border border-dark-700 bg-dark-900/40">
-          <img
-            src="/ArbiMind_4.jpg"
-            alt="ArbiMind live-ready strategy overview"
-            className="h-auto w-full object-cover"
-          />
+        <div className="mt-6 grid grid-cols-2 gap-3">
+          <div className="overflow-hidden rounded-lg border border-dark-700 bg-dark-900/40">
+            <img
+              src="/ArbiMind_4.jpg"
+              alt="ArbiMind live-ready strategy overview"
+              className="h-56 w-full object-cover"
+            />
+          </div>
+          <div className="overflow-hidden rounded-lg border border-dark-700 bg-dark-900/40">
+            <img
+              src="/6Y4Yn.jpg"
+              alt="ArbiMind mobile optimized interface"
+              className="h-56 w-full object-cover"
+            />
+          </div>
         </div>
       </div>
       <div>
