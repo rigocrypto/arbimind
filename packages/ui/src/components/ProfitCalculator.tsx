@@ -79,6 +79,7 @@ export function ProfitCalculator() {
   const [selectedWallet, setSelectedWallet] = useState<WalletKey>('metamask');
   const [selectedPlanIndex, setSelectedPlanIndex] = useState<number>(2);
   const [activating, setActivating] = useState(false);
+  const [activationToken, setActivationToken] = useState<string | null>(null);
 
   const { address, isConnected } = useAccount();
   const { connectAsync, connectors, isPending: isConnectPending } = useConnect();
@@ -203,10 +204,40 @@ export function ProfitCalculator() {
   };
 
   const activatePlan = async () => {
+    if (!address) {
+      toast.error('Connect wallet first');
+      setModalStep('wallet');
+      return;
+    }
+
     try {
       setActivating(true);
-      await new Promise((resolve) => setTimeout(resolve, 850));
+      const response = await fetch(apiUrl('/activate-bot'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wallet: address,
+          selectedPlan: selectedPlan.name,
+          capital,
+          risk: RISK_LABELS[riskIndex],
+          speed: SPEED_LABELS[speedIndex],
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.ok) {
+        throw new Error(typeof data?.error === 'string' ? data.error : `Activation failed (HTTP ${response.status})`);
+      }
+
+      if (typeof window !== 'undefined' && typeof data?.sessionToken === 'string') {
+        window.localStorage.setItem('arbimind:activation:token', data.sessionToken);
+      }
+      setActivationToken(typeof data?.sessionToken === 'string' ? data.sessionToken : null);
       setModalStep('success');
+      toast.success('Activation started');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Activation failed';
+      toast.error(message);
     } finally {
       setActivating(false);
     }
@@ -254,6 +285,8 @@ export function ProfitCalculator() {
                 step={100}
                 value={capital}
                 onChange={(e) => setCapital(Number(e.target.value))}
+                aria-label="Starting capital"
+                title="Starting capital"
                 className="w-full h-2 rounded-full appearance-none cursor-pointer accent-cyan-400"
                 style={{
                   background: `linear-gradient(to right, rgb(34 211 238) 0%, rgb(34 211 238) ${((capital - 500) / 9500) * 100}%, rgb(38 38 58) ${((capital - 500) / 9500) * 100}%, rgb(38 38 58) 100%)`,
@@ -674,9 +707,14 @@ export function ProfitCalculator() {
                     <CheckCircle2 className="h-6 w-6 text-green-400" />
                   </div>
                   <p className="text-base font-bold text-white">Bot activation started</p>
+                  <p className="mt-1 text-xs font-semibold text-cyan-300">Bot warming up...</p>
+                  <p className="mt-1 text-xs text-dark-300">First trades expected in ~2-5 minutes</p>
                   <p className="mt-1 text-xs text-dark-400">
                     Your wallet is connected and {selectedPlan.name} is selected.
                   </p>
+                  {activationToken && (
+                    <p className="mt-2 text-[10px] text-dark-500">Session: {activationToken.slice(0, 10)}...</p>
+                  )}
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     <button
                       type="button"
