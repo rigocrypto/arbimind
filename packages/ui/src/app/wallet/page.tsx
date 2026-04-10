@@ -77,6 +77,10 @@ function buildMetaMaskDappLink(pathname: string) {
   return `https://link.metamask.io/dapp/${encodeURIComponent(url)}`;
 }
 
+function isWalletConnectConnector(connector: { id?: string; name?: string }) {
+  return /walletconnect/i.test(connector.name ?? '') || /walletconnect/i.test(connector.id ?? '');
+}
+
 const SUPPORTED_CHAIN_IDS = new Set([1, 10, 42161, 8453, 137, 80002]);
 
 function WithdrawModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
@@ -837,6 +841,26 @@ export default function WalletPage() {
     }
   };
 
+  const handleWalletConnectConnect = async () => {
+    const walletConnectConnector = connectors.find((connector) => isWalletConnectConnector(connector));
+
+    if (!walletConnectConnector) {
+      toast.error('WalletConnect is not available');
+      return;
+    }
+
+    try {
+      await connectAsync({ connector: walletConnectConnector });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error ?? 'WalletConnect connection failed');
+      if (/user rejected|cancelled|rejected/i.test(message)) {
+        toast('Connection cancelled', { icon: '🔒' });
+        return;
+      }
+      toast.error(message || 'WalletConnect connection failed');
+    }
+  };
+
   const ethVal = ethBalance ? parseFloat(formatUnits(ethBalance.value, ethBalance.decimals)) : 0;
   const usdcVal = usdcBalanceRaw != null ? Number(formatUnits(usdcBalanceRaw, 6)) : 0;
   const daiVal = daiBalanceRaw != null ? Number(formatUnits(daiBalanceRaw, 18)) : 0;
@@ -1012,6 +1036,23 @@ export default function WalletPage() {
                     >
                       {isConnectPending ? 'Connecting MetaMask…' : 'Connect MetaMask'}
                     </button>
+                  ) : isMobileBrowser ? (
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <a
+                        href={buildMetaMaskDappLink('/wallet')}
+                        className="inline-flex min-h-10 items-center justify-center rounded-lg bg-gradient-to-r from-cyan-500 to-purple-500 px-4 py-2 text-sm font-semibold text-white transition hover:brightness-110"
+                      >
+                        Open in MetaMask
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => void handleWalletConnectConnect()}
+                        disabled={isConnectPending}
+                        className="inline-flex min-h-10 items-center justify-center rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isConnectPending ? 'Connecting…' : 'Use WalletConnect'}
+                      </button>
+                    </div>
                   ) : (
                     <ConnectButton label="Connect EVM Wallet" showBalance={false} />
                   )}
