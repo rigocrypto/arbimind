@@ -2,6 +2,7 @@ import express, { Request, Response, Router } from 'express';
 import * as strategies from '../services/strategies';
 import { adminStore } from '../store/adminStore';
 import { emitEngineEvent, getEngineEvents } from '../services/engineActivity';
+import { getActivationByWallet } from '../store/activationStore';
 
 const router: Router = express.Router();
 
@@ -78,7 +79,15 @@ function isEngineAllowed(): boolean {
   return process.env.SIMULATED_ENGINE_ENABLED === 'true';
 }
 
-router.post('/start', (req: Request, res: Response): Response => {
+function normalizeWalletForLookup(wallet: string): string {
+  const trimmed = wallet.trim();
+  if (/^0x[a-fA-F0-9]{40}$/.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+  return trimmed;
+}
+
+router.post('/start', async (req: Request, res: Response): Promise<Response> => {
   if (!isEngineAllowed()) {
     console.warn('[ENGINE_BLOCKED] Simulated engine denied (SIMULATED_ENGINE_ENABLED !== "true")');
     return res.status(403).json({ status: 'blocked', message: 'Simulated engine disabled. Set SIMULATED_ENGINE_ENABLED=true to enable.' });
@@ -123,6 +132,33 @@ router.post('/start', (req: Request, res: Response): Response => {
     } else {
       activeWalletChain = null;
       activeWalletAddress = null;
+    }
+
+    const requirePaidActivation = process.env.REQUIRE_PAID_ACTIVATION === 'true';
+    if (requirePaidActivation) {
+      if (!activeWalletAddress) {
+        return res.status(402).json({
+          status: 'payment_required',
+          message: 'Wallet activation and paid status are required to start engine.',
+        });
+      }
+
+      const activation = await getActivationByWallet(normalizeWalletForLookup(activeWalletAddress));
+      if (!activation) {
+        return res.status(402).json({
+          status: 'payment_required',
+          message: 'Activation record not found. Complete activation and payment first.',
+        });
+      }
+
+      if (activation.paymentStatus !== 'paid' || !activation.botActive) {
+        return res.status(402).json({
+          status: 'payment_required',
+          message: 'Payment not confirmed. Confirm payment before starting engine.',
+          paymentStatus: activation.paymentStatus,
+          botActive: activation.botActive,
+        });
+      }
     }
 
     lastOppsCount = 0;
