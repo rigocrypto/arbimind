@@ -2,6 +2,7 @@ import express, { Request, Response, Router } from 'express';
 import * as strategies from '../services/strategies';
 import { adminStore } from '../store/adminStore';
 import { emitEngineEvent, getEngineEvents } from '../services/engineActivity';
+import { getActivationByWallet, setBotRunningState } from '../store/activationStore';
 
 const router: Router = express.Router();
 
@@ -78,11 +79,15 @@ function isEngineAllowed(): boolean {
   return process.env.SIMULATED_ENGINE_ENABLED === 'true';
 }
 
-router.post('/start', (req: Request, res: Response): Response => {
-  if (!isEngineAllowed()) {
-    console.warn('[ENGINE_BLOCKED] Simulated engine denied (SIMULATED_ENGINE_ENABLED !== "true")');
-    return res.status(403).json({ status: 'blocked', message: 'Simulated engine disabled. Set SIMULATED_ENGINE_ENABLED=true to enable.' });
+function normalizeWalletForLookup(wallet: string): string {
+  const trimmed = wallet.trim();
+  if (/^0x[a-fA-F0-9]{40}$/.test(trimmed)) {
+    return trimmed.toLowerCase();
   }
+  return trimmed;
+}
+
+router.post('/start', async (req: Request, res: Response): Promise<Response> => {
   try {
     const { strategy = 'arbitrage', referrer, walletAddress, walletChain } = req.body || {};
     if (!VALID_STRATEGIES.has(strategy)) {
@@ -125,6 +130,64 @@ router.post('/start', (req: Request, res: Response): Response => {
       activeWalletAddress = null;
     }
 
+    const requirePaidActivation = process.env.REQUIRE_PAID_ACTIVATION === 'true';
+    if (requirePaidActivation) {
+      if (!activeWalletAddress) {
+        return res.status(402).json({
+          status: 'payment_required',
+          message: 'Wallet activation and paid status are required to start engine.',
+        });
+      }
+
+      const activation = await getActivationByWallet(normalizeWalletForLookup(activeWalletAddress));
+      if (!activation) {
+        return res.status(402).json({
+          status: 'payment_required',
+          message: 'Activation record not found. Complete activation and payment first.',
+        });
+      }
+
+      if (activation.paymentStatus !== 'paid' || !activation.botActive) {
+        return res.status(402).json({
+          status: 'payment_required',
+          message: 'Payment not confirmed. Confirm payment before starting engine.',
+          paymentStatus: activation.paymentStatus,
+          botActive: activation.botActive,
+        });
+      }
+    }
+
+    if (!isEngineAllowed()) {
+      if (!activeWalletAddress) {
+        console.warn('[ENGINE_BLOCKED] Simulated engine denied and no wallet provided for control mode');
+        return res.status(403).json({ status: 'blocked', message: 'Simulated engine disabled. Provide a wallet to control real bot running state.' });
+      }
+
+      await setBotRunningState(normalizeWalletForLookup(activeWalletAddress), true);
+      emitEngineEvent({
+        level: 'info',
+        type: 'engine.control.started',
+        msg: 'Bot running state enabled via control mode',
+        ...(activeStrategy ? { strategyId: activeStrategy } : {}),
+        meta: {
+          controlOnly: true,
+          walletChain: activeWalletChain,
+          walletAddress: activeWalletAddress,
+        },
+      });
+
+      return res.json({
+        status: 'success',
+        strategy,
+        active: false,
+        controlOnly: true,
+        simulatedEngineEnabled: false,
+        walletChain: activeWalletChain ?? undefined,
+        walletAddress: activeWalletAddress ?? undefined,
+        timestamp: Date.now(),
+      });
+    }
+
     lastOppsCount = 0;
     lastProfitSol = 0;
     lastScanAt = null;
@@ -134,6 +197,11 @@ router.post('/start', (req: Request, res: Response): Response => {
     if (run) {
       scanInterval = setInterval(runLoop, 5000);
     }
+
+    if (activeWalletAddress) {
+      await setBotRunningState(normalizeWalletForLookup(activeWalletAddress), true);
+    }
+
     emitEngineEvent({
       level: 'info',
       type: 'engine.started',
@@ -165,8 +233,11 @@ router.post('/start', (req: Request, res: Response): Response => {
   }
 });
 
-router.post('/stop', (req: Request, res: Response) => {
+router.post('/stop', async (req: Request, res: Response): Promise<Response> => {
   try {
+    const rawWallet = typeof req.body?.walletAddress === 'string' ? req.body.walletAddress.trim() : '';
+    const walletToStop = activeWalletAddress || (/^0x[a-fA-F0-9]{40}$/.test(rawWallet) || /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(rawWallet) ? rawWallet : null);
+
     if (scanInterval) {
       clearInterval(scanInterval);
       scanInterval = null;
@@ -183,11 +254,16 @@ router.post('/stop', (req: Request, res: Response) => {
       type: 'engine.stopped',
       msg: 'Engine stopped',
     });
+
+    if (walletToStop) {
+      await setBotRunningState(normalizeWalletForLookup(walletToStop), false);
+    }
+
     console.log('🛑 Engine STOPPED');
-    res.json({ status: 'success', active: false, timestamp: Date.now() });
+    return res.json({ status: 'success', active: false, timestamp: Date.now() });
   } catch (error) {
     console.error('Engine stop error:', error);
-    res.status(500).json({ success: false, message: 'Failed to stop engine' });
+    return res.status(500).json({ success: false, message: 'Failed to stop engine' });
   }
 });
 

@@ -20,6 +20,7 @@ import aiRoutes, { setAIService } from './routes/ai';
 import settingsRoutes from './routes/settings';
 import evmSwapRoutes from './routes/evmSwap';
 import botHeartbeatRoutes from './routes/botHeartbeat';
+import activationRoutes from './routes/activation';
 import { AIService } from './services/AIService';
 import { resolveRpcUrl } from './utils/rpc';
 import { captureSentryException, initializeSentry } from './utils/sentry';
@@ -154,6 +155,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/evm/swap', evmSwapRoutes);
 app.use('/api/bot', botHeartbeatRoutes);
+app.use('/api', activationRoutes);
 
 const PORT = parseInt(process.env.PORT || '8000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -174,4 +176,5 @@ app.listen(PORT, HOST, () => {
   console.log(`   /api/ai          - AI predictions + models`);
   console.log(`   /api/settings    - Engine settings (GET public, PUT/POST admin)`);
   console.log(`   /api/evm/swap    - EVM token swap (0x aggregator)`);
+  console.log(`   /api/activate-bot - Activation session (wallet + plan)`);
 });

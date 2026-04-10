@@ -37,7 +37,7 @@ export default function FeedClient() {
 
   return (
     <DashboardLayout currentPath="/feed">
-      <div className="mx-auto min-h-[calc(100dvh-64px)] w-full max-w-[440px] px-3 pb-24 sm:max-w-none sm:px-4 sm:pb-10">
+      <div className="mx-auto min-h-[calc(100dvh-64px)] w-full max-w-[440px] px-3 pb-44 sm:max-w-none sm:px-4 sm:pb-10">
         <FeedControlRail />
 
         <div className="sticky top-[8.6rem] z-20 mt-3 rounded-xl border border-white/10 bg-[#0f1420]/90 p-1 backdrop-blur xl:hidden">
