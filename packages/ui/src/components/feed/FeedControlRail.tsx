@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Activity, Radio, SlidersHorizontal } from 'lucide-react';
+import { Activity, ChevronDown, ChevronUp, Radio, SlidersHorizontal } from 'lucide-react';
 
 import { HelpTooltip } from '@/components/HelpTooltip';
 import { useFeedStore } from '@/stores/feedStore';
@@ -34,6 +34,7 @@ export default function FeedControlRail() {
   const setSource = useFeedStore((state) => state.setSource);
   const setFilters = useFeedStore((state) => state.setFilters);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const streamTone =
     streamStatus === 'DEMO'
@@ -44,8 +45,8 @@ export default function FeedControlRail() {
         ? 'border-amber-400/30 bg-amber-500/10 text-amber-200'
         : 'border-red-400/30 bg-red-500/10 text-red-300';
 
-  return (
-    <section className="sticky top-[4.5rem] z-30 glass-card p-3 sm:p-4">
+  const controlBody = (
+    <>
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
           <div className="flex items-center gap-2">
@@ -200,6 +201,38 @@ export default function FeedControlRail() {
           </div>
         </div>
       </div>
-    </section>
+    </>
+  );
+
+  return (
+    <>
+      <section className="hidden sticky top-[4.5rem] z-30 glass-card p-3 sm:p-4 xl:block">
+        {controlBody}
+      </section>
+
+      <section className="xl:hidden fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 px-3">
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0f1420]/95 shadow-2xl backdrop-blur-xl">
+          <button
+            type="button"
+            onClick={() => setMobileOpen((prev) => !prev)}
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-white">Live Opportunity Control</p>
+              <p className="text-xs text-dark-400">{mobileOpen ? 'Swipe through controls and filters' : 'Tap to open controls'}</p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <div className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold ${streamTone}`}>
+                <Radio className="h-3 w-3" />
+                <span>{streamStatus}</span>
+              </div>
+              {mobileOpen ? <ChevronDown className="h-4 w-4 text-dark-300" /> : <ChevronUp className="h-4 w-4 text-dark-300" />}
+            </div>
+          </button>
+
+          {mobileOpen && <div className="border-t border-white/10 px-4 pb-4 pt-3">{controlBody}</div>}
+        </div>
+      </section>
+    </>
   );
 }
