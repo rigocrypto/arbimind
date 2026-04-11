@@ -409,6 +409,7 @@ export class SolanaExecutor {
       this.logger.warn('Dynamic sizing failed: no positive input balance', {
         label: opportunity.label,
         inputMint: opportunity.inputMint,
+        balanceUsd,
       });
       return null;
     }
@@ -453,8 +454,9 @@ export class SolanaExecutor {
     const owner = new PublicKey(walletPublicKey);
     const wrappedSolMint = 'So11111111111111111111111111111111111111112';
     const stableMints = new Set([
-      'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-      'Es9vMFrzaCERmJfrF4H2fyQ4h6fW9rVYJ7YfBfY2n7V',
+      'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+      'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT (canonical)
+      'Es9vMFrzaCERmJfrF4H2fyQ4h6fW9rVYJ7YfBfY2n7V', // USDT (legacy variant)
     ]);
 
     if (inputMint === wrappedSolMint) {
