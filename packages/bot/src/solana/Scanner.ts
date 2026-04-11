@@ -12,6 +12,7 @@ import { AiScoringService, AiScoringConfig } from '../services/AiScoringService'
 const logger = new Logger('SolanaScanner');
 const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
 const STABLE_SYMBOLS = new Set(['USDC', 'USDT']);
+const SOLANA_MIN_EXECUTION_CONFIDENCE = Number.parseFloat(process.env['SOLANA_MIN_EXECUTION_CONFIDENCE'] || '0.85');
 
 type DexPairData = {
   volumeH24?: number;
@@ -393,7 +394,7 @@ export class SolanaScanner {
       return null;
     }
 
-    if (confidence < Math.max(config.aiMinSuccessProb, 0.85)) {
+    if (confidence < Math.max(config.aiMinSuccessProb, SOLANA_MIN_EXECUTION_CONFIDENCE)) {
       logger.debug(`Skipping Solana execution for ${poolAddress}: confidence ${confidence.toFixed(2)} below execution threshold`);
       return null;
     }
