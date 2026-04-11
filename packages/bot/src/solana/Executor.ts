@@ -93,6 +93,8 @@ export class SolanaExecutor {
     this.logger.info('[SOLANA] runtime notional', {
       configuredMaxNotionalUsd: this.config.maxNotionalUsd,
       effectiveMaxNotionalUsd,
+      minExpectedProfitUsd: this.config.minExpectedProfitUsd,
+      minExpectedProfitEnvRaw: process.env['SOLANA_MIN_EXPECTED_PROFIT_USD'] || null,
       canaryMode: this.config.canaryMode,
       tradeSizeMode: this.config.tradeSizeMode,
       allocationPct: this.config.allocationPct,
