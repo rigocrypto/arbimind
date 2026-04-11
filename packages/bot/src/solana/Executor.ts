@@ -101,6 +101,10 @@ export class SolanaExecutor {
       drawdownTriggerPct: this.config.drawdownTriggerPct,
       drawdownScale: this.config.drawdownScale,
     });
+
+    if (this.config.tradingEnabled && !this.config.logOnly) {
+      this.getWallet();
+    }
   }
 
   async execute(opportunity: SwapOpportunity): Promise<ExecutionResult> {
