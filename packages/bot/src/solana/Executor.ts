@@ -52,6 +52,11 @@ interface JupiterQuoteResponse {
   [key: string]: unknown;
 }
 
+interface SolanaSigner {
+  keypair: Keypair;
+  format: 'base58-64' | 'base58-32' | 'hex' | 'json-array-64' | 'json-array-32';
+}
+
 const CANARY_MAX_NOTIONAL_USD = 5;
 const MAX_RETRIES = 3;
 const CONFIRM_TIMEOUT_MS = 60_000;
@@ -76,6 +81,7 @@ export class SolanaExecutor {
   private readonly config: SolanaExecutorConfig;
   private readonly logger = new Logger('SolanaExecutor');
   private startingBalanceUsd?: number;
+  private signerLogged = false;
 
   constructor(config: SolanaExecutorConfig) {
     this.config = config;
@@ -129,10 +135,11 @@ export class SolanaExecutor {
       );
     }
 
-    const wallet = this.getWallet();
-    if (!wallet) {
+    const signer = this.getWallet();
+    if (!signer) {
       return this.skip('missing or invalid SOLANA_PRIVATE_KEY_BASE58', opportunity);
     }
+    const wallet = signer.keypair;
 
     if (!this.config.rpcUrl) {
       return this.skip('missing SOLANA_RPC_URL', opportunity);
@@ -294,7 +301,7 @@ export class SolanaExecutor {
     };
   }
 
-  private getWallet(): Keypair | null {
+  private getWallet(): SolanaSigner | null {
     const privateKeyBase58 = this.config.privateKeyBase58.trim();
     if (!privateKeyBase58) {
       return null;
@@ -303,11 +310,15 @@ export class SolanaExecutor {
     try {
       const decoded = bs58.decode(privateKeyBase58);
       if (decoded.length === 64) {
-        return Keypair.fromSecretKey(decoded);
+        const keypair = Keypair.fromSecretKey(decoded);
+        this.logSignerLoaded(keypair, 'base58-64');
+        return { keypair, format: 'base58-64' };
       }
 
       if (decoded.length === 32) {
-        return Keypair.fromSeed(decoded);
+        const keypair = Keypair.fromSeed(decoded);
+        this.logSignerLoaded(keypair, 'base58-32');
+        return { keypair, format: 'base58-32' };
       }
     } catch {
       // Continue to alternative parsers below.
@@ -315,7 +326,9 @@ export class SolanaExecutor {
 
     try {
       if (/^[0-9a-fA-F]{64}$/.test(privateKeyBase58)) {
-        return Keypair.fromSeed(Uint8Array.from(Buffer.from(privateKeyBase58, 'hex')));
+        const keypair = Keypair.fromSeed(Uint8Array.from(Buffer.from(privateKeyBase58, 'hex')));
+        this.logSignerLoaded(keypair, 'hex');
+        return { keypair, format: 'hex' };
       }
 
       if (privateKeyBase58.startsWith('[') && privateKeyBase58.endsWith(']')) {
@@ -323,11 +336,15 @@ export class SolanaExecutor {
         if (Array.isArray(parsed) && parsed.every((v) => Number.isInteger(v) && v >= 0 && v <= 255)) {
           const bytes = Uint8Array.from(parsed);
           if (bytes.length === 64) {
-            return Keypair.fromSecretKey(bytes);
+            const keypair = Keypair.fromSecretKey(bytes);
+            this.logSignerLoaded(keypair, 'json-array-64');
+            return { keypair, format: 'json-array-64' };
           }
 
           if (bytes.length === 32) {
-            return Keypair.fromSeed(bytes);
+            const keypair = Keypair.fromSeed(bytes);
+            this.logSignerLoaded(keypair, 'json-array-32');
+            return { keypair, format: 'json-array-32' };
           }
         }
       }
@@ -341,6 +358,21 @@ export class SolanaExecutor {
       error: 'unsupported key format (expected base58 secret/seed, 64-char hex seed, or JSON byte array)',
     });
     return null;
+  }
+
+  private logSignerLoaded(
+    keypair: Keypair,
+    detectedFormat: 'base58-64' | 'base58-32' | 'hex' | 'json-array-64' | 'json-array-32'
+  ): void {
+    if (this.signerLogged) {
+      return;
+    }
+
+    this.signerLogged = true;
+    this.logger.info('[SOLANA_SIGNER] keypair loaded', {
+      publicKey: keypair.publicKey.toBase58(),
+      format: detectedFormat,
+    });
   }
 
   private skip(reason: string, opportunity: SwapOpportunity): ExecutionResult {
