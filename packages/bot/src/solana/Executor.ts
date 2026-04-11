@@ -301,13 +301,46 @@ export class SolanaExecutor {
     }
 
     try {
-      return Keypair.fromSecretKey(bs58.decode(privateKeyBase58));
+      const decoded = bs58.decode(privateKeyBase58);
+      if (decoded.length === 64) {
+        return Keypair.fromSecretKey(decoded);
+      }
+
+      if (decoded.length === 32) {
+        return Keypair.fromSeed(decoded);
+      }
+    } catch {
+      // Continue to alternative parsers below.
+    }
+
+    try {
+      if (/^[0-9a-fA-F]{64}$/.test(privateKeyBase58)) {
+        return Keypair.fromSeed(Uint8Array.from(Buffer.from(privateKeyBase58, 'hex')));
+      }
+
+      if (privateKeyBase58.startsWith('[') && privateKeyBase58.endsWith(']')) {
+        const parsed = JSON.parse(privateKeyBase58) as number[];
+        if (Array.isArray(parsed) && parsed.every((v) => Number.isInteger(v) && v >= 0 && v <= 255)) {
+          const bytes = Uint8Array.from(parsed);
+          if (bytes.length === 64) {
+            return Keypair.fromSecretKey(bytes);
+          }
+
+          if (bytes.length === 32) {
+            return Keypair.fromSeed(bytes);
+          }
+        }
+      }
     } catch (error) {
       this.logger.warn('Failed to decode SOLANA_PRIVATE_KEY_BASE58', {
         error: error instanceof Error ? error.message : String(error),
       });
-      return null;
     }
+
+    this.logger.warn('Failed to decode SOLANA_PRIVATE_KEY_BASE58', {
+      error: 'unsupported key format (expected base58 secret/seed, 64-char hex seed, or JSON byte array)',
+    });
+    return null;
   }
 
   private skip(reason: string, opportunity: SwapOpportunity): ExecutionResult {
