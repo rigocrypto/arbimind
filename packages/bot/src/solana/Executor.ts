@@ -95,6 +95,7 @@ export class SolanaExecutor {
       effectiveMaxNotionalUsd,
       minExpectedProfitUsd: this.config.minExpectedProfitUsd,
       minExpectedProfitEnvRaw: process.env['SOLANA_MIN_EXPECTED_PROFIT_USD'] || null,
+      jupiterBaseUrl: this.config.jupiterBaseUrl,
       canaryMode: this.config.canaryMode,
       tradeSizeMode: this.config.tradeSizeMode,
       allocationPct: this.config.allocationPct,
