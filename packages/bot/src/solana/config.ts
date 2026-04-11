@@ -86,6 +86,8 @@ export const solanaExecutorConfig: SolanaExecutorRuntimeConfig = {
     '',
   privateKeyBase58:
     process.env['SOLANA_PRIVATE_KEY_BASE58'] ||
+    process.env['SOLANA_PRIVATE_KEY_BASE58Y_BASE58'] ||
+    process.env['SOLANA_ARB_SECRET_KEY'] ||
     process.env['SOLANA_TREASURY_SECRET_KEY'] ||
     '',
   jupiterBaseUrl: process.env['JUPITER_BASE_URL'] || 'https://quote-api.jup.ag/v6',
