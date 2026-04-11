@@ -1,6 +1,7 @@
 import {
   Connection,
   Keypair,
+  PublicKey,
   TransactionExpiredBlockheightExceededError,
   VersionedTransaction,
 } from '@solana/web3.js';
@@ -11,6 +12,12 @@ export interface SolanaExecutorConfig {
   tradingEnabled: boolean;
   logOnly: boolean;
   canaryMode: boolean;
+  tradeSizeMode: 'fixed' | 'dynamic';
+  allocationPct: number;
+  minTradeSizeUsd: number;
+  maxTradeSizeUsd: number;
+  drawdownTriggerPct: number;
+  drawdownScale: number;
   maxNotionalUsd: number;
   minExpectedProfitUsd: number;
   maxDailyLossUsd: number;
@@ -68,6 +75,7 @@ function resetDailyLossIfNeeded(): void {
 export class SolanaExecutor {
   private readonly config: SolanaExecutorConfig;
   private readonly logger = new Logger('SolanaExecutor');
+  private startingBalanceUsd?: number;
 
   constructor(config: SolanaExecutorConfig) {
     this.config = config;
@@ -80,6 +88,12 @@ export class SolanaExecutor {
       configuredMaxNotionalUsd: this.config.maxNotionalUsd,
       effectiveMaxNotionalUsd,
       canaryMode: this.config.canaryMode,
+      tradeSizeMode: this.config.tradeSizeMode,
+      allocationPct: this.config.allocationPct,
+      minTradeSizeUsd: this.config.minTradeSizeUsd,
+      maxTradeSizeUsd: this.config.maxTradeSizeUsd,
+      drawdownTriggerPct: this.config.drawdownTriggerPct,
+      drawdownScale: this.config.drawdownScale,
     });
   }
 
@@ -115,9 +129,42 @@ export class SolanaExecutor {
       );
     }
 
+    const wallet = this.getWallet();
+    if (!wallet) {
+      return this.skip('missing or invalid SOLANA_PRIVATE_KEY_BASE58', opportunity);
+    }
+
+    if (!this.config.rpcUrl) {
+      return this.skip('missing SOLANA_RPC_URL', opportunity);
+    }
+
+    const connection = new Connection(this.config.rpcUrl, {
+      commitment: 'confirmed',
+      confirmTransactionInitialTimeout: CONFIRM_TIMEOUT_MS,
+    });
+
+    const sizedOpportunity = await this.applyPositionSizing(opportunity, connection, wallet.publicKey.toBase58());
+    if (!sizedOpportunity) {
+      return this.skip('unable to calculate dynamic trade size', opportunity);
+    }
+
+    if (sizedOpportunity.estimatedNotionalUsd > maxNotionalUsd) {
+      return this.skip(
+        `notional $${sizedOpportunity.estimatedNotionalUsd.toFixed(2)} exceeds max $${maxNotionalUsd.toFixed(2)}`,
+        sizedOpportunity
+      );
+    }
+
+    if (sizedOpportunity.expectedProfitUsd < this.config.minExpectedProfitUsd) {
+      return this.skip(
+        `expected profit $${sizedOpportunity.expectedProfitUsd.toFixed(2)} below minimum $${this.config.minExpectedProfitUsd.toFixed(2)}`,
+        sizedOpportunity
+      );
+    }
+
     let quoteResponse: JupiterQuoteResponse;
     try {
-      quoteResponse = await this.fetchQuote(opportunity);
+      quoteResponse = await this.fetchQuote(sizedOpportunity);
     } catch (error) {
       return {
         success: false,
@@ -127,11 +174,6 @@ export class SolanaExecutor {
 
     if (!quoteResponse.outAmount || quoteResponse.outAmount === '0') {
       return this.skip('Jupiter quote returned zero outAmount', opportunity);
-    }
-
-    const wallet = this.getWallet();
-    if (!wallet) {
-      return this.skip('missing or invalid SOLANA_PRIVATE_KEY_BASE58', opportunity);
     }
 
     let transaction: VersionedTransaction;
@@ -147,17 +189,17 @@ export class SolanaExecutor {
     if (this.config.logOnly) {
       this.logger.info('LOG_ONLY: built Solana swap transaction', {
         label: opportunity.label,
-        inputMint: opportunity.inputMint,
-        outputMint: opportunity.outputMint,
-        estimatedNotionalUsd: opportunity.estimatedNotionalUsd,
-        expectedProfitUsd: opportunity.expectedProfitUsd,
+        inputMint: sizedOpportunity.inputMint,
+        outputMint: sizedOpportunity.outputMint,
+        estimatedNotionalUsd: sizedOpportunity.estimatedNotionalUsd,
+        expectedProfitUsd: sizedOpportunity.expectedProfitUsd,
         outAmount: quoteResponse.outAmount,
         priceImpactPct: quoteResponse.priceImpactPct,
       });
       return { success: true, logOnly: true };
     }
 
-    return this.signAndSend(transaction, wallet, opportunity);
+    return this.signAndSend(transaction, wallet, sizedOpportunity, connection);
   }
 
   private async fetchQuote(opportunity: SwapOpportunity): Promise<JupiterQuoteResponse> {
@@ -207,17 +249,9 @@ export class SolanaExecutor {
   private async signAndSend(
     transaction: VersionedTransaction,
     wallet: Keypair,
-    opportunity: SwapOpportunity
+    opportunity: SwapOpportunity,
+    connection: Connection
   ): Promise<ExecutionResult> {
-    if (!this.config.rpcUrl) {
-      return this.skip('missing SOLANA_RPC_URL', opportunity);
-    }
-
-    const connection = new Connection(this.config.rpcUrl, {
-      commitment: 'confirmed',
-      confirmTransactionInitialTimeout: CONFIRM_TIMEOUT_MS,
-    });
-
     transaction.sign([wallet]);
 
     let lastError: string | undefined;
@@ -287,5 +321,126 @@ export class SolanaExecutor {
       skipped: true,
       skipReason: reason,
     };
+  }
+
+  private async applyPositionSizing(
+    opportunity: SwapOpportunity,
+    connection: Connection,
+    walletPublicKey: string
+  ): Promise<SwapOpportunity | null> {
+    if (this.config.tradeSizeMode !== 'dynamic') {
+      return opportunity;
+    }
+
+    const balanceUsd = await this.fetchInputBalanceUsd(connection, walletPublicKey, opportunity.inputMint);
+    if (!Number.isFinite(balanceUsd) || balanceUsd <= 0) {
+      this.logger.warn('Dynamic sizing failed: no positive input balance', {
+        label: opportunity.label,
+        inputMint: opportunity.inputMint,
+      });
+      return null;
+    }
+
+    if (this.startingBalanceUsd === undefined) {
+      this.startingBalanceUsd = balanceUsd;
+    }
+
+    const proposedSizeUsd = balanceUsd * this.config.allocationPct;
+    if (proposedSizeUsd < this.config.minTradeSizeUsd) {
+      this.logger.info('Skipping Solana execution: dynamic size below minimum threshold', {
+        label: opportunity.label,
+        proposedSizeUsd,
+        minTradeSizeUsd: this.config.minTradeSizeUsd,
+      });
+      return null;
+    }
+
+    const hardMaxUsd = Math.min(this.config.maxTradeSizeUsd, this.config.maxNotionalUsd);
+    let targetSizeUsd = Math.min(proposedSizeUsd, hardMaxUsd);
+
+    if (balanceUsd < this.startingBalanceUsd * this.config.drawdownTriggerPct) {
+      targetSizeUsd *= this.config.drawdownScale;
+    }
+
+    targetSizeUsd = Math.max(1, Math.min(targetSizeUsd, hardMaxUsd));
+
+    const scale = targetSizeUsd / Math.max(opportunity.estimatedNotionalUsd, 1e-9);
+    return {
+      ...opportunity,
+      amountLamports: Math.max(1, Math.round(opportunity.amountLamports * scale)),
+      estimatedNotionalUsd: targetSizeUsd,
+      expectedProfitUsd: opportunity.expectedProfitUsd * scale,
+    };
+  }
+
+  private async fetchInputBalanceUsd(
+    connection: Connection,
+    walletPublicKey: string,
+    inputMint: string
+  ): Promise<number> {
+    const owner = new PublicKey(walletPublicKey);
+    const wrappedSolMint = 'So11111111111111111111111111111111111111112';
+    const stableMints = new Set([
+      'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+      'Es9vMFrzaCERmJfrF4H2fyQ4h6fW9rVYJ7YfBfY2n7V',
+    ]);
+
+    if (inputMint === wrappedSolMint) {
+      const lamports = await connection.getBalance(owner, 'confirmed');
+      const solBalance = lamports / 1_000_000_000;
+      const solPriceUsd = await this.fetchSolPriceUsd();
+      return solBalance * solPriceUsd;
+    }
+
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(owner, {
+      mint: new PublicKey(inputMint),
+    }, 'confirmed');
+
+    if (tokenAccounts.value.length === 0) {
+      return 0;
+    }
+
+    let rawAmount = 0;
+    let decimals = 0;
+    for (const account of tokenAccounts.value) {
+      const parsed = account.account.data.parsed as {
+        info?: { tokenAmount?: { amount?: string; decimals?: number } };
+      };
+      const tokenAmount = parsed.info?.tokenAmount;
+      if (!tokenAmount) {
+        continue;
+      }
+
+      rawAmount += Number(tokenAmount.amount || '0');
+      decimals = tokenAmount.decimals ?? decimals;
+    }
+
+    const tokenAmount = rawAmount / 10 ** decimals;
+    if (stableMints.has(inputMint)) {
+      return tokenAmount;
+    }
+
+    return 0;
+  }
+
+  private async fetchSolPriceUsd(): Promise<number> {
+    const url = new URL(`${this.config.jupiterBaseUrl}/quote`);
+    url.searchParams.set('inputMint', 'So11111111111111111111111111111111111111112');
+    url.searchParams.set('outputMint', 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
+    url.searchParams.set('amount', '1000000000');
+    url.searchParams.set('slippageBps', '50');
+
+    const response = await fetch(url.toString());
+    if (!response.ok) {
+      throw new Error(`Jupiter SOL price HTTP ${response.status}`);
+    }
+
+    const quote = await response.json() as JupiterQuoteResponse;
+    const outAmount = Number(quote.outAmount || '0');
+    if (!Number.isFinite(outAmount) || outAmount <= 0) {
+      throw new Error('Jupiter SOL price returned invalid outAmount');
+    }
+
+    return outAmount / 1_000_000;
   }
 }
