@@ -255,6 +255,29 @@ export class SolanaScanner {
       }
     }
 
+    // ── funding_manager_init diagnostic (raw JSON to stdout) ──
+    if (this.fundingManager && this.scanWallet) {
+      console.log(JSON.stringify({
+        event: 'funding_manager_init',
+        ts: new Date().toISOString(),
+        autoFundEnabled: true,
+        walletPubkey: this.scanWallet.publicKey.toBase58(),
+        baseAssetMint: inventoryConfig.baseAssetMint,
+        solReserveTarget: inventoryConfig.targetSolReserve,
+        solReserveMin: inventoryConfig.minSolReserve,
+        autoFundMinSwapUsd: inventoryConfig.autoFundMinSwapUsd,
+        autoFundMaxRebalanceCostBps: exp020Config.maxRebalanceCostBps,
+        rebalanceCooldownMs: inventoryConfig.fundingRebalanceIntervalMs,
+      }));
+    } else {
+      console.log(JSON.stringify({
+        event: 'funding_manager_init',
+        ts: new Date().toISOString(),
+        autoFundEnabled: false,
+        reason: 'SOLANA_AUTO_FUND_ENABLED not set or false',
+      }));
+    }
+
     this.sessionMetrics.startPeriodicSummary();
     this.scanLoop();
   }

@@ -125,24 +125,47 @@ export class FundingManager {
     const snapshot = await this.takeSnapshot(connection, walletPubkey);
     this.logSnapshot(snapshot, walletPubkey);
 
+    // ── Per-tick diagnostic: funding_snapshot (raw JSON to stdout) ──
+    console.log(JSON.stringify({
+      event: 'funding_snapshot',
+      ts: new Date().toISOString(),
+      walletPubkey: walletPubkey.toBase58(),
+      solBalance: snapshot.solBalance,
+      solReserveTarget: this.config.targetSolReserve,
+      solReserveMin: this.config.minSolReserve,
+      reserveExcessSol: snapshot.solExcessVsTarget,
+      reserveDeficitSol: snapshot.solDeficitVsMin,
+      usdcBalance: snapshot.usdcBalance,
+      usdtBalance: snapshot.usdtBalance,
+      availableTradingCapitalUsd: snapshot.availableTradeCapitalUsd,
+      tradingBlocked: snapshot.tradingBlocked,
+      tradingBlockedReason: snapshot.blockReason ?? null,
+    }));
+
     // ── Cooldown gate ──────────────────────────────────────────
     const now = Date.now();
     if (this.lastRebalanceAtMs > 0 && now - this.lastRebalanceAtMs < this.config.rebalanceCooldownMs) {
-      return { triggered: false, reason: 'cooldown' };
+      const result: RebalanceResult = { triggered: false, reason: 'cooldown' };
+      this.emitDecisionLog(walletPubkey, result);
+      return result;
     }
 
     // ── Case 1: SOL excess → base asset ────────────────────────
     if (snapshot.solExcessVsTarget > 0) {
       const excessUsd = snapshot.solExcessVsTarget * snapshot.solPriceUsd;
       if (excessUsd < this.config.minRebalanceUsd) {
-        return { triggered: false, reason: 'below_min_usd' };
+        const result: RebalanceResult = { triggered: false, reason: 'below_min_usd' };
+        this.emitDecisionLog(walletPubkey, result);
+        return result;
       }
       if (snapshot.solPriceUsd <= 0) {
-        return { triggered: false, reason: 'no_sol_price' };
+        const result: RebalanceResult = { triggered: false, reason: 'no_sol_price' };
+        this.emitDecisionLog(walletPubkey, result);
+        return result;
       }
 
       const inputAmountRaw = Math.floor(snapshot.solExcessVsTarget * 1e9); // lamports
-      return this.attemptSwap({
+      const result = await this.attemptSwap({
         connection,
         wallet,
         inputMint: WRAPPED_SOL_MINT,
@@ -152,6 +175,8 @@ export class FundingManager {
         successReason: 'sol_excess_swapped',
         label: 'SOL→' + this.config.baseAsset,
       });
+      this.emitDecisionLog(walletPubkey, result);
+      return result;
     }
 
     // ── Case 2: Non-base stable normalization ──────────────────
@@ -165,7 +190,7 @@ export class FundingManager {
       const amountRaw = Math.floor(nonBaseBalance * 10 ** decimals);
       const nonBaseSymbol = this.config.baseAsset === 'USDC' ? 'USDT' : 'USDC';
 
-      return this.attemptSwap({
+      const result = await this.attemptSwap({
         connection,
         wallet,
         inputMint: nonBaseMint,
@@ -175,10 +200,14 @@ export class FundingManager {
         successReason: nonBaseSymbol.toLowerCase() + '_normalized',
         label: nonBaseSymbol + '→' + this.config.baseAsset,
       });
+      this.emitDecisionLog(walletPubkey, result);
+      return result;
     }
 
     // ── Nothing to rebalance ──────────────────────────────────
-    return { triggered: false, reason: 'no_action_needed' };
+    const result: RebalanceResult = { triggered: false, reason: 'no_action_needed' };
+    this.emitDecisionLog(walletPubkey, result);
+    return result;
   }
 
   /**
@@ -465,6 +494,30 @@ export class FundingManager {
       tradingBlocked: snapshot.tradingBlocked,
       blockReason: snapshot.blockReason,
     });
+  }
+
+  /**
+   * Per-tick diagnostic: funding_decision (raw JSON to stdout).
+   * Emitted on every tick — short for skips, full details for swaps.
+   */
+  private emitDecisionLog(walletPubkey: PublicKey, result: RebalanceResult): void {
+    const details = result.details as Record<string, unknown> | undefined;
+    console.log(JSON.stringify({
+      event: 'funding_decision',
+      ts: new Date().toISOString(),
+      walletPubkey: walletPubkey.toBase58(),
+      triggered: result.triggered,
+      reason: result.reason,
+      ...(result.triggered && details ? {
+        inputMint: details['inputMint'],
+        outputMint: details['outputMint'],
+        amountRaw: details['amountRaw'],
+        estimatedUsd: details['estimatedUsd'],
+        costBps: details['costBps'],
+        newCapitalUsd: details['newCapitalUsd'],
+      } : {}),
+      ...(result.error ? { error: result.error } : {}),
+    }));
   }
 
   private emitRebalanceLog(
