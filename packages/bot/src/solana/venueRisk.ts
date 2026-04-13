@@ -51,6 +51,19 @@ export const VENUE_RISK_REGISTRY: VenueRiskProfile[] = [
     notes: 'Newer protocol, less exploit history but governance less mature',
     reviewDate: '2026-04-13',
   },
+  {
+    venue: 'Drift',
+    riskTier: 'critical',
+    mevRisk: 0.5,
+    governanceRisk: 1.0,
+    exploitHistoryRisk: 1.0,
+    auditRisk: 0.4,
+    notes: '$285M governance compromise (2026-04-01). DPRK-linked social engineering of 2/5 multisig signers. Admin key takeover, not code bug. Protocol paused; forensics ongoing.',
+    sourceUrls: [
+      'https://x.com/DriftProtocol/status/1907000000000000000',
+    ],
+    reviewDate: '2026-04-13',
+  },
 ];
 
 export const DEFAULT_UNKNOWN_VENUE_RISK: VenueRiskProfile = {
