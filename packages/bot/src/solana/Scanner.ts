@@ -4,11 +4,14 @@
  */
 
 import { SolanaExecutor, type SwapOpportunity } from './Executor';
-import { solanaConfig, solanaExecutorConfig } from './config';
+import { solanaConfig, solanaExecutorConfig, inventoryConfig } from './config';
 import { config } from '../config';
 import { Logger } from '../utils/Logger';
 import { AiScoringService, AiScoringConfig } from '../services/AiScoringService';
 import { getLiquidityRegime, makeRegimeLogEntry } from './liquidityRegime';
+import { SolanaInventoryManager } from './InventoryManager';
+import { Connection, Keypair } from '@solana/web3.js';
+import bs58 from 'bs58';
 
 const logger = new Logger('SolanaScanner');
 const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
@@ -54,6 +57,7 @@ type AlertPredictionPayload = {
 export class SolanaScanner {
   private aiScoringService: AiScoringService;
   private executor: SolanaExecutor | null;
+  private inventoryManager: SolanaInventoryManager | null = null;
   private isRunning = false;
 
   constructor() {
@@ -67,6 +71,19 @@ export class SolanaScanner {
     
     this.aiScoringService = new AiScoringService(aiConfig);
     this.executor = solanaExecutorConfig.tradingEnabled ? new SolanaExecutor(solanaExecutorConfig) : null;
+
+    // Set up inventory manager
+    if (this.executor && inventoryConfig.autoFundEnabled) {
+      this.inventoryManager = new SolanaInventoryManager({
+        config: inventoryConfig,
+        jupiterBaseUrl: solanaExecutorConfig.jupiterBaseUrl,
+        maxSlippageBps: solanaExecutorConfig.maxSlippageBps,
+        asLegacyTransaction: solanaExecutorConfig.asLegacyTransaction,
+        priorityFeeLamports: solanaExecutorConfig.priorityFeeMicroLamports,
+      });
+      this.executor.setInventoryManager(this.inventoryManager);
+      this.inventoryManager.logStartupConfig();
+    }
   }
 
   /**
@@ -104,6 +121,31 @@ export class SolanaScanner {
       });
     }
 
+    // Start inventory rebalance loop if configured
+    if (this.inventoryManager && solanaExecutorConfig.rpcUrl) {
+      const wallet = this.resolveWallet();
+      if (wallet) {
+        const connection = new Connection(solanaExecutorConfig.rpcUrl, { commitment: 'confirmed' });
+        // Initial snapshot
+        this.inventoryManager.refreshBalances(connection, wallet.publicKey.toBase58())
+          .then((snapshot) => {
+            logger.info('[SOLANA] initial inventory snapshot', {
+              solBalance: snapshot.solBalance,
+              baseAssetBalance: snapshot.baseAssetBalance,
+              availableTradingCapitalUsd: snapshot.availableTradingCapitalUsd,
+              tradingBlocked: snapshot.tradingBlocked,
+              blockReason: snapshot.blockReason,
+            });
+          })
+          .catch((err) => {
+            logger.warn('[SOLANA] initial inventory snapshot failed', {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+        this.inventoryManager.startRebalanceLoop(connection, wallet);
+      }
+    }
+
     this.scanLoop();
   }
 
@@ -113,6 +155,37 @@ export class SolanaScanner {
   stop(): void {
     logger.info('🛑 Stopping Solana scanner');
     this.isRunning = false;
+    if (this.inventoryManager) {
+      this.inventoryManager.stopRebalanceLoop();
+    }
+  }
+
+  /**
+   * Resolve wallet keypair from config (mirrors Executor.getWallet parsing).
+   */
+  private resolveWallet(): Keypair | null {
+    const raw = solanaExecutorConfig.privateKeyBase58?.trim();
+    if (!raw) return null;
+    try {
+      const decoded = bs58.decode(raw);
+      if (decoded.length === 64) return Keypair.fromSecretKey(decoded);
+      if (decoded.length === 32) return Keypair.fromSeed(decoded);
+    } catch { /* try next */ }
+    try {
+      if (/^[0-9a-fA-F]{64}$/.test(raw)) {
+        return Keypair.fromSeed(Uint8Array.from(Buffer.from(raw, 'hex')));
+      }
+      if (raw.startsWith('[') && raw.endsWith(']')) {
+        const parsed = JSON.parse(raw) as number[];
+        if (Array.isArray(parsed) && parsed.every((v) => Number.isInteger(v) && v >= 0 && v <= 255)) {
+          const bytes = Uint8Array.from(parsed);
+          if (bytes.length === 64) return Keypair.fromSecretKey(bytes);
+          if (bytes.length === 32) return Keypair.fromSeed(bytes);
+        }
+      }
+    } catch { /* ignore */ }
+    logger.warn('[SOLANA] resolveWallet: unsupported key format');
+    return null;
   }
 
   /**

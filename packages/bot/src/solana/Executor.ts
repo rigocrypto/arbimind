@@ -11,6 +11,7 @@ import { Logger } from '../utils/Logger';
 import { getVenueRisk } from './venueRisk';
 import { evaluateVenueRisk } from './riskPolicy';
 import type { RiskPolicyConfig } from './riskPolicy';
+import type { SolanaInventoryManager } from './InventoryManager';
 
 export interface SolanaExecutorConfig {
   tradingEnabled: boolean;
@@ -129,6 +130,7 @@ export class SolanaExecutor {
   private readonly logger = new Logger('SolanaExecutor');
   private startingBalanceUsd?: number;
   private signerLogged = false;
+  private inventoryManager: SolanaInventoryManager | null = null;
 
   constructor(config: SolanaExecutorConfig) {
     this.config = config;
@@ -175,6 +177,10 @@ export class SolanaExecutor {
     }
   }
 
+  setInventoryManager(manager: SolanaInventoryManager): void {
+    this.inventoryManager = manager;
+  }
+
   async execute(opportunity: SwapOpportunity): Promise<ExecutionResult> {
     resetDailyLossIfNeeded();
 
@@ -217,6 +223,32 @@ export class SolanaExecutor {
       return this.skip('missing SOLANA_RPC_URL', opportunity);
     }
 
+    // Inventory manager trading gate
+    if (this.inventoryManager) {
+      const gate = this.inventoryManager.checkTradingGate();
+      if (!gate.allowed) {
+        return this.skip(`inventory gate: ${gate.reason}`, opportunity);
+      }
+      // Acquire funding lock so rebalance doesn't conflict
+      if (!this.inventoryManager.acquireLock()) {
+        return this.skip('inventory lock held (funding rebalance in progress)', opportunity);
+      }
+    }
+
+    try {
+      return await this.executeInner(opportunity, wallet, maxNotionalUsd);
+    } finally {
+      if (this.inventoryManager) {
+        this.inventoryManager.releaseLock();
+      }
+    }
+  }
+
+  private async executeInner(
+    opportunity: SwapOpportunity,
+    wallet: Keypair,
+    maxNotionalUsd: number,
+  ): Promise<ExecutionResult> {
     const connection = new Connection(this.config.rpcUrl, {
       commitment: 'confirmed',
       confirmTransactionInitialTimeout: CONFIRM_TIMEOUT_MS,
@@ -380,7 +412,24 @@ export class SolanaExecutor {
       outputMint: sizedOpportunity.outputMint,
     });
 
-    return this.signAndSend(transaction, wallet, sizedOpportunity, connection, ammMeta);
+    // Capture pre-trade balance for PnL
+    const preTradeBaseBalance = this.inventoryManager?.getAvailableTradingCapitalUsd() ?? 0;
+
+    const result = await this.signAndSend(transaction, wallet, sizedOpportunity, connection, ammMeta);
+
+    // Record PnL after trade
+    if (this.inventoryManager && result.success) {
+      try {
+        const postSnapshot = await this.inventoryManager.refreshBalances(connection, wallet.publicKey.toBase58());
+        this.inventoryManager.recordTradeResult(preTradeBaseBalance, postSnapshot.availableTradingCapitalUsd);
+      } catch (err) {
+        this.logger.warn('[SOLANA] post-trade PnL snapshot failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return result;
   }
 
   private async fetchQuote(opportunity: SwapOpportunity): Promise<JupiterQuoteResponse> {

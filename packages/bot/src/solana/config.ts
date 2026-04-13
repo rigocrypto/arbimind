@@ -7,6 +7,22 @@ import type { RiskPolicyConfig } from './riskPolicy';
 import type { RiskTier } from './venueRisk';
 import type { IncidentType } from './incidentRegistry';
 
+export type BaseAsset = 'USDC' | 'USDT';
+
+export interface InventoryConfig {
+  autoFundEnabled: boolean;
+  baseAsset: BaseAsset;
+  baseAssetMint: string;
+  minSolReserve: number;
+  targetSolReserve: number;
+  autoFundMinSwapUsd: number;
+  fundingRebalanceIntervalMs: number;
+  positionSizeFraction: number;
+  minTradeUsd: number;
+  maxTradeUsd: number;
+  compoundProfits: boolean;
+}
+
 export interface SolanaConfig {
   enabled: boolean;
   watchedPools: string[];
@@ -145,4 +161,26 @@ export const solanaExecutorConfig: SolanaExecutorRuntimeConfig = {
     incidentCooldownDays: parseNonNegativeNumber(process.env['SOLANA_RISK_INCIDENT_COOLDOWN_DAYS'], 30),
     denyIncidentTypes: (process.env['SOLANA_RISK_DENY_INCIDENT_TYPES'] ?? 'governance_compromise').split(',').map(s => s.trim()).filter(Boolean) as IncidentType[],
   },
+};
+
+const MINT_USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+const MINT_USDT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
+
+function parseBaseAsset(value: string | undefined): BaseAsset {
+  const v = (value || '').trim().toUpperCase();
+  return v === 'USDT' ? 'USDT' : 'USDC';
+}
+
+export const inventoryConfig: InventoryConfig = {
+  autoFundEnabled: isEnvTrue(process.env['SOLANA_AUTO_FUND_ENABLED']),
+  baseAsset: parseBaseAsset(process.env['SOLANA_BASE_ASSET']),
+  baseAssetMint: parseBaseAsset(process.env['SOLANA_BASE_ASSET']) === 'USDT' ? MINT_USDT : MINT_USDC,
+  minSolReserve: parseNumber(process.env['SOLANA_MIN_SOL_RESERVE'], 0.15),
+  targetSolReserve: parseNumber(process.env['SOLANA_TARGET_SOL_RESERVE'], 0.25),
+  autoFundMinSwapUsd: parseNumber(process.env['SOLANA_AUTO_FUND_MIN_SWAP_USD'], 25),
+  fundingRebalanceIntervalMs: parseNumber(process.env['SOLANA_FUNDING_REBALANCE_INTERVAL_MS'], 30_000),
+  positionSizeFraction: parseFraction(process.env['SOLANA_POSITION_SIZE_FRACTION'], 0.25),
+  minTradeUsd: parseNumber(process.env['SOLANA_MIN_TRADE_USD'], 20),
+  maxTradeUsd: parseNumber(process.env['SOLANA_MAX_TRADE_USD'], 250),
+  compoundProfits: !isEnvFalse(process.env['SOLANA_COMPOUND_PROFITS'] ?? 'true'),
 };
