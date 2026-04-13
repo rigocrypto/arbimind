@@ -713,6 +713,30 @@ export class SolanaExecutor {
           expectedProfitUsd: opportunity.expectedProfitUsd,
           ...ammMeta,
         });
+
+        // Log actual transaction fee paid
+        try {
+          const txDetails = await connection.getTransaction(signature, {
+            commitment: 'confirmed',
+            maxSupportedTransactionVersion: 0,
+          });
+          if (txDetails?.meta) {
+            const feeLamports = txDetails.meta.fee;
+            const computeUnitsConsumed = txDetails.meta.computeUnitsConsumed ?? 0;
+            this.logger.info('[SOLANA] execution fee', {
+              signature,
+              feeLamports,
+              feeSol: feeLamports / 1e9,
+              computeUnitsConsumed,
+              effectiveCuPrice: computeUnitsConsumed > 0
+                ? Math.round(((feeLamports - 5000) * 1e6) / computeUnitsConsumed)
+                : 0,
+            });
+          }
+        } catch {
+          // Non-critical — fee logging is best-effort
+        }
+
         this.logger.info('[SOLANA] swap confirmed', {
           signature,
           ...ammMeta,
