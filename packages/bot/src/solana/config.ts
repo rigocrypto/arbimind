@@ -3,6 +3,10 @@
  * Pools, scanners, and AI scoring for Raydium/Pump.fun DEX
  */
 
+import type { RiskPolicyConfig } from './riskPolicy';
+import type { RiskTier } from './venueRisk';
+import type { IncidentType } from './incidentRegistry';
+
 export interface SolanaConfig {
   enabled: boolean;
   watchedPools: string[];
@@ -16,6 +20,7 @@ export interface SolanaExecutorRuntimeConfig {
   logOnly: boolean;
   canaryMode: boolean;
   onlyDirectRoutes: boolean;
+  allowMultihop: boolean;
   computeUnitLimit: number;
   priorityFeeMicroLamports: number;
   maxPriceImpactPct: number;
@@ -39,6 +44,7 @@ export interface SolanaExecutorRuntimeConfig {
   rpcUrl: string;
   privateKeyBase58: string;
   jupiterBaseUrl: string;
+  riskPolicy: RiskPolicyConfig;
 }
 
 function isEnvTrue(value: string | undefined): boolean {
@@ -87,6 +93,7 @@ export const solanaExecutorConfig: SolanaExecutorRuntimeConfig = {
   logOnly: !isEnvFalse(process.env['SOLANA_LOG_ONLY']),
   canaryMode: !isEnvFalse(process.env['SOLANA_CANARY_MODE']),
   onlyDirectRoutes: !isEnvFalse(process.env['SOLANA_ONLY_DIRECT_ROUTES'] || 'true'),
+  allowMultihop: isEnvTrue(process.env['SOLANA_ALLOW_MULTIHOP']),
   computeUnitLimit: Number(process.env['SOLANA_COMPUTE_UNIT_LIMIT'] ?? 300_000),
   priorityFeeMicroLamports: Number(process.env['SOLANA_PRIORITY_FEE_MICROLAMPORTS'] ?? 5_000),
   maxPriceImpactPct: Number(process.env['SOLANA_MAX_PRICE_IMPACT_PCT'] ?? 0.3),
@@ -130,4 +137,12 @@ export const solanaExecutorConfig: SolanaExecutorRuntimeConfig = {
     process.env['SOLANA_TREASURY_SECRET_KEY'] ||
     '',
   jupiterBaseUrl: process.env['JUPITER_BASE_URL'] || 'https://lite-api.jup.ag/swap/v1',
+  riskPolicy: {
+    denyTiers: (process.env['SOLANA_RISK_DENY_TIERS'] ?? 'critical').split(',').map(s => s.trim()).filter(Boolean) as RiskTier[],
+    canaryTiers: (process.env['SOLANA_RISK_CANARY_TIERS'] ?? 'high').split(',').map(s => s.trim()).filter(Boolean) as RiskTier[],
+    canaryMaxNotionalUsd: parseNumber(process.env['SOLANA_RISK_CANARY_MAX_USD'], 1),
+    minEdgeBumpBps: parseNonNegativeNumber(process.env['SOLANA_RISK_EDGE_BUMP_BPS'], 15),
+    incidentCooldownDays: parseNonNegativeNumber(process.env['SOLANA_RISK_INCIDENT_COOLDOWN_DAYS'], 30),
+    denyIncidentTypes: (process.env['SOLANA_RISK_DENY_INCIDENT_TYPES'] ?? 'governance_compromise').split(',').map(s => s.trim()).filter(Boolean) as IncidentType[],
+  },
 };
