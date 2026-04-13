@@ -328,7 +328,7 @@ export class SolanaScanner {
       try {
         await this.fundingManager.checkAndRebalance(
           this.scanConnection,
-          this.scanWallet.publicKey,
+          this.scanWallet,
         );
       } catch (err) {
         logger.warn('[FUNDING] checkAndRebalance error', {

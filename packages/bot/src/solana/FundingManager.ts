@@ -1,12 +1,13 @@
 /**
- * FundingManager — deposit-to-trade auto-funding flow (Step 1: balance reading + WalletSnapshot logging)
+ * FundingManager — deposit-to-trade auto-funding flow
  *
- * Reads SOL, USDC, USDT balances every scanner tick, enforces SOL reserve policy,
- * and exposes available trading capital. Swap/normalization logic will be added
- * in a later step once live balance logging is validated.
+ * Step 1: wallet balance snapshotting (SOL / USDC / USDT), reserve math,
+ *         available trading capital, trading gate.
+ * Step 2: actual swap execution — SOL excess → USDC, USDT → USDC normalization
+ *         via Jupiter, with cooldown + cost gate + one-swap-per-tick policy.
  */
 
-import { Connection, PublicKey } from '@solana/web3.js';
+import { Connection, Keypair, PublicKey, VersionedTransaction } from '@solana/web3.js';
 import { Logger } from '../utils/Logger';
 
 // ── Constants ────────────────────────────────────────────────────
@@ -77,6 +78,13 @@ export interface RebalanceResult {
   error?: string;
 }
 
+interface JupiterQuoteResponse {
+  outAmount?: string;
+  otherAmountThreshold?: string;
+  priceImpactPct?: string;
+  routePlan?: unknown[];
+}
+
 // ── FundingManager ───────────────────────────────────────────────
 
 export class FundingManager {
@@ -101,17 +109,76 @@ export class FundingManager {
   // ── Public API ─────────────────────────────────────────────────
 
   /**
-   * Called once per scanner tick. Reads balances, logs snapshot,
-   * and (in a future step) runs rebalance if needed.
+   * Called once per scanner tick. Reads balances, checks rebalance
+   * conditions, executes at most one swap per tick.
    *
-   * Returns a RebalanceResult indicating what happened.
+   * Execution order:
+   *  1. Take snapshot
+   *  2. Cooldown check
+   *  3. SOL excess → base asset (highest priority)
+   *  4. Non-base stable normalization (USDT → USDC or vice versa)
+   *  5. Post-swap snapshot refresh
+   *  6. Update lastRebalanceAt (only on success)
    */
-  async checkAndRebalance(connection: Connection, walletPubkey: PublicKey): Promise<RebalanceResult> {
+  async checkAndRebalance(connection: Connection, wallet: Keypair): Promise<RebalanceResult> {
+    const walletPubkey = wallet.publicKey;
     const snapshot = await this.takeSnapshot(connection, walletPubkey);
-    this.logSnapshot(snapshot);
+    this.logSnapshot(snapshot, walletPubkey);
 
-    // Step 1: no swap logic — just snapshot + log
-    return { triggered: false, reason: 'step1_snapshot_only' };
+    // ── Cooldown gate ──────────────────────────────────────────
+    const now = Date.now();
+    if (this.lastRebalanceAtMs > 0 && now - this.lastRebalanceAtMs < this.config.rebalanceCooldownMs) {
+      return { triggered: false, reason: 'cooldown' };
+    }
+
+    // ── Case 1: SOL excess → base asset ────────────────────────
+    if (snapshot.solExcessVsTarget > 0) {
+      const excessUsd = snapshot.solExcessVsTarget * snapshot.solPriceUsd;
+      if (excessUsd < this.config.minRebalanceUsd) {
+        return { triggered: false, reason: 'below_min_usd' };
+      }
+      if (snapshot.solPriceUsd <= 0) {
+        return { triggered: false, reason: 'no_sol_price' };
+      }
+
+      const inputAmountRaw = Math.floor(snapshot.solExcessVsTarget * 1e9); // lamports
+      return this.attemptSwap({
+        connection,
+        wallet,
+        inputMint: WRAPPED_SOL_MINT,
+        outputMint: this.config.baseAssetMint,
+        amountRaw: inputAmountRaw,
+        estimatedUsd: excessUsd,
+        successReason: 'sol_excess_swapped',
+        label: 'SOL→' + this.config.baseAsset,
+      });
+    }
+
+    // ── Case 2: Non-base stable normalization ──────────────────
+    const nonBaseMint = this.config.baseAsset === 'USDC' ? MINT_USDT : MINT_USDC;
+    const nonBaseBalance = this.config.baseAsset === 'USDC'
+      ? snapshot.usdtBalance
+      : snapshot.usdcBalance;
+
+    if (nonBaseBalance >= this.config.minRebalanceUsd) {
+      const decimals = MINT_DECIMALS[nonBaseMint] ?? 6;
+      const amountRaw = Math.floor(nonBaseBalance * 10 ** decimals);
+      const nonBaseSymbol = this.config.baseAsset === 'USDC' ? 'USDT' : 'USDC';
+
+      return this.attemptSwap({
+        connection,
+        wallet,
+        inputMint: nonBaseMint,
+        outputMint: this.config.baseAssetMint,
+        amountRaw,
+        estimatedUsd: nonBaseBalance,
+        successReason: nonBaseSymbol.toLowerCase() + '_normalized',
+        label: nonBaseSymbol + '→' + this.config.baseAsset,
+      });
+    }
+
+    // ── Nothing to rebalance ──────────────────────────────────
+    return { triggered: false, reason: 'no_action_needed' };
   }
 
   /**
@@ -214,10 +281,180 @@ export class FundingManager {
     return this.lastSnapshot?.tradingBlocked ?? true;
   }
 
+  // ── Swap execution ─────────────────────────────────────────────
+
+  private async attemptSwap(opts: {
+    connection: Connection;
+    wallet: Keypair;
+    inputMint: string;
+    outputMint: string;
+    amountRaw: number;
+    estimatedUsd: number;
+    successReason: string;
+    label: string;
+  }): Promise<RebalanceResult> {
+    const { connection, wallet, inputMint, outputMint, amountRaw, estimatedUsd, successReason, label } = opts;
+    const walletPubkey = wallet.publicKey;
+
+    // 1. Get Jupiter quote
+    let quoteResponse: JupiterQuoteResponse;
+    try {
+      quoteResponse = await this.getJupiterQuote(inputMint, outputMint, amountRaw);
+    } catch (err) {
+      const result: RebalanceResult = {
+        triggered: true,
+        reason: 'swap_failed',
+        error: err instanceof Error ? err.message : String(err),
+      };
+      this.emitRebalanceLog(label, estimatedUsd, 0, result);
+      return result;
+    }
+
+    // 2. Cost gate — estimate fee in BPS
+    const outAmount = Number(quoteResponse.outAmount || '0');
+    const otherThreshold = Number(
+      (quoteResponse as Record<string, unknown>)['otherAmountThreshold'] ?? outAmount,
+    );
+    const slippageCostRaw = outAmount > 0 && otherThreshold < outAmount
+      ? outAmount - otherThreshold
+      : 0;
+    // Approximate slippage cost in USD (stables ≈ $1 per unit at 6 decimals)
+    const outputDecimals = MINT_DECIMALS[outputMint] ?? 6;
+    const slippageCostUsd = slippageCostRaw / 10 ** outputDecimals;
+    // Estimate tx fee: ~5000 lamports base + 5000 priority (rebalance = low priority)
+    const estFeeLamports = 10_000;
+    const solPrice = this.lastSnapshot?.solPriceUsd ?? 0;
+    const txCostUsd = solPrice > 0 ? (estFeeLamports / 1e9) * solPrice : 0;
+    const totalCostUsd = slippageCostUsd + txCostUsd;
+    const costBps = estimatedUsd > 0
+      ? Math.round((totalCostUsd / estimatedUsd) * 10_000)
+      : 0;
+
+    if (costBps > this.config.maxRebalanceCostBps) {
+      const result: RebalanceResult = {
+        triggered: false,
+        reason: 'too_expensive',
+        details: { costBps, maxAllowedBps: this.config.maxRebalanceCostBps, totalCostUsd },
+      };
+      this.emitRebalanceLog(label, estimatedUsd, 0, result);
+      return result;
+    }
+
+    // 3. Execute swap
+    let signature: string;
+    try {
+      signature = await this.executeJupiterSwap(connection, wallet, quoteResponse);
+    } catch (err) {
+      // Do NOT update lastRebalanceAtMs — next tick should retry
+      const result: RebalanceResult = {
+        triggered: true,
+        reason: 'swap_failed',
+        error: err instanceof Error ? err.message : String(err),
+      };
+      this.emitRebalanceLog(label, estimatedUsd, 0, result);
+      return result;
+    }
+
+    // 4. Post-swap snapshot refresh
+    const postSnapshot = await this.takeSnapshot(connection, walletPubkey);
+
+    // 5. Update cooldown (success only)
+    this.lastRebalanceAtMs = Date.now();
+
+    const newCapitalUsd = postSnapshot.availableTradeCapitalUsd;
+    const result: RebalanceResult = {
+      triggered: true,
+      reason: successReason,
+      details: {
+        signature,
+        inputMint,
+        outputMint,
+        amountRaw,
+        estimatedUsd,
+        costBps,
+        newCapitalUsd,
+      },
+    };
+    this.emitRebalanceLog(label, estimatedUsd, newCapitalUsd, result);
+    return result;
+  }
+
+  private async getJupiterQuote(
+    inputMint: string,
+    outputMint: string,
+    amountRaw: number,
+  ): Promise<JupiterQuoteResponse> {
+    const url = new URL(`${this.config.jupiterBaseUrl}/quote`);
+    url.searchParams.set('inputMint', inputMint);
+    url.searchParams.set('outputMint', outputMint);
+    url.searchParams.set('amount', String(amountRaw));
+    url.searchParams.set('slippageBps', '50');
+
+    const resp = await fetch(url.toString());
+    if (!resp.ok) {
+      throw new Error(`Jupiter quote HTTP ${resp.status}`);
+    }
+    return (await resp.json()) as JupiterQuoteResponse;
+  }
+
+  private async executeJupiterSwap(
+    connection: Connection,
+    wallet: Keypair,
+    quoteResponse: JupiterQuoteResponse,
+  ): Promise<string> {
+    const swapResp = await fetch(`${this.config.jupiterBaseUrl}/swap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        quoteResponse,
+        userPublicKey: wallet.publicKey.toBase58(),
+        wrapAndUnwrapSol: true,
+        dynamicComputeUnitLimit: true,
+        dynamicSlippage: true,
+        prioritizationFeeLamports: {
+          priorityLevelWithMaxLamports: {
+            maxLamports: 5000,
+            priorityLevel: 'low',
+          },
+        },
+        asLegacyTransaction: true,
+      }),
+    });
+
+    if (!swapResp.ok) {
+      const body = await swapResp.text().catch(() => '');
+      throw new Error(`Jupiter swap HTTP ${swapResp.status}: ${body.slice(0, 200)}`);
+    }
+
+    const swapBody = (await swapResp.json()) as { swapTransaction?: string };
+    if (!swapBody.swapTransaction) {
+      throw new Error('Jupiter swap response missing swapTransaction');
+    }
+
+    // Deserialize, sign, and send
+    const transaction = VersionedTransaction.deserialize(
+      Buffer.from(swapBody.swapTransaction, 'base64'),
+    );
+    transaction.sign([wallet]);
+
+    const signature = await connection.sendTransaction(transaction, {
+      skipPreflight: false,
+      maxRetries: 2,
+    });
+
+    const confirmation = await connection.confirmTransaction(signature, 'confirmed');
+    if (confirmation.value.err) {
+      throw new Error(`swap confirmed with error: ${JSON.stringify(confirmation.value.err)}`);
+    }
+
+    return signature;
+  }
+
   // ── Internal helpers ───────────────────────────────────────────
 
-  private logSnapshot(snapshot: WalletSnapshot): void {
+  private logSnapshot(snapshot: WalletSnapshot, walletPubkey?: PublicKey): void {
     this.logger.info('[FUNDING] wallet_snapshot', {
+      wallet: walletPubkey?.toBase58() ?? 'unknown',
       solBalance: +snapshot.solBalance.toFixed(4),
       usdcBalance: +snapshot.usdcBalance.toFixed(2),
       usdtBalance: +snapshot.usdtBalance.toFixed(2),
@@ -227,6 +464,24 @@ export class FundingManager {
       availableTradeCapitalUsd: +snapshot.availableTradeCapitalUsd.toFixed(2),
       tradingBlocked: snapshot.tradingBlocked,
       blockReason: snapshot.blockReason,
+    });
+  }
+
+  private emitRebalanceLog(
+    label: string,
+    estimatedUsd: number,
+    newCapitalUsd: number,
+    result: RebalanceResult,
+  ): void {
+    this.logger.info('[FUNDING] funding_rebalance', {
+      event: 'funding_rebalance',
+      label,
+      triggered: result.triggered,
+      reason: result.reason,
+      estimatedUsd: +estimatedUsd.toFixed(2),
+      newCapitalUsd: +newCapitalUsd.toFixed(2),
+      ...(result.details ?? {}),
+      ...(result.error ? { error: result.error } : {}),
     });
   }
 
