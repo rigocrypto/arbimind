@@ -50,7 +50,7 @@
     "redis": "^5.11.0",
     "winston": "^3.11.0",
     "ws": "^8.20.0",
-    "yargs": "^17.7.2"
+    "yargs": "^18.0.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
