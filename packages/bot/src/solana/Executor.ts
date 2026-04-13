@@ -375,6 +375,9 @@ export class SolanaExecutor {
       ...ammMeta,
       notionalUsd: sizedOpportunity.estimatedNotionalUsd,
       expectedProfitUsd: sizedOpportunity.expectedProfitUsd,
+      inAmount: sizedOpportunity.amountLamports,
+      inputMint: sizedOpportunity.inputMint,
+      outputMint: sizedOpportunity.outputMint,
     });
 
     return this.signAndSend(transaction, wallet, sizedOpportunity, connection, ammMeta);
@@ -831,9 +834,31 @@ export class SolanaExecutor {
       targetSizeUsd *= this.config.drawdownScale;
     }
 
-    targetSizeUsd = Math.max(1, Math.min(targetSizeUsd, hardMaxUsd));
+    // Cap at actual wallet balance — never request more than we hold.
+    // (Previous Math.max(1,...) forced $1 floor even when balance < $1 → InsufficientFunds 6024)
+    targetSizeUsd = Math.min(targetSizeUsd, hardMaxUsd, balanceUsd);
+
+    if (targetSizeUsd < this.config.minTradeSizeUsd) {
+      this.logger.info('[SOLANA] sized below minimum after adjustments', {
+        label: opportunity.label,
+        targetSizeUsd,
+        balanceUsd,
+        minTradeSizeUsd: this.config.minTradeSizeUsd,
+      });
+      return null;
+    }
 
     const scale = targetSizeUsd / Math.max(opportunity.estimatedNotionalUsd, 1e-9);
+
+    this.logger.debug('[SOLANA] position sizing', {
+      label: opportunity.label,
+      balanceUsd,
+      proposedSizeUsd,
+      targetSizeUsd,
+      scale,
+      inputAmountLamports: Math.max(1, Math.round(opportunity.amountLamports * scale)),
+    });
+
     return {
       ...opportunity,
       amountLamports: Math.max(1, Math.round(opportunity.amountLamports * scale)),
