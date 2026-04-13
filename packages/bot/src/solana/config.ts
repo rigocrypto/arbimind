@@ -129,5 +129,5 @@ export const solanaExecutorConfig: SolanaExecutorRuntimeConfig = {
     process.env['SOLANA_ARB_SECRET_KEY'] ||
     process.env['SOLANA_TREASURY_SECRET_KEY'] ||
     '',
-  jupiterBaseUrl: process.env['JUPITER_BASE_URL'] || 'https://quote-api.jup.ag/v6',
+  jupiterBaseUrl: process.env['JUPITER_BASE_URL'] || 'https://lite-api.jup.ag/swap/v1',
 };
