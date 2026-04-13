@@ -515,27 +515,58 @@ export class SolanaExecutor {
     quoteResponse: JupiterQuoteResponse,
     userPublicKey: string
   ): Promise<VersionedTransaction> {
+    const swapRequestBody: Record<string, unknown> = {
+      quoteResponse,
+      userPublicKey,
+      wrapAndUnwrapSol: true,
+      dynamicComputeUnitLimit: true,
+      dynamicSlippage: true,
+      prioritizationFeeLamports: {
+        priorityLevelWithMaxLamports: {
+          maxLamports: this.config.priorityFeeMicroLamports,
+          priorityLevel: 'medium',
+        },
+      },
+      asLegacyTransaction: this.config.asLegacyTransaction,
+    };
+
+    this.logger.info('[SOLANA] swap build request', {
+      endpoint: `${this.config.jupiterBaseUrl}/swap`,
+      dynamicComputeUnitLimit: swapRequestBody['dynamicComputeUnitLimit'],
+      dynamicSlippage: swapRequestBody['dynamicSlippage'],
+      wrapAndUnwrapSol: swapRequestBody['wrapAndUnwrapSol'],
+      asLegacyTransaction: swapRequestBody['asLegacyTransaction'],
+      prioritizationFeeLamports: swapRequestBody['prioritizationFeeLamports'],
+      userPublicKey,
+    });
+
     const response = await fetch(`${this.config.jupiterBaseUrl}/swap`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        quoteResponse,
-        userPublicKey,
-        wrapAndUnwrapSol: true,
-        dynamicComputeUnitLimit: false,
-        computeUnitPriceMicroLamports: this.config.priorityFeeMicroLamports,
-        computeUnitLimit: this.config.computeUnitLimit,
-        asLegacyTransaction: this.config.asLegacyTransaction,
-      }),
+      body: JSON.stringify(swapRequestBody),
     });
 
     if (!response.ok) {
+      const errorBody = await response.text().catch(() => '');
+      this.logger.warn('[SOLANA] swap build error response', {
+        status: response.status,
+        body: errorBody.slice(0, 500),
+      });
       throw new Error(`Jupiter swap build HTTP ${response.status}`);
     }
 
-    const body = (await response.json()) as { swapTransaction?: string };
+    const body = (await response.json()) as {
+      swapTransaction?: string;
+      dynamicSlippageReport?: unknown;
+      simulationError?: unknown;
+      lastValidBlockHeight?: number;
+    };
     if (!body.swapTransaction) {
       throw new Error('Jupiter swap response missing swapTransaction');
+    }
+
+    if (body.dynamicSlippageReport) {
+      this.logger.info('[SOLANA] dynamicSlippageReport', body.dynamicSlippageReport);
     }
 
     return VersionedTransaction.deserialize(Buffer.from(body.swapTransaction, 'base64'));
