@@ -15,7 +15,16 @@ export interface SolanaExecutorRuntimeConfig {
   tradingEnabled: boolean;
   logOnly: boolean;
   canaryMode: boolean;
+  onlyDirectRoutes: boolean;
+  computeUnitLimit: number;
+  priorityFeeMicroLamports: number;
+  maxPriceImpactPct: number;
+  ammDenylist: string[];
+  ammAllowlist: string[];
+  templateDenylist: string[];
+  raydiumFingerprintDenylist: string[];
   tradeSizeMode: 'fixed' | 'dynamic';
+  minSpreadBps: number;
   allocationPct: number;
   minTradeSizeUsd: number;
   maxTradeSizeUsd: number;
@@ -25,6 +34,7 @@ export interface SolanaExecutorRuntimeConfig {
   minExpectedProfitUsd: number;
   maxDailyLossUsd: number;
   maxSlippageBps: number;
+  quoteMaxAgeMs: number;
   rpcUrl: string;
   privateKeyBase58: string;
   jupiterBaseUrl: string;
@@ -43,6 +53,11 @@ function isEnvFalse(value: string | undefined): boolean {
 function parseNumber(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseNonNegativeNumber(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function parseFraction(value: string | undefined, fallback: number): number {
@@ -70,16 +85,38 @@ export const solanaExecutorConfig: SolanaExecutorRuntimeConfig = {
   tradingEnabled: isEnvTrue(process.env['SOLANA_TRADING_ENABLED']),
   logOnly: !isEnvFalse(process.env['SOLANA_LOG_ONLY']),
   canaryMode: !isEnvFalse(process.env['SOLANA_CANARY_MODE']),
+  onlyDirectRoutes: !isEnvFalse(process.env['SOLANA_ONLY_DIRECT_ROUTES'] || 'true'),
+  computeUnitLimit: Number(process.env['SOLANA_COMPUTE_UNIT_LIMIT'] ?? 300_000),
+  priorityFeeMicroLamports: Number(process.env['SOLANA_PRIORITY_FEE_MICROLAMPORTS'] ?? 5_000),
+  maxPriceImpactPct: Number(process.env['SOLANA_MAX_PRICE_IMPACT_PCT'] ?? 0.3),
+  ammDenylist: (process.env['SOLANA_AMM_DENYLIST'] ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+  ammAllowlist: (process.env['SOLANA_AMM_ALLOWLIST'] ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+  templateDenylist: (process.env['SOLANA_TEMPLATE_DENYLIST'] ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+  raydiumFingerprintDenylist: (process.env['SOLANA_RAYDIUM_FP_DENYLIST'] ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
   tradeSizeMode: parseMode(process.env['SOLANA_TRADE_SIZE_MODE'] || process.env['TRADE_SIZE_MODE']),
+  minSpreadBps: parseNonNegativeNumber(process.env['SOLANA_MIN_SPREAD_BPS'], 0),
   allocationPct: parseFraction(process.env['SOLANA_ALLOCATION_PCT'] || process.env['ALLOCATION_PCT'], 0.25),
   minTradeSizeUsd: parseNumber(process.env['SOLANA_MIN_TRADE_SIZE_USD'] || process.env['MIN_TRADE_SIZE_USD'], 0),
   maxTradeSizeUsd: parseNumber(process.env['SOLANA_MAX_TRADE_SIZE_USD'] || process.env['MAX_TRADE_SIZE_USD'], 100),
   drawdownTriggerPct: parseFraction(process.env['SOLANA_DRAWDOWN_TRIGGER_PCT'], 0.8),
   drawdownScale: parseFraction(process.env['SOLANA_DRAWDOWN_SCALE'], 0.5),
   maxNotionalUsd: parseNumber(process.env['SOLANA_MAX_NOTIONAL_USD'], 5),
-  minExpectedProfitUsd: parseNumber(process.env['SOLANA_MIN_EXPECTED_PROFIT_USD'], 0.1),
+  minExpectedProfitUsd: parseNonNegativeNumber(process.env['SOLANA_MIN_EXPECTED_PROFIT_USD'], 0.1),
   maxDailyLossUsd: parseNumber(process.env['SOLANA_MAX_DAILY_LOSS_USD'], 25),
   maxSlippageBps: parseNumber(process.env['SOLANA_MAX_SLIPPAGE_BPS'] || process.env['MAX_SLIPPAGE_BPS'], 50),
+  quoteMaxAgeMs: parseNumber(process.env['QUOTE_MAX_AGE_MS'], 2_000),
   rpcUrl:
     process.env['SOLANA_RPC_URL_MAINNET_BETA'] ||
     process.env['SOLANA_RPC_URL'] ||

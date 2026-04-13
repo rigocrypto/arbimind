@@ -6,13 +6,23 @@ import {
   VersionedTransaction,
 } from '@solana/web3.js';
 import bs58 from 'bs58';
+import { createHash } from 'crypto';
 import { Logger } from '../utils/Logger';
 
 export interface SolanaExecutorConfig {
   tradingEnabled: boolean;
   logOnly: boolean;
   canaryMode: boolean;
+  onlyDirectRoutes: boolean;
+  computeUnitLimit: number;
+  priorityFeeMicroLamports: number;
+  maxPriceImpactPct: number;
+  ammDenylist: string[];
+  ammAllowlist: string[];
+  templateDenylist: string[];
+  raydiumFingerprintDenylist: string[];
   tradeSizeMode: 'fixed' | 'dynamic';
+  minSpreadBps: number;
   allocationPct: number;
   minTradeSizeUsd: number;
   maxTradeSizeUsd: number;
@@ -22,6 +32,7 @@ export interface SolanaExecutorConfig {
   minExpectedProfitUsd: number;
   maxDailyLossUsd: number;
   maxSlippageBps: number;
+  quoteMaxAgeMs: number;
   rpcUrl: string;
   privateKeyBase58: string;
   jupiterBaseUrl: string;
@@ -33,7 +44,9 @@ export interface SwapOpportunity {
   amountLamports: number;
   estimatedNotionalUsd: number;
   expectedProfitUsd: number;
+  spreadBps: number;
   label: string;
+  quotedAtMs?: number;
 }
 
 export interface ExecutionResult {
@@ -45,10 +58,38 @@ export interface ExecutionResult {
   skipReason?: string;
 }
 
+interface RouteLeg {
+  percent?: number | string;
+  swapInfo?: {
+    ammKey?: string;
+    label?: string;
+    inputMint?: string;
+    outputMint?: string;
+  };
+  [key: string]: unknown;
+}
+
+interface AmmMeta {
+  ammLabel: string;
+  ammKey: string;
+  inputMint: string;
+  outputMint: string;
+}
+
+interface TxMeta {
+  instructionCount: number;
+  accountKeyCount: number;
+  writableCount: number;
+  signerCount: number;
+  accountFingerprint: string;
+  accountKeySample: string[];
+  programIds: string[];
+}
+
 interface JupiterQuoteResponse {
   outAmount: string;
   priceImpactPct: string;
-  routePlan: unknown[];
+  routePlan: RouteLeg[];
   [key: string]: unknown;
 }
 
@@ -58,7 +99,7 @@ interface SolanaSigner {
 }
 
 const CANARY_MAX_NOTIONAL_USD = 5;
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 1; // EXP-013: reduced from 3 — 0x1788 won't resolve on retry, cuts Helius 429s
 const CONFIRM_TIMEOUT_MS = 60_000;
 
 let dailyLossUsd = 0;
@@ -93,6 +134,9 @@ export class SolanaExecutor {
     this.logger.info('[SOLANA] runtime notional', {
       configuredMaxNotionalUsd: this.config.maxNotionalUsd,
       effectiveMaxNotionalUsd,
+      minExpectedProfitUsd: this.config.minExpectedProfitUsd,
+      minExpectedProfitEnvRaw: process.env['SOLANA_MIN_EXPECTED_PROFIT_USD'] || null,
+      jupiterBaseUrl: this.config.jupiterBaseUrl,
       canaryMode: this.config.canaryMode,
       tradeSizeMode: this.config.tradeSizeMode,
       allocationPct: this.config.allocationPct,
@@ -100,6 +144,16 @@ export class SolanaExecutor {
       maxTradeSizeUsd: this.config.maxTradeSizeUsd,
       drawdownTriggerPct: this.config.drawdownTriggerPct,
       drawdownScale: this.config.drawdownScale,
+      minSpreadBps: this.config.minSpreadBps,
+      quoteMaxAgeMs: this.config.quoteMaxAgeMs,
+      onlyDirectRoutes: this.config.onlyDirectRoutes,
+      computeUnitLimit: this.config.computeUnitLimit,
+      priorityFeeMicroLamports: this.config.priorityFeeMicroLamports,
+      maxPriceImpactPct: this.config.maxPriceImpactPct,
+      ammDenylistSize: this.config.ammDenylist.length,
+      ammAllowlistSize: this.config.ammAllowlist.length,
+      templateDenylistSize: this.config.templateDenylist.length,
+      raydiumFingerprintDenylistSize: this.config.raydiumFingerprintDenylist.length,
     });
 
     if (this.config.tradingEnabled && !this.config.logOnly) {
@@ -174,12 +228,69 @@ export class SolanaExecutor {
     }
 
     let quoteResponse: JupiterQuoteResponse;
+    const quoteRequestedAtMs = Date.now();
     try {
       quoteResponse = await this.fetchQuote(sizedOpportunity);
+      sizedOpportunity.quotedAtMs = quoteRequestedAtMs;
     } catch (error) {
       return {
         success: false,
         error: `quote failed: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+
+    const routePlan = (quoteResponse.routePlan as RouteLeg[]) ?? [];
+    const firstLeg = routePlan[0]?.swapInfo ?? {};
+    const quoteRecord = quoteResponse as Record<string, unknown>;
+    this.logger.info('[SOLANA] quote diagnostics', {
+      ammLabel: String(firstLeg.label ?? 'unknown'),
+      ammKey: String(firstLeg.ammKey ?? 'unknown'),
+      inputMint: String(quoteRecord['inputMint'] ?? sizedOpportunity.inputMint),
+      outputMint: String(quoteRecord['outputMint'] ?? sizedOpportunity.outputMint),
+      inAmount: String(quoteRecord['inAmount'] ?? sizedOpportunity.amountLamports),
+      outAmount: quoteResponse.outAmount,
+      slippageBps: this.config.maxSlippageBps,
+      priceImpactPct: quoteResponse.priceImpactPct,
+      routeLegs: routePlan.length,
+      routePlan,
+    });
+
+    const { pass, rejectReason } = this.validateRoute(quoteResponse);
+    if (!pass) {
+      this.logger.info('[SOLANA] route rejected', {
+        label: sizedOpportunity.label,
+        rejectReason,
+      });
+      return {
+        success: false,
+        skipped: true,
+        skipReason: `route filter: ${rejectReason}`,
+      };
+    }
+
+    const ammMeta: AmmMeta = {
+      ammLabel: String(firstLeg.label ?? 'unknown'),
+      ammKey: String(firstLeg.ammKey ?? 'unknown'),
+      inputMint: String(firstLeg.inputMint ?? sizedOpportunity.inputMint),
+      outputMint: String(firstLeg.outputMint ?? sizedOpportunity.outputMint),
+    };
+    this.logger.info('[SOLANA] amm diagnostics', {
+      ...ammMeta,
+      priceImpactPct: quoteResponse.priceImpactPct,
+      outAmount: quoteResponse.outAmount,
+    });
+
+    const ammCheck = this.validateAmm(quoteResponse);
+    if (!ammCheck.pass) {
+      this.logger.info('[SOLANA] route rejected (amm)', {
+        label: ammCheck.label,
+        ammKey: ammCheck.ammKey,
+        rejectReason: ammCheck.rejectReason,
+      });
+      return {
+        success: false,
+        skipped: true,
+        skipReason: `amm filter: ${ammCheck.rejectReason} label=${ammCheck.label}`,
       };
     }
 
@@ -210,7 +321,13 @@ export class SolanaExecutor {
       return { success: true, logOnly: true };
     }
 
-    return this.signAndSend(transaction, wallet, sizedOpportunity, connection);
+    this.logger.info('[SOLANA] swap attempt', {
+      ...ammMeta,
+      notionalUsd: sizedOpportunity.estimatedNotionalUsd,
+      expectedProfitUsd: sizedOpportunity.expectedProfitUsd,
+    });
+
+    return this.signAndSend(transaction, wallet, sizedOpportunity, connection, ammMeta);
   }
 
   private async fetchQuote(opportunity: SwapOpportunity): Promise<JupiterQuoteResponse> {
@@ -219,7 +336,7 @@ export class SolanaExecutor {
     url.searchParams.set('outputMint', opportunity.outputMint);
     url.searchParams.set('amount', String(opportunity.amountLamports));
     url.searchParams.set('slippageBps', String(this.config.maxSlippageBps));
-    url.searchParams.set('onlyDirectRoutes', 'false');
+    url.searchParams.set('onlyDirectRoutes', String(this.config.onlyDirectRoutes));
 
     const response = await fetch(url.toString());
     if (!response.ok) {
@@ -227,6 +344,121 @@ export class SolanaExecutor {
     }
 
     return response.json() as Promise<JupiterQuoteResponse>;
+  }
+
+  private validateRoute(quote: JupiterQuoteResponse): {
+    pass: boolean;
+    rejectReason?: string;
+  } {
+    const routePlan: RouteLeg[] = (quote.routePlan as RouteLeg[]) ?? [];
+
+    if (routePlan.length > 1) {
+      return {
+        pass: false,
+        rejectReason: `multi-hop route (${routePlan.length} legs)`,
+      };
+    }
+
+    const hasSplit = routePlan.some((leg) => Number(leg.percent ?? 100) < 100);
+    if (hasSplit) {
+      return { pass: false, rejectReason: 'split route detected' };
+    }
+
+    const priceImpactPct = Number(quote.priceImpactPct ?? 0);
+    if (priceImpactPct > this.config.maxPriceImpactPct) {
+      return {
+        pass: false,
+        rejectReason: `price impact ${priceImpactPct.toFixed(3)}% > max ${this.config.maxPriceImpactPct}%`,
+      };
+    }
+
+    return { pass: true };
+  }
+
+  private validateAmm(quote: JupiterQuoteResponse): {
+    pass: boolean;
+    rejectReason?: string;
+    label: string;
+    ammKey: string;
+  } {
+    const firstLeg = (quote.routePlan as RouteLeg[])?.[0]?.swapInfo ?? {};
+    const label = String(firstLeg.label ?? '');
+    const ammKey = String(firstLeg.ammKey ?? '');
+
+    if (this.config.ammAllowlist.length > 0) {
+      const allowed =
+        this.config.ammAllowlist.includes(label) ||
+        this.config.ammAllowlist.includes(ammKey);
+      if (!allowed) {
+        return { pass: false, rejectReason: 'amm_not_allowlisted', label, ammKey };
+      }
+    }
+
+    const denied =
+      this.config.ammDenylist.includes(label) ||
+      this.config.ammDenylist.includes(ammKey);
+    if (denied) {
+      return { pass: false, rejectReason: 'amm_denylisted', label, ammKey };
+    }
+
+    return { pass: true, label, ammKey };
+  }
+
+  private extractTxMeta(transaction: VersionedTransaction): TxMeta {
+    try {
+      const message = transaction.message as unknown as {
+        header?: {
+          numRequiredSignatures?: number;
+          numReadonlySignedAccounts?: number;
+          numReadonlyUnsignedAccounts?: number;
+        };
+        staticAccountKeys?: PublicKey[];
+        accountKeys?: PublicKey[];
+        compiledInstructions?: Array<{ programIdIndex: number }>;
+      };
+      const accountKeys =
+        message.staticAccountKeys ??
+        message.accountKeys ??
+        [];
+      const instructions = message.compiledInstructions ?? [];
+      const keyStrings = accountKeys.map((key) => key.toString());
+      const signerCount = message.header?.numRequiredSignatures ?? 0;
+      const readonlySigned = message.header?.numReadonlySignedAccounts ?? 0;
+      const readonlyUnsigned = message.header?.numReadonlyUnsignedAccounts ?? 0;
+      const writableSigned = Math.max(0, signerCount - readonlySigned);
+      const unsignedCount = Math.max(0, accountKeys.length - signerCount);
+      const writableUnsigned = Math.max(0, unsignedCount - readonlyUnsigned);
+      const writableCount = writableSigned + writableUnsigned;
+      const programIds = instructions
+        .map((ix) => accountKeys[ix.programIdIndex]?.toString() ?? 'unknown')
+        .filter((programId) => programId !== 'unknown');
+      const fingerprintSource = keyStrings.join('|');
+      const accountFingerprint = createHash('sha256')
+        .update(fingerprintSource)
+        .digest('hex')
+        .slice(0, 16);
+      const accountKeySample = keyStrings.slice(0, 8);
+
+      return {
+        instructionCount: instructions.length,
+        accountKeyCount: accountKeys.length,
+        writableCount,
+        signerCount,
+        accountFingerprint,
+        accountKeySample,
+        programIds: [...new Set(programIds)],
+      };
+    } catch {
+      return {
+        instructionCount: -1,
+        accountKeyCount: -1,
+        writableCount: -1,
+        signerCount: -1,
+        accountFingerprint: 'unknown',
+        accountKeySample: [],
+        programIds: [],
+      };
+    }
   }
 
   private async buildSwapTransaction(
@@ -240,8 +472,10 @@ export class SolanaExecutor {
         quoteResponse,
         userPublicKey,
         wrapAndUnwrapSol: true,
-        dynamicComputeUnitLimit: true,
-        prioritizationFeeLamports: 'auto',
+        dynamicComputeUnitLimit: false,
+        computeUnitPriceMicroLamports: this.config.priorityFeeMicroLamports,
+        computeUnitLimit: this.config.computeUnitLimit,
+        asLegacyTransaction: true,
       }),
     });
 
@@ -261,9 +495,69 @@ export class SolanaExecutor {
     transaction: VersionedTransaction,
     wallet: Keypair,
     opportunity: SwapOpportunity,
-    connection: Connection
+    connection: Connection,
+    ammMeta: AmmMeta
   ): Promise<ExecutionResult> {
+    const quoteAgeMs = opportunity.quotedAtMs ? Date.now() - opportunity.quotedAtMs : Number.NaN;
+    if (Number.isFinite(quoteAgeMs) && quoteAgeMs > this.config.quoteMaxAgeMs) {
+      return this.skip(
+        `quote stale (${quoteAgeMs}ms > ${this.config.quoteMaxAgeMs}ms)`,
+        opportunity
+      );
+    }
+
     transaction.sign([wallet]);
+    const txMeta = this.extractTxMeta(transaction);
+    const templateKey = `${ammMeta.ammLabel}|${txMeta.accountFingerprint}`;
+
+    if (
+      ammMeta.ammLabel === 'Raydium CLMM' &&
+      this.config.raydiumFingerprintDenylist.length > 0 &&
+      this.config.raydiumFingerprintDenylist.includes(txMeta.accountFingerprint)
+    ) {
+      this.logger.warn('[SOLANA_RAYDIUM_FP_DENYLIST] rejected known-bad raydium fingerprint', {
+        fingerprintHash: txMeta.accountFingerprint,
+        ...ammMeta,
+        instructionCount: txMeta.instructionCount,
+        accountKeyCount: txMeta.accountKeyCount,
+        writableCount: txMeta.writableCount,
+        signerCount: txMeta.signerCount,
+      });
+      return {
+        success: false,
+        skipped: true,
+        skipReason: `raydium_fp_denied: ${txMeta.accountFingerprint}`,
+      };
+    }
+
+    if (this.config.templateDenylist.includes(templateKey)) {
+      this.logger.warn('[SOLANA_DENYLIST] rejected known-bad template', {
+        templateKey,
+        ...ammMeta,
+        instructionCount: txMeta.instructionCount,
+        accountKeyCount: txMeta.accountKeyCount,
+        writableCount: txMeta.writableCount,
+        signerCount: txMeta.signerCount,
+      });
+      return {
+        success: false,
+        skipped: true,
+        skipReason: `template denylist: ${templateKey}`,
+      };
+    }
+
+    this.logger.info('[SOLANA] tx diagnostics', {
+      ...ammMeta,
+      asLegacyTransaction: true,
+      computeUnitLimit: this.config.computeUnitLimit,
+      priorityFeeMicroLamports: this.config.priorityFeeMicroLamports,
+      instructionCount: txMeta.instructionCount,
+      accountKeyCount: txMeta.accountKeyCount,
+      writableCount: txMeta.writableCount,
+      signerCount: txMeta.signerCount,
+      accountFingerprint: txMeta.accountFingerprint,
+      programIds: txMeta.programIds,
+    });
 
     let lastError: string | undefined;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
@@ -284,6 +578,11 @@ export class SolanaExecutor {
           label: opportunity.label,
           estimatedNotionalUsd: opportunity.estimatedNotionalUsd,
           expectedProfitUsd: opportunity.expectedProfitUsd,
+          ...ammMeta,
+        });
+        this.logger.info('[SOLANA] swap confirmed', {
+          signature,
+          ...ammMeta,
         });
         return { success: true, signature };
       } catch (error) {
@@ -294,6 +593,25 @@ export class SolanaExecutor {
         this.logger.warn(`Solana swap attempt ${attempt} failed`, {
           error: lastError,
           label: opportunity.label,
+          instructionCount: txMeta.instructionCount,
+          accountKeyCount: txMeta.accountKeyCount,
+          writableCount: txMeta.writableCount,
+          signerCount: txMeta.signerCount,
+          accountFingerprint: txMeta.accountFingerprint,
+          programIds: txMeta.programIds,
+          ...ammMeta,
+        });
+        this.logger.error('[SOLANA] swap failed', {
+          attempt,
+          ...ammMeta,
+          error: lastError,
+          instructionCount: txMeta.instructionCount,
+          accountKeyCount: txMeta.accountKeyCount,
+          writableCount: txMeta.writableCount,
+          signerCount: txMeta.signerCount,
+          accountFingerprint: txMeta.accountFingerprint,
+          programIds: txMeta.programIds,
+          accountKeySample: attempt === 1 ? txMeta.accountKeySample : undefined,
         });
       }
     }
@@ -406,6 +724,7 @@ export class SolanaExecutor {
       this.logger.warn('Dynamic sizing failed: no positive input balance', {
         label: opportunity.label,
         inputMint: opportunity.inputMint,
+        balanceUsd,
       });
       return null;
     }
@@ -450,8 +769,9 @@ export class SolanaExecutor {
     const owner = new PublicKey(walletPublicKey);
     const wrappedSolMint = 'So11111111111111111111111111111111111111112';
     const stableMints = new Set([
-      'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-      'Es9vMFrzaCERmJfrF4H2fyQ4h6fW9rVYJ7YfBfY2n7V',
+      'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+      'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT (canonical)
+      'Es9vMFrzaCERmJfrF4H2fyQ4h6fW9rVYJ7YfBfY2n7V', // USDT (legacy variant)
     ]);
 
     if (inputMint === wrappedSolMint) {

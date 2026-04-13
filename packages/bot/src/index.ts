@@ -31,6 +31,11 @@ function isEnvTrue(value: string | undefined): boolean {
   return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
 }
 
+function isEnvFalse(value: string | undefined): boolean {
+  const normalized = normalizeEnvValue(value).toLowerCase();
+  return normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off';
+}
+
 function shouldGracefulExitFromEnv(): boolean {
   if (isEnvTrue(process.env['LOG_ONLY']) || isEnvTrue(process.env['BOT_LOG_ONLY'])) {
     return true;
@@ -100,6 +105,11 @@ async function main(): Promise<void> {
       logger.info('📊 Running in LOG_ONLY mode (no trades will be executed)');
     }
 
+    const evmScannerEnabled = !isEnvFalse(process.env['EVM_SCANNER_ENABLED']);
+    if (!evmScannerEnabled) {
+      logger.warn('⏸️ EVM scanner disabled by EVM_SCANNER_ENABLED=false; Solana scanner remains active');
+    }
+
     const privateKey = config.privateKey?.trim() || '';
     const walletAddressEnv = config.walletAddress?.trim() || '';
     const hasPrivateKey = isValidPrivateKey(privateKey);
@@ -143,6 +153,7 @@ async function main(): Promise<void> {
       network: config.network,
       evmChain: config.evmChain,
       chainId: config.evmChainId,
+      evmScannerEnabled,
       mode: config.logOnly ? 'LOG_ONLY' : 'LIVE',
       canary: config.canaryEnabled,
       v3Enabled: !isEnvTrue(process.env['ENABLE_V3_QUOTES'] === 'false' ? 'false' : undefined),
@@ -164,7 +175,7 @@ async function main(): Promise<void> {
       solanaRpcSlotAtCheck: solanaRpcGuard.slotAtCheck,
     }));
 
-    // Create and start the arbitrage bot
+    // Create the arbitrage bot (EVM scanner can be disabled via env)
     const bot = new ArbitrageBot();
     
     // Create and start the Solana scanner
@@ -186,8 +197,15 @@ async function main(): Promise<void> {
       process.exit(0);
     });
 
-    // Start the bot
-    await bot.start();
+    // Start scanners based on runtime toggles
+    if (evmScannerEnabled) {
+      await bot.start();
+    } else {
+      logger.info('EVM scanner start skipped (EVM_SCANNER_ENABLED=false); process kept alive by Solana scanner loop');
+      await new Promise<void>(() => {
+        // Intentionally never resolves while process is running.
+      });
+    }
 
   } catch (error) {
     const shouldGracefulExit = shouldGracefulExitFromEnv();
