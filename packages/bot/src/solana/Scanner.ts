@@ -89,6 +89,11 @@ export class SolanaScanner {
 
     this.isRunning = true;
     logger.info(`🪐 Starting Solana scanner (interval: ${solanaConfig.scanIntervalSec}s, pools: ${solanaConfig.watchedPools.length})`);
+    logger.info('🧭 Solana confidence gate', {
+      aiMinSuccessProb: config.aiMinSuccessProb,
+      solanaMinExecutionConfidence: SOLANA_MIN_EXECUTION_CONFIDENCE,
+      effectiveThreshold: Math.max(config.aiMinSuccessProb, SOLANA_MIN_EXECUTION_CONFIDENCE),
+    });
     if (solanaExecutorConfig.tradingEnabled) {
       logger.warn('🧪 Solana executor armed', {
         logOnly: solanaExecutorConfig.logOnly,
@@ -387,6 +392,7 @@ export class SolanaScanner {
     const cappedNotionalUsd = solanaExecutorConfig.canaryMode
       ? Math.min(solanaExecutorConfig.maxNotionalUsd, 5)
       : solanaExecutorConfig.maxNotionalUsd;
+    const spreadBps = Math.abs(expectedProfitPct) * 100;
     const expectedProfitUsd = Math.abs(expectedProfitPct) * cappedNotionalUsd / 100;
 
     if (baseSymbol !== 'SOL' || !STABLE_SYMBOLS.has(quoteSymbol) || priceUsd <= 0) {
@@ -399,6 +405,11 @@ export class SolanaScanner {
       return null;
     }
 
+    if (spreadBps < solanaExecutorConfig.minSpreadBps) {
+      logger.debug(`Skipping Solana execution for ${poolAddress}: spread ${spreadBps.toFixed(1)}bps below minimum ${solanaExecutorConfig.minSpreadBps.toFixed(1)}bps`);
+      return null;
+    }
+
     if (signal === 'LONG') {
       return {
         inputMint: pairData.quoteMint,
@@ -406,6 +417,7 @@ export class SolanaScanner {
         amountLamports: Math.max(1, Math.round(cappedNotionalUsd * 1_000_000)),
         estimatedNotionalUsd: cappedNotionalUsd,
         expectedProfitUsd,
+        spreadBps,
         label: `${quoteSymbol}->SOL @ ${poolAddress}`,
       };
     }
@@ -416,6 +428,7 @@ export class SolanaScanner {
       amountLamports: Math.max(1, Math.round((cappedNotionalUsd / priceUsd) * 1_000_000_000)),
       estimatedNotionalUsd: cappedNotionalUsd,
       expectedProfitUsd,
+      spreadBps,
       label: `SOL->${quoteSymbol} @ ${poolAddress}`,
     };
   }

@@ -24,3 +24,4 @@ packages/contracts/lib/v3-core
 packages/contracts/lib/v3-periphery
 packages/backend/.env
 packages/ui/.env.local
+runtime_probe.txt
