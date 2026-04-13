@@ -5,6 +5,7 @@
 
 import type { RiskPolicyConfig } from './riskPolicy';
 import type { RiskTier } from './venueRisk';
+import type { IncidentType } from './incidentRegistry';
 
 export interface SolanaConfig {
   enabled: boolean;
@@ -141,5 +142,7 @@ export const solanaExecutorConfig: SolanaExecutorRuntimeConfig = {
     canaryTiers: (process.env['SOLANA_RISK_CANARY_TIERS'] ?? 'high').split(',').map(s => s.trim()).filter(Boolean) as RiskTier[],
     canaryMaxNotionalUsd: parseNumber(process.env['SOLANA_RISK_CANARY_MAX_USD'], 1),
     minEdgeBumpBps: parseNonNegativeNumber(process.env['SOLANA_RISK_EDGE_BUMP_BPS'], 15),
+    incidentCooldownDays: parseNonNegativeNumber(process.env['SOLANA_RISK_INCIDENT_COOLDOWN_DAYS'], 30),
+    denyIncidentTypes: (process.env['SOLANA_RISK_DENY_INCIDENT_TYPES'] ?? 'governance_compromise').split(',').map(s => s.trim()).filter(Boolean) as IncidentType[],
   },
 };

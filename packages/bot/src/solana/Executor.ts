@@ -166,6 +166,8 @@ export class SolanaExecutor {
       riskCanaryTiers: this.config.riskPolicy.canaryTiers,
       riskCanaryMaxUsd: this.config.riskPolicy.canaryMaxNotionalUsd,
       riskEdgeBumpBps: this.config.riskPolicy.minEdgeBumpBps,
+      riskIncidentCooldownDays: this.config.riskPolicy.incidentCooldownDays,
+      riskDenyIncidentTypes: this.config.riskPolicy.denyIncidentTypes,
     });
 
     if (this.config.tradingEnabled && !this.config.logOnly) {
@@ -319,6 +321,7 @@ export class SolanaExecutor {
       riskTier: venueProfile.riskTier,
       action: riskDecision.action,
       reason: riskDecision.reason,
+      incidentId: riskDecision.incidentId ?? null,
     });
     if (riskDecision.action === 'deny') {
       this.logger.info('[SOLANA] route rejected (risk)', {
@@ -326,6 +329,7 @@ export class SolanaExecutor {
         ammLabel: ammMeta.ammLabel,
         riskTier: venueProfile.riskTier,
         rejectReason: riskDecision.reason,
+        incidentId: riskDecision.incidentId ?? null,
       });
       return {
         success: false,
