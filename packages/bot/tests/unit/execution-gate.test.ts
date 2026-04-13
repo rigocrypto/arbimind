@@ -31,7 +31,8 @@ function evaluateGate(
   if (estimatedSlippageCostUsd >= expectedGrossUsd) {
     return { passed: false, netExpectedUsd, rejectReason: 'slippage_exceeds_gross' };
   }
-  if (netExpectedUsd < config.minNetProfitUsd) {
+  const GATE_PRECISION = 1e-9;
+  if (netExpectedUsd < config.minNetProfitUsd - GATE_PRECISION) {
     return { passed: false, netExpectedUsd, rejectReason: 'net_below_floor' };
   }
   return { passed: true, netExpectedUsd, rejectReason: null };
@@ -82,6 +83,14 @@ describe('ExecutionGate formula', () => {
     // With riskBuffer=0.20 → net=0.15
     const r2 = evaluateGate(0.50, 0.10, 0.05, { minNetProfitUsd: 0.10, riskBufferUsd: 0.20 });
     expect(r2.netExpectedUsd).toBeCloseTo(0.15, 2);
+  });
+
+  it('passes at exact floor boundary with epsilon guard', () => {
+    // gross=0.30, fee=0.05, slippage=0.05, buffer=0.05 → net=0.15
+    // With floating-point arithmetic this could land at 0.14999...
+    // The epsilon guard ensures it still passes
+    const result = evaluateGate(0.30, 0.05, 0.05, { minNetProfitUsd: 0.15, riskBufferUsd: 0.05 });
+    expect(result.passed).toBe(true);
   });
 
   it('rejects on zero gross edge with any fee', () => {

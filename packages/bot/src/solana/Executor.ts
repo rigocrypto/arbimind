@@ -267,7 +267,9 @@ export class SolanaExecutor {
     if (estimatedSlippageCostUsd >= expectedGrossUsd) {
       return { passed: false, netExpectedUsd, rejectReason: 'slippage_exceeds_gross' };
     }
-    if (netExpectedUsd < this.gateConfig.minNetProfitUsd) {
+    // Epsilon guard: avoid floating-point edge cases at the floor boundary
+    const GATE_PRECISION = 1e-9;
+    if (netExpectedUsd < this.gateConfig.minNetProfitUsd - GATE_PRECISION) {
       return { passed: false, netExpectedUsd, rejectReason: 'net_below_floor' };
     }
     return { passed: true, netExpectedUsd, rejectReason: null };
@@ -908,6 +910,7 @@ export class SolanaExecutor {
           label: opportunity.label,
           estimatedNotionalUsd: opportunity.estimatedNotionalUsd,
           expectedProfitUsd: opportunity.expectedProfitUsd,
+          executionPath: 'single_tx',
           ...ammMeta,
         });
 
@@ -959,6 +962,7 @@ export class SolanaExecutor {
 
         this.logger.info('[SOLANA] swap confirmed', {
           signature,
+          executionPath: 'single_tx',
           ...ammMeta,
         });
         return { success: true, signature };
