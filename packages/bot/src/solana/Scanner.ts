@@ -10,6 +10,7 @@ import { Logger } from '../utils/Logger';
 import { AiScoringService, AiScoringConfig } from '../services/AiScoringService';
 import { getLiquidityRegime, makeRegimeLogEntry } from './liquidityRegime';
 import { SolanaInventoryManager } from './InventoryManager';
+import { FundingManager } from './FundingManager';
 import { PriorityFeeEstimator } from './PriorityFeeEstimator';
 import { LandingTracker } from './LandingTracker';
 import { NetEdgeAccumulator } from './NetEdgeAccumulator';
@@ -63,7 +64,10 @@ export class SolanaScanner {
   private aiScoringService: AiScoringService;
   private executor: SolanaExecutor | null;
   private inventoryManager: SolanaInventoryManager | null = null;
+  private fundingManager: FundingManager | null = null;
   private sessionMetrics: SessionMetrics;
+  private scanConnection: Connection | null = null;
+  private scanWallet: Keypair | null = null;
   private isRunning = false;
 
   constructor() {
@@ -141,6 +145,20 @@ export class SolanaScanner {
       this.executor.setInventoryManager(this.inventoryManager);
       this.inventoryManager.logStartupConfig();
     }
+
+    // FundingManager — step 1: balance snapshot logging on each tick
+    if (inventoryConfig.autoFundEnabled && solanaExecutorConfig.rpcUrl) {
+      this.fundingManager = new FundingManager({
+        targetSolReserve: inventoryConfig.targetSolReserve,
+        minSolReserve: inventoryConfig.minSolReserve,
+        baseAssetMint: inventoryConfig.baseAssetMint,
+        baseAsset: inventoryConfig.baseAsset,
+        minRebalanceUsd: inventoryConfig.autoFundMinSwapUsd,
+        maxRebalanceCostBps: exp020Config.maxRebalanceCostBps,
+        rebalanceCooldownMs: inventoryConfig.fundingRebalanceIntervalMs,
+        jupiterBaseUrl: solanaExecutorConfig.jupiterBaseUrl,
+      });
+    }
   }
 
   /**
@@ -205,6 +223,9 @@ export class SolanaScanner {
       const wallet = this.resolveWallet();
       if (wallet) {
         const connection = new Connection(solanaExecutorConfig.rpcUrl, { commitment: 'confirmed' });
+        // Cache for FundingManager per-tick calls
+        this.scanConnection = connection;
+        this.scanWallet = wallet;
         // Initial snapshot
         this.inventoryManager.refreshBalances(connection, wallet.publicKey.toBase58())
           .then((snapshot) => {
@@ -222,6 +243,15 @@ export class SolanaScanner {
             });
           });
         this.inventoryManager.startRebalanceLoop(connection, wallet);
+      }
+    }
+
+    // Resolve connection/wallet for FundingManager if not already cached
+    if (this.fundingManager && !this.scanConnection && solanaExecutorConfig.rpcUrl) {
+      const wallet = this.resolveWallet();
+      if (wallet) {
+        this.scanConnection = new Connection(solanaExecutorConfig.rpcUrl, { commitment: 'confirmed' });
+        this.scanWallet = wallet;
       }
     }
 
@@ -293,6 +323,20 @@ export class SolanaScanner {
    * Scan all watched pools
    */
   private async scanPools(): Promise<void> {
+    // FundingManager: snapshot + (future) rebalance on each tick
+    if (this.fundingManager && this.scanConnection && this.scanWallet) {
+      try {
+        await this.fundingManager.checkAndRebalance(
+          this.scanConnection,
+          this.scanWallet.publicKey,
+        );
+      } catch (err) {
+        logger.warn('[FUNDING] checkAndRebalance error', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
     for (const pool of solanaConfig.watchedPools) {
       await this.scanPool(pool);
     }
