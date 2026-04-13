@@ -21,6 +21,7 @@ export interface SolanaExecutorConfig {
   ammAllowlist: string[];
   templateDenylist: string[];
   raydiumFingerprintDenylist: string[];
+  asLegacyTransaction: boolean;
   tradeSizeMode: 'fixed' | 'dynamic';
   minSpreadBps: number;
   allocationPct: number;
@@ -150,6 +151,7 @@ export class SolanaExecutor {
       computeUnitLimit: this.config.computeUnitLimit,
       priorityFeeMicroLamports: this.config.priorityFeeMicroLamports,
       maxPriceImpactPct: this.config.maxPriceImpactPct,
+      asLegacyTransaction: this.config.asLegacyTransaction,
       ammDenylistSize: this.config.ammDenylist.length,
       ammAllowlistSize: this.config.ammAllowlist.length,
       templateDenylistSize: this.config.templateDenylist.length,
@@ -475,7 +477,7 @@ export class SolanaExecutor {
         dynamicComputeUnitLimit: false,
         computeUnitPriceMicroLamports: this.config.priorityFeeMicroLamports,
         computeUnitLimit: this.config.computeUnitLimit,
-        asLegacyTransaction: true,
+        asLegacyTransaction: this.config.asLegacyTransaction,
       }),
     });
 
@@ -548,7 +550,7 @@ export class SolanaExecutor {
 
     this.logger.info('[SOLANA] tx diagnostics', {
       ...ammMeta,
-      asLegacyTransaction: true,
+      asLegacyTransaction: this.config.asLegacyTransaction,
       computeUnitLimit: this.config.computeUnitLimit,
       priorityFeeMicroLamports: this.config.priorityFeeMicroLamports,
       instructionCount: txMeta.instructionCount,
