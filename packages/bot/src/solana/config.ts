@@ -23,6 +23,7 @@ export interface SolanaExecutorRuntimeConfig {
   ammAllowlist: string[];
   templateDenylist: string[];
   raydiumFingerprintDenylist: string[];
+  asLegacyTransaction: boolean;
   tradeSizeMode: 'fixed' | 'dynamic';
   minSpreadBps: number;
   allocationPct: number;
@@ -105,6 +106,7 @@ export const solanaExecutorConfig: SolanaExecutorRuntimeConfig = {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
+  asLegacyTransaction: !isEnvFalse(process.env['SOLANA_LEGACY_TX'] ?? 'true'),
   tradeSizeMode: parseMode(process.env['SOLANA_TRADE_SIZE_MODE'] || process.env['TRADE_SIZE_MODE']),
   minSpreadBps: parseNonNegativeNumber(process.env['SOLANA_MIN_SPREAD_BPS'], 0),
   allocationPct: parseFraction(process.env['SOLANA_ALLOCATION_PCT'] || process.env['ALLOCATION_PCT'], 0.25),
@@ -127,5 +129,5 @@ export const solanaExecutorConfig: SolanaExecutorRuntimeConfig = {
     process.env['SOLANA_ARB_SECRET_KEY'] ||
     process.env['SOLANA_TREASURY_SECRET_KEY'] ||
     '',
-  jupiterBaseUrl: process.env['JUPITER_BASE_URL'] || 'https://quote-api.jup.ag/v6',
+  jupiterBaseUrl: process.env['JUPITER_BASE_URL'] || 'https://lite-api.jup.ag/swap/v1',
 };

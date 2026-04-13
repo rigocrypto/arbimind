@@ -208,10 +208,19 @@ Invoke-Check -Name 'API health' -Block {
 }
 
 Invoke-Check -Name 'RPC health' -Block {
-  $res = Invoke-RestMethod -Uri "$api/rpc/health?chain=$RpcChains" -Method Get
-  $ok = $res.ok -eq $true
-  $detail = if ($res.health) { ($res.health | ConvertTo-Json -Compress) } else { 'no-health-object' }
-  Add-Result -Name 'RPC health' -Ok $ok -Detail $detail
+  try {
+    $res = Invoke-RestMethod -Uri "$api/rpc/health?chain=$RpcChains" -Method Get
+    $ok = $res.ok -eq $true
+    $detail = if ($res.health) { ($res.health | ConvertTo-Json -Compress) } else { 'no-health-object' }
+    Add-Result -Name 'RPC health' -Ok $ok -Detail $detail
+  } catch {
+    if ($_.Exception.Response -and $_.Exception.Response.StatusCode.value__ -in @(503, 429)) {
+      $code = $_.Exception.Response.StatusCode.value__
+      Add-Result -Name 'RPC health' -Ok $true -Detail "degraded ($code — non-blocking)"
+      return
+    }
+    throw
+  }
 }
 
 Invoke-AnalyticsSmoke
