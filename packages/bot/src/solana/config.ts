@@ -3,6 +3,9 @@
  * Pools, scanners, and AI scoring for Raydium/Pump.fun DEX
  */
 
+import type { RiskPolicyConfig } from './riskPolicy';
+import type { RiskTier } from './venueRisk';
+
 export interface SolanaConfig {
   enabled: boolean;
   watchedPools: string[];
@@ -40,6 +43,7 @@ export interface SolanaExecutorRuntimeConfig {
   rpcUrl: string;
   privateKeyBase58: string;
   jupiterBaseUrl: string;
+  riskPolicy: RiskPolicyConfig;
 }
 
 function isEnvTrue(value: string | undefined): boolean {
@@ -132,4 +136,10 @@ export const solanaExecutorConfig: SolanaExecutorRuntimeConfig = {
     process.env['SOLANA_TREASURY_SECRET_KEY'] ||
     '',
   jupiterBaseUrl: process.env['JUPITER_BASE_URL'] || 'https://lite-api.jup.ag/swap/v1',
+  riskPolicy: {
+    denyTiers: (process.env['SOLANA_RISK_DENY_TIERS'] ?? 'critical').split(',').map(s => s.trim()).filter(Boolean) as RiskTier[],
+    canaryTiers: (process.env['SOLANA_RISK_CANARY_TIERS'] ?? 'high').split(',').map(s => s.trim()).filter(Boolean) as RiskTier[],
+    canaryMaxNotionalUsd: parseNumber(process.env['SOLANA_RISK_CANARY_MAX_USD'], 1),
+    minEdgeBumpBps: parseNonNegativeNumber(process.env['SOLANA_RISK_EDGE_BUMP_BPS'], 15),
+  },
 };

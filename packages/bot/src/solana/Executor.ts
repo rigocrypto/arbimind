@@ -8,6 +8,9 @@ import {
 import bs58 from 'bs58';
 import { createHash } from 'crypto';
 import { Logger } from '../utils/Logger';
+import { getVenueRisk } from './venueRisk';
+import { evaluateVenueRisk } from './riskPolicy';
+import type { RiskPolicyConfig } from './riskPolicy';
 
 export interface SolanaExecutorConfig {
   tradingEnabled: boolean;
@@ -38,6 +41,7 @@ export interface SolanaExecutorConfig {
   rpcUrl: string;
   privateKeyBase58: string;
   jupiterBaseUrl: string;
+  riskPolicy: RiskPolicyConfig;
 }
 
 export interface SwapOpportunity {
@@ -158,6 +162,10 @@ export class SolanaExecutor {
       ammAllowlistSize: this.config.ammAllowlist.length,
       templateDenylistSize: this.config.templateDenylist.length,
       raydiumFingerprintDenylistSize: this.config.raydiumFingerprintDenylist.length,
+      riskDenyTiers: this.config.riskPolicy.denyTiers,
+      riskCanaryTiers: this.config.riskPolicy.canaryTiers,
+      riskCanaryMaxUsd: this.config.riskPolicy.canaryMaxNotionalUsd,
+      riskEdgeBumpBps: this.config.riskPolicy.minEdgeBumpBps,
     });
 
     if (this.config.tradingEnabled && !this.config.logOnly) {
@@ -297,6 +305,40 @@ export class SolanaExecutor {
         skipReason: `amm filter: ${ammCheck.rejectReason} label=${ammCheck.label}`,
       };
     }
+
+    // --- Venue risk gate ---
+    const venueProfile = getVenueRisk(ammMeta.ammLabel);
+    const riskDecision = evaluateVenueRisk(
+      venueProfile,
+      sizedOpportunity.estimatedNotionalUsd,
+      this.config.minSpreadBps,
+      this.config.riskPolicy,
+    );
+    this.logger.debug('[SOLANA_RISK]', {
+      venue: ammMeta.ammLabel,
+      riskTier: venueProfile.riskTier,
+      action: riskDecision.action,
+      reason: riskDecision.reason,
+    });
+    if (riskDecision.action === 'deny') {
+      this.logger.info('[SOLANA] route rejected (risk)', {
+        label: sizedOpportunity.label,
+        ammLabel: ammMeta.ammLabel,
+        riskTier: venueProfile.riskTier,
+        rejectReason: riskDecision.reason,
+      });
+      return {
+        success: false,
+        skipped: true,
+        skipReason: `risk filter: ${riskDecision.reason}`,
+      };
+    }
+    if (riskDecision.action === 'canary' && riskDecision.effectiveMaxNotionalUsd !== undefined) {
+      if (sizedOpportunity.estimatedNotionalUsd > riskDecision.effectiveMaxNotionalUsd) {
+        sizedOpportunity.estimatedNotionalUsd = riskDecision.effectiveMaxNotionalUsd;
+      }
+    }
+    // (penalize: effectiveMinEdgeBps can be consumed by downstream edge checks if wired)
 
     if (!quoteResponse.outAmount || quoteResponse.outAmount === '0') {
       return this.skip('Jupiter quote returned zero outAmount', opportunity);
