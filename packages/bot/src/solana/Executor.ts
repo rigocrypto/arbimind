@@ -13,7 +13,7 @@ import { evaluateVenueRisk } from './riskPolicy';
 import type { RiskPolicyConfig } from './riskPolicy';
 import type { SolanaInventoryManager } from './InventoryManager';
 import { PriorityFeeEstimator, type PriorityFeeConfig, type PriorityFeeEstimate } from './PriorityFeeEstimator';
-import { LandingTracker, type TxOutcome } from './LandingTracker';
+import { LandingTracker } from './LandingTracker';
 import { NetEdgeAccumulator } from './NetEdgeAccumulator';
 import { SessionMetrics } from './SessionMetrics';
 import type { TierPolicy } from './SpeedTierPolicy';
