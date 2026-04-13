@@ -4,11 +4,19 @@
  */
 
 import { SolanaExecutor, type SwapOpportunity } from './Executor';
-import { solanaConfig, solanaExecutorConfig } from './config';
+import { solanaConfig, solanaExecutorConfig, inventoryConfig, priorityFeeConfig, exp020Config } from './config';
 import { config } from '../config';
 import { Logger } from '../utils/Logger';
 import { AiScoringService, AiScoringConfig } from '../services/AiScoringService';
 import { getLiquidityRegime, makeRegimeLogEntry } from './liquidityRegime';
+import { SolanaInventoryManager } from './InventoryManager';
+import { PriorityFeeEstimator } from './PriorityFeeEstimator';
+import { LandingTracker } from './LandingTracker';
+import { NetEdgeAccumulator } from './NetEdgeAccumulator';
+import { resolveSpeedTierPolicy, type TierPolicy } from './SpeedTierPolicy';
+import { SessionMetrics } from './SessionMetrics';
+import { Connection, Keypair } from '@solana/web3.js';
+import bs58 from 'bs58';
 
 const logger = new Logger('SolanaScanner');
 const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
@@ -54,6 +62,8 @@ type AlertPredictionPayload = {
 export class SolanaScanner {
   private aiScoringService: AiScoringService;
   private executor: SolanaExecutor | null;
+  private inventoryManager: SolanaInventoryManager | null = null;
+  private sessionMetrics: SessionMetrics;
   private isRunning = false;
 
   constructor() {
@@ -66,7 +76,71 @@ export class SolanaScanner {
     if (config.aiModelTag) aiConfig.modelTag = config.aiModelTag;
     
     this.aiScoringService = new AiScoringService(aiConfig);
-    this.executor = solanaExecutorConfig.tradingEnabled ? new SolanaExecutor(solanaExecutorConfig) : null;
+
+    // Resolve speed tier policy
+    const tierPolicy: TierPolicy = resolveSpeedTierPolicy({
+      tier: exp020Config.speedTier,
+      overrides: {
+        priorityFeePercentile: priorityFeeConfig.percentile,
+        cacheTtlMs: priorityFeeConfig.cacheTtlMs,
+        minNetProfitUsd: exp020Config.minNetProfitUsd,
+        riskBufferUsd: exp020Config.riskBufferUsd,
+      },
+    });
+
+    // Shared dynamic priority fee estimator (with tier-aware config)
+    const feeEstimatorConfig = {
+      ...priorityFeeConfig,
+      percentile: tierPolicy.priorityFeePercentile,
+      cacheTtlMs: tierPolicy.cacheTtlMs,
+    };
+    const feeEstimator = new PriorityFeeEstimator(feeEstimatorConfig);
+
+    // Shared landing tracker
+    const landingTracker = new LandingTracker({
+      warningThreshold: exp020Config.landingRateWarningThreshold,
+      autoEscalate: exp020Config.landingRateAutoEscalate,
+    });
+
+    // Shared net edge accumulator
+    const netEdgeAccumulator = new NetEdgeAccumulator({
+      windowSize: exp020Config.netEdgeWindow,
+      configuredMinTradeUsd: inventoryConfig.minTradeUsd,
+    });
+
+    // Session metrics — funnel counters, periodic summary
+    const summaryIntervalMs = Number(process.env['SESSION_SUMMARY_INTERVAL_MS'] || '600000');
+    this.sessionMetrics = new SessionMetrics({ summaryIntervalMs });
+
+    this.executor = solanaExecutorConfig.tradingEnabled
+      ? new SolanaExecutor(solanaExecutorConfig, feeEstimatorConfig, {
+          landingTracker,
+          netEdgeAccumulator,
+          gateConfig: {
+            minNetProfitUsd: tierPolicy.minNetProfitUsd,
+            riskBufferUsd: tierPolicy.riskBufferUsd,
+            slippageFallbackUsd: exp020Config.slippageFallbackUsd,
+          },
+          tierPolicy,
+          sessionMetrics: this.sessionMetrics,
+        })
+      : null;
+
+    // Set up inventory manager
+    if (this.executor && inventoryConfig.autoFundEnabled) {
+      this.inventoryManager = new SolanaInventoryManager({
+        config: inventoryConfig,
+        jupiterBaseUrl: solanaExecutorConfig.jupiterBaseUrl,
+        maxSlippageBps: solanaExecutorConfig.maxSlippageBps,
+        asLegacyTransaction: solanaExecutorConfig.asLegacyTransaction,
+        priorityFeeLamports: solanaExecutorConfig.priorityFeeMicroLamports,
+        feeEstimator,
+        maxRebalanceCostBps: exp020Config.maxRebalanceCostBps,
+        sessionMetrics: this.sessionMetrics,
+      });
+      this.executor.setInventoryManager(this.inventoryManager);
+      this.inventoryManager.logStartupConfig();
+    }
   }
 
   /**
@@ -102,8 +176,56 @@ export class SolanaScanner {
         maxNotionalUsd: solanaExecutorConfig.maxNotionalUsd,
         maxDailyLossUsd: solanaExecutorConfig.maxDailyLossUsd,
       });
+
+      // EXP-020 policy summary
+      const tierPolicy: TierPolicy = resolveSpeedTierPolicy({
+        tier: exp020Config.speedTier,
+        overrides: {
+          priorityFeePercentile: priorityFeeConfig.percentile,
+          minNetProfitUsd: exp020Config.minNetProfitUsd,
+          riskBufferUsd: exp020Config.riskBufferUsd,
+        },
+      });
+      logger.info('📊 EXP-020 policy summary', {
+        speedTier: exp020Config.speedTier,
+        priorityFeePercentile: tierPolicy.priorityFeePercentile,
+        cacheTtlMs: tierPolicy.cacheTtlMs,
+        minNetProfitUsd: tierPolicy.minNetProfitUsd,
+        riskBufferUsd: tierPolicy.riskBufferUsd,
+        slippageFallbackUsd: exp020Config.slippageFallbackUsd,
+        maxRebalanceCostBps: exp020Config.maxRebalanceCostBps,
+        landingRateWarningThreshold: exp020Config.landingRateWarningThreshold,
+        landingRateAutoEscalate: exp020Config.landingRateAutoEscalate,
+        netEdgeWindow: exp020Config.netEdgeWindow,
+      });
     }
 
+    // Start inventory rebalance loop if configured
+    if (this.inventoryManager && solanaExecutorConfig.rpcUrl) {
+      const wallet = this.resolveWallet();
+      if (wallet) {
+        const connection = new Connection(solanaExecutorConfig.rpcUrl, { commitment: 'confirmed' });
+        // Initial snapshot
+        this.inventoryManager.refreshBalances(connection, wallet.publicKey.toBase58())
+          .then((snapshot) => {
+            logger.info('[SOLANA] initial inventory snapshot', {
+              solBalance: snapshot.solBalance,
+              baseAssetBalance: snapshot.baseAssetBalance,
+              availableTradingCapitalUsd: snapshot.availableTradingCapitalUsd,
+              tradingBlocked: snapshot.tradingBlocked,
+              blockReason: snapshot.blockReason,
+            });
+          })
+          .catch((err) => {
+            logger.warn('[SOLANA] initial inventory snapshot failed', {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+        this.inventoryManager.startRebalanceLoop(connection, wallet);
+      }
+    }
+
+    this.sessionMetrics.startPeriodicSummary();
     this.scanLoop();
   }
 
@@ -113,6 +235,40 @@ export class SolanaScanner {
   stop(): void {
     logger.info('🛑 Stopping Solana scanner');
     this.isRunning = false;
+    this.sessionMetrics.stopPeriodicSummary();
+    // Emit final summary on shutdown
+    this.sessionMetrics.emitSummary();
+    if (this.inventoryManager) {
+      this.inventoryManager.stopRebalanceLoop();
+    }
+  }
+
+  /**
+   * Resolve wallet keypair from config (mirrors Executor.getWallet parsing).
+   */
+  private resolveWallet(): Keypair | null {
+    const raw = solanaExecutorConfig.privateKeyBase58?.trim();
+    if (!raw) return null;
+    try {
+      const decoded = bs58.decode(raw);
+      if (decoded.length === 64) return Keypair.fromSecretKey(decoded);
+      if (decoded.length === 32) return Keypair.fromSeed(decoded);
+    } catch { /* try next */ }
+    try {
+      if (/^[0-9a-fA-F]{64}$/.test(raw)) {
+        return Keypair.fromSeed(Uint8Array.from(Buffer.from(raw, 'hex')));
+      }
+      if (raw.startsWith('[') && raw.endsWith(']')) {
+        const parsed = JSON.parse(raw) as number[];
+        if (Array.isArray(parsed) && parsed.every((v) => Number.isInteger(v) && v >= 0 && v <= 255)) {
+          const bytes = Uint8Array.from(parsed);
+          if (bytes.length === 64) return Keypair.fromSecretKey(bytes);
+          if (bytes.length === 32) return Keypair.fromSeed(bytes);
+        }
+      }
+    } catch { /* ignore */ }
+    logger.warn('[SOLANA] resolveWallet: unsupported key format');
+    return null;
   }
 
   /**
@@ -344,6 +500,7 @@ export class SolanaScanner {
       return;
     }
 
+    this.sessionMetrics.recordDiscovered();
     const result = await this.executor.execute(opportunity);
     const r = regime ?? getLiquidityRegime();
     if (result.skipped) {

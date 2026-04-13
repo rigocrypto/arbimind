@@ -11,6 +11,12 @@ import { Logger } from '../utils/Logger';
 import { getVenueRisk } from './venueRisk';
 import { evaluateVenueRisk } from './riskPolicy';
 import type { RiskPolicyConfig } from './riskPolicy';
+import type { SolanaInventoryManager } from './InventoryManager';
+import { PriorityFeeEstimator, type PriorityFeeConfig, type PriorityFeeEstimate } from './PriorityFeeEstimator';
+import { LandingTracker } from './LandingTracker';
+import { NetEdgeAccumulator } from './NetEdgeAccumulator';
+import { SessionMetrics } from './SessionMetrics';
+import type { TierPolicy } from './SpeedTierPolicy';
 
 export interface SolanaExecutorConfig {
   tradingEnabled: boolean;
@@ -42,6 +48,13 @@ export interface SolanaExecutorConfig {
   privateKeyBase58: string;
   jupiterBaseUrl: string;
   riskPolicy: RiskPolicyConfig;
+}
+
+/** EXP-020 execution gate configuration. */
+export interface ExecutionGateConfig {
+  minNetProfitUsd: number;
+  riskBufferUsd: number;
+  slippageFallbackUsd: number;
 }
 
 export interface SwapOpportunity {
@@ -129,9 +142,38 @@ export class SolanaExecutor {
   private readonly logger = new Logger('SolanaExecutor');
   private startingBalanceUsd?: number;
   private signerLogged = false;
+  private inventoryManager: SolanaInventoryManager | null = null;
+  private readonly feeEstimator: PriorityFeeEstimator;
+  private readonly landingTracker: LandingTracker;
+  private readonly netEdgeAccumulator: NetEdgeAccumulator;
+  private readonly gateConfig: ExecutionGateConfig;
+  private readonly sessionMetrics: SessionMetrics;
 
-  constructor(config: SolanaExecutorConfig) {
+  constructor(
+    config: SolanaExecutorConfig,
+    feeEstimatorConfig?: Partial<PriorityFeeConfig>,
+    deps?: {
+      landingTracker?: LandingTracker;
+      netEdgeAccumulator?: NetEdgeAccumulator;
+      gateConfig?: Partial<ExecutionGateConfig>;
+      tierPolicy?: TierPolicy;
+      sessionMetrics?: SessionMetrics;
+    },
+  ) {
     this.config = config;
+    this.feeEstimator = new PriorityFeeEstimator(feeEstimatorConfig);
+    this.landingTracker = deps?.landingTracker ?? new LandingTracker();
+    this.netEdgeAccumulator = deps?.netEdgeAccumulator ?? new NetEdgeAccumulator();
+    this.sessionMetrics = deps?.sessionMetrics ?? new SessionMetrics();
+
+    // Merge gate config: explicit overrides > tier defaults > compiled defaults
+    const tierMinNet = deps?.tierPolicy?.minNetProfitUsd;
+    const tierRisk = deps?.tierPolicy?.riskBufferUsd;
+    this.gateConfig = {
+      minNetProfitUsd: deps?.gateConfig?.minNetProfitUsd ?? tierMinNet ?? 0.08,
+      riskBufferUsd: deps?.gateConfig?.riskBufferUsd ?? tierRisk ?? 0.03,
+      slippageFallbackUsd: deps?.gateConfig?.slippageFallbackUsd ?? 0.05,
+    };
 
     const effectiveMaxNotionalUsd = this.config.canaryMode
       ? Math.min(this.config.maxNotionalUsd, CANARY_MAX_NOTIONAL_USD)
@@ -173,6 +215,78 @@ export class SolanaExecutor {
     if (this.config.tradingEnabled && !this.config.logOnly) {
       this.getWallet();
     }
+  }
+
+  setInventoryManager(manager: SolanaInventoryManager): void {
+    this.inventoryManager = manager;
+  }
+
+  /** EXP-020: Estimate slippage cost in USD from Jupiter quote. */
+  private estimateSlippageCostUsd(
+    quoteResponse: JupiterQuoteResponse,
+    outputTokenPriceUsd: number | null,
+    outputDecimals: number,
+  ): { slippageCostUsd: number; source: 'quote' | 'fallback' } {
+    const outAmount = Number(quoteResponse.outAmount || '0');
+    const otherAmountThreshold = Number(
+      (quoteResponse as Record<string, unknown>)['otherAmountThreshold'] ?? outAmount,
+    );
+
+    if (
+      outputTokenPriceUsd !== null &&
+      outputTokenPriceUsd > 0 &&
+      outAmount > 0 &&
+      otherAmountThreshold > 0 &&
+      otherAmountThreshold < outAmount
+    ) {
+      const slippageTokens = (outAmount - otherAmountThreshold) / 10 ** outputDecimals;
+      return {
+        slippageCostUsd: slippageTokens * outputTokenPriceUsd,
+        source: 'quote',
+      };
+    }
+
+    return { slippageCostUsd: this.gateConfig.slippageFallbackUsd, source: 'fallback' };
+  }
+
+  /** EXP-020: Evaluate pre-execution net-profit gate. */
+  private evaluateExecutionGate(
+    expectedGrossUsd: number,
+    estimatedExecutionFeeUsd: number,
+    estimatedSlippageCostUsd: number,
+  ): {
+    passed: boolean;
+    netExpectedUsd: number;
+    rejectReason: string | null;
+  } {
+    const netExpectedUsd =
+      expectedGrossUsd -
+      estimatedExecutionFeeUsd -
+      estimatedSlippageCostUsd -
+      this.gateConfig.riskBufferUsd;
+
+    if (estimatedExecutionFeeUsd >= expectedGrossUsd) {
+      return { passed: false, netExpectedUsd, rejectReason: 'fee_exceeds_gross' };
+    }
+    if (estimatedSlippageCostUsd >= expectedGrossUsd) {
+      return { passed: false, netExpectedUsd, rejectReason: 'slippage_exceeds_gross' };
+    }
+    // Epsilon guard: avoid floating-point edge cases at the floor boundary
+    const GATE_PRECISION = 1e-9;
+    if (netExpectedUsd < this.gateConfig.minNetProfitUsd - GATE_PRECISION) {
+      return { passed: false, netExpectedUsd, rejectReason: 'net_below_floor' };
+    }
+    return { passed: true, netExpectedUsd, rejectReason: null };
+  }
+
+  /** Expose landing tracker for external wiring. */
+  getLandingTracker(): LandingTracker {
+    return this.landingTracker;
+  }
+
+  /** Expose net edge accumulator for external wiring. */
+  getNetEdgeAccumulator(): NetEdgeAccumulator {
+    return this.netEdgeAccumulator;
   }
 
   async execute(opportunity: SwapOpportunity): Promise<ExecutionResult> {
@@ -217,6 +331,32 @@ export class SolanaExecutor {
       return this.skip('missing SOLANA_RPC_URL', opportunity);
     }
 
+    // Inventory manager trading gate
+    if (this.inventoryManager) {
+      const gate = this.inventoryManager.checkTradingGate();
+      if (!gate.allowed) {
+        return this.skip(`inventory gate: ${gate.reason}`, opportunity);
+      }
+      // Acquire funding lock so rebalance doesn't conflict
+      if (!this.inventoryManager.acquireLock()) {
+        return this.skip('inventory lock held (funding rebalance in progress)', opportunity);
+      }
+    }
+
+    try {
+      return await this.executeInner(opportunity, wallet, maxNotionalUsd);
+    } finally {
+      if (this.inventoryManager) {
+        this.inventoryManager.releaseLock();
+      }
+    }
+  }
+
+  private async executeInner(
+    opportunity: SwapOpportunity,
+    wallet: Keypair,
+    maxNotionalUsd: number,
+  ): Promise<ExecutionResult> {
     const connection = new Connection(this.config.rpcUrl, {
       commitment: 'confirmed',
       confirmTransactionInitialTimeout: CONFIRM_TIMEOUT_MS,
@@ -348,10 +488,83 @@ export class SolanaExecutor {
       return this.skip('Jupiter quote returned zero outAmount', opportunity);
     }
 
+    // --- EXP-020: Fee-aware execution gate ---
+    {
+      const solPriceUsd = this.inventoryManager?.getInventorySnapshot()?.solPriceUsd ?? 0;
+      let estimatedExecutionFeeUsd = 0;
+
+      if (solPriceUsd > 0 && connection) {
+        try {
+          const feeEst = await this.feeEstimator.estimate(
+            connection,
+            undefined,
+            {
+              percentileBoost: this.landingTracker.getPercentileBoost(),
+              percentileCap: this.landingTracker.getEscalatePercentileCap(),
+            },
+          );
+          // Estimated total fee ≈ base fee (5000) + CU * microLamportsPerCU
+          // Use the priority fee estimate as total fee proxy for gate purposes
+          const estimatedFeeLamports = feeEst.maxLamports + 5000;
+          estimatedExecutionFeeUsd = (estimatedFeeLamports / 1e9) * solPriceUsd;
+        } catch {
+          // Can't estimate → use fallback
+          estimatedExecutionFeeUsd = 0;
+        }
+      }
+
+      // Slippage cost estimation from quote
+      const outputMint = String(
+        (quoteResponse as Record<string, unknown>)['outputMint'] ?? sizedOpportunity.outputMint,
+      );
+      const isOutputStable = ['EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'].includes(outputMint);
+      const outputTokenPriceUsd = isOutputStable ? 1 : (outputMint === 'So11111111111111111111111111111111111111112' ? solPriceUsd : null);
+      const outputDecimals = isOutputStable ? 6 : (outputMint === 'So11111111111111111111111111111111111111112' ? 9 : 6);
+
+      const { slippageCostUsd, source: slippageSource } = this.estimateSlippageCostUsd(
+        quoteResponse,
+        outputTokenPriceUsd,
+        outputDecimals,
+      );
+
+      const gate = this.evaluateExecutionGate(
+        sizedOpportunity.expectedProfitUsd,
+        estimatedExecutionFeeUsd,
+        slippageCostUsd,
+      );
+
+      this.sessionMetrics.recordGateEvaluated();
+
+      this.logger.info('[SOLANA] execution_gate', {
+        passed: gate.passed,
+        expectedGrossUsd: +sizedOpportunity.expectedProfitUsd.toFixed(6),
+        estimatedExecutionFeeUsd: +estimatedExecutionFeeUsd.toFixed(6),
+        estimatedSlippageCostUsd: +slippageCostUsd.toFixed(6),
+        slippageSource,
+        riskBufferUsd: this.gateConfig.riskBufferUsd,
+        netExpectedUsd: +gate.netExpectedUsd.toFixed(6),
+        minNetProfitUsd: this.gateConfig.minNetProfitUsd,
+        rejectReason: gate.rejectReason,
+      });
+
+      if (!gate.passed) {
+        this.sessionMetrics.recordGateRejected(gate.rejectReason!);
+        return {
+          success: false,
+          skipped: true,
+          skipReason: `execution gate: ${gate.rejectReason}`,
+        };
+      }
+
+      this.sessionMetrics.recordGatePassed();
+    }
+
     let transaction: VersionedTransaction;
     try {
-      transaction = await this.buildSwapTransaction(quoteResponse, wallet.publicKey.toBase58());
+      transaction = await this.buildSwapTransaction(quoteResponse, wallet.publicKey.toBase58(), connection);
+      this.sessionMetrics.recordSwapBuilt();
     } catch (error) {
+      this.sessionMetrics.recordSwapBuildFailed();
       return {
         success: false,
         error: `swap build failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -375,9 +588,29 @@ export class SolanaExecutor {
       ...ammMeta,
       notionalUsd: sizedOpportunity.estimatedNotionalUsd,
       expectedProfitUsd: sizedOpportunity.expectedProfitUsd,
+      inAmount: sizedOpportunity.amountLamports,
+      inputMint: sizedOpportunity.inputMint,
+      outputMint: sizedOpportunity.outputMint,
     });
 
-    return this.signAndSend(transaction, wallet, sizedOpportunity, connection, ammMeta);
+    // Capture pre-trade balance for PnL
+    const preTradeBaseBalance = this.inventoryManager?.getAvailableTradingCapitalUsd() ?? 0;
+
+    const result = await this.signAndSend(transaction, wallet, sizedOpportunity, connection, ammMeta);
+
+    // Record PnL after trade
+    if (this.inventoryManager && result.success) {
+      try {
+        const postSnapshot = await this.inventoryManager.refreshBalances(connection, wallet.publicKey.toBase58());
+        this.inventoryManager.recordTradeResult(preTradeBaseBalance, postSnapshot.availableTradingCapitalUsd);
+      } catch (err) {
+        this.logger.warn('[SOLANA] post-trade PnL snapshot failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return result;
   }
 
   private async fetchQuote(opportunity: SwapOpportunity): Promise<JupiterQuoteResponse> {
@@ -513,29 +746,86 @@ export class SolanaExecutor {
 
   private async buildSwapTransaction(
     quoteResponse: JupiterQuoteResponse,
-    userPublicKey: string
+    userPublicKey: string,
+    connection?: Connection,
   ): Promise<VersionedTransaction> {
+    // Dynamic priority fee estimation (with landing-tracker escalation)
+    let feeEstimate: PriorityFeeEstimate | null = null;
+    let maxLamports = this.config.priorityFeeMicroLamports;
+    let priorityLevel: string = 'medium';
+    if (connection) {
+      try {
+        feeEstimate = await this.feeEstimator.estimate(
+          connection,
+          undefined,
+          {
+            percentileBoost: this.landingTracker.getPercentileBoost(),
+            percentileCap: this.landingTracker.getEscalatePercentileCap(),
+          },
+        );
+        maxLamports = feeEstimate.maxLamports;
+        priorityLevel = feeEstimate.priorityLevel;
+      } catch {
+        // Static fallback
+      }
+    }
+
+    const swapRequestBody: Record<string, unknown> = {
+      quoteResponse,
+      userPublicKey,
+      wrapAndUnwrapSol: true,
+      dynamicComputeUnitLimit: true,
+      dynamicSlippage: true,
+      prioritizationFeeLamports: {
+        priorityLevelWithMaxLamports: {
+          maxLamports,
+          priorityLevel,
+        },
+      },
+      asLegacyTransaction: this.config.asLegacyTransaction,
+    };
+
+    this.logger.info('[SOLANA] swap build request', {
+      endpoint: `${this.config.jupiterBaseUrl}/swap`,
+      dynamicComputeUnitLimit: swapRequestBody['dynamicComputeUnitLimit'],
+      dynamicSlippage: swapRequestBody['dynamicSlippage'],
+      wrapAndUnwrapSol: swapRequestBody['wrapAndUnwrapSol'],
+      asLegacyTransaction: swapRequestBody['asLegacyTransaction'],
+      prioritizationFeeLamports: swapRequestBody['prioritizationFeeLamports'],
+      feeSource: feeEstimate?.source ?? 'static-config',
+      requestedMaxLamports: maxLamports,
+      requestedPriorityLevel: priorityLevel,
+      rawPercentileValue: feeEstimate?.rawPercentileValue ?? null,
+      userPublicKey,
+    });
+
     const response = await fetch(`${this.config.jupiterBaseUrl}/swap`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        quoteResponse,
-        userPublicKey,
-        wrapAndUnwrapSol: true,
-        dynamicComputeUnitLimit: false,
-        computeUnitPriceMicroLamports: this.config.priorityFeeMicroLamports,
-        computeUnitLimit: this.config.computeUnitLimit,
-        asLegacyTransaction: this.config.asLegacyTransaction,
-      }),
+      body: JSON.stringify(swapRequestBody),
     });
 
     if (!response.ok) {
+      const errorBody = await response.text().catch(() => '');
+      this.logger.warn('[SOLANA] swap build error response', {
+        status: response.status,
+        body: errorBody.slice(0, 500),
+      });
       throw new Error(`Jupiter swap build HTTP ${response.status}`);
     }
 
-    const body = (await response.json()) as { swapTransaction?: string };
+    const body = (await response.json()) as {
+      swapTransaction?: string;
+      dynamicSlippageReport?: unknown;
+      simulationError?: unknown;
+      lastValidBlockHeight?: number;
+    };
     if (!body.swapTransaction) {
       throw new Error('Jupiter swap response missing swapTransaction');
+    }
+
+    if (body.dynamicSlippageReport) {
+      this.logger.info('[SOLANA] dynamicSlippageReport', body.dynamicSlippageReport);
     }
 
     return VersionedTransaction.deserialize(Buffer.from(body.swapTransaction, 'base64'));
@@ -612,34 +902,112 @@ export class SolanaExecutor {
     let lastError: string | undefined;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
       try {
+        const submitAgeMs = opportunity.quotedAtMs ? Date.now() - opportunity.quotedAtMs : undefined;
         const signature = await connection.sendTransaction(transaction, {
           skipPreflight: false,
           maxRetries: 2,
+        });
+        this.sessionMetrics.recordSubmitted();
+        if (submitAgeMs !== undefined) this.sessionMetrics.recordQuoteAge(submitAgeMs);
+
+        this.logger.info('[SOLANA] tx_submitted', {
+          signature,
+          attempt,
+          quoteAgeMs: submitAgeMs ?? null,
+          label: opportunity.label,
         });
 
         const confirmation = await connection.confirmTransaction(signature, 'confirmed');
         if (confirmation.value.err) {
           lastError = `tx confirmed with error: ${JSON.stringify(confirmation.value.err)}`;
+          this.landingTracker.record('failed');
+          this.sessionMetrics.recordFailed();
           continue;
         }
+
+        this.landingTracker.record('confirmed');
+        this.sessionMetrics.recordConfirmed();
 
         this.logger.info('Solana swap confirmed', {
           signature,
           label: opportunity.label,
           estimatedNotionalUsd: opportunity.estimatedNotionalUsd,
           expectedProfitUsd: opportunity.expectedProfitUsd,
+          executionPath: 'single_tx',
           ...ammMeta,
         });
+
+        // Log actual transaction fee paid + net edge estimate
+        try {
+          const txDetails = await connection.getTransaction(signature, {
+            commitment: 'confirmed',
+            maxSupportedTransactionVersion: 0,
+          });
+          if (txDetails?.meta) {
+            const feeLamports = txDetails.meta.fee;
+            const computeUnitsConsumed = txDetails.meta.computeUnitsConsumed ?? 0;
+            const feeSol = feeLamports / 1e9;
+            // Estimate fee in USD using InventoryManager's SOL price (if available)
+            const solPriceUsd = this.inventoryManager?.getInventorySnapshot()?.solPriceUsd ?? 0;
+            const executionFeeUsd = solPriceUsd > 0 ? feeSol * solPriceUsd : 0;
+            const expectedGrossUsd = opportunity.expectedProfitUsd;
+            const netExpectedAfterFeesUsd = executionFeeUsd > 0
+              ? expectedGrossUsd - executionFeeUsd
+              : expectedGrossUsd; // can't compute without SOL price
+
+            this.logger.info('[SOLANA] execution fee', {
+              signature,
+              feeLamports,
+              feeSol,
+              computeUnitsConsumed,
+              effectiveCuPrice: computeUnitsConsumed > 0
+                ? Math.round(((feeLamports - 5000) * 1e6) / computeUnitsConsumed)
+                : 0,
+              expectedGrossUsd,
+              executionFeeUsd: executionFeeUsd > 0 ? +executionFeeUsd.toFixed(6) : null,
+              netExpectedAfterFeesUsd: executionFeeUsd > 0 ? +netExpectedAfterFeesUsd.toFixed(6) : null,
+              solPriceUsd: solPriceUsd > 0 ? solPriceUsd : null,
+            });
+
+            // Feed net-edge accumulator
+            if (executionFeeUsd > 0) {
+              this.netEdgeAccumulator.record({
+                grossUsd: expectedGrossUsd,
+                executionFeeUsd,
+                slippageCostUsd: 0, // Actual slippage would require comparing expected vs actual output
+                netEdgeUsd: netExpectedAfterFeesUsd,
+              });
+              this.sessionMetrics.recordFeeNormalization(
+                opportunity.estimatedNotionalUsd,
+                executionFeeUsd,
+                netExpectedAfterFeesUsd,
+              );
+              this.sessionMetrics.recordTradeEconomics(
+                expectedGrossUsd,
+                executionFeeUsd,
+                netExpectedAfterFeesUsd,
+              );
+            }
+          }
+        } catch {
+          // Non-critical — fee logging is best-effort
+        }
+
         this.logger.info('[SOLANA] swap confirmed', {
           signature,
+          executionPath: 'single_tx',
           ...ammMeta,
         });
         return { success: true, signature };
       } catch (error) {
         lastError = error instanceof Error ? error.message : String(error);
         if (error instanceof TransactionExpiredBlockheightExceededError) {
+          this.landingTracker.record('expired');
+          this.sessionMetrics.recordExpired();
           break;
         }
+        this.landingTracker.record('failed');
+        this.sessionMetrics.recordFailed();
         this.logger.warn(`Solana swap attempt ${attempt} failed`, {
           error: lastError,
           label: opportunity.label,
@@ -800,9 +1168,31 @@ export class SolanaExecutor {
       targetSizeUsd *= this.config.drawdownScale;
     }
 
-    targetSizeUsd = Math.max(1, Math.min(targetSizeUsd, hardMaxUsd));
+    // Cap at actual wallet balance — never request more than we hold.
+    // (Previous Math.max(1,...) forced $1 floor even when balance < $1 → InsufficientFunds 6024)
+    targetSizeUsd = Math.min(targetSizeUsd, hardMaxUsd, balanceUsd);
+
+    if (targetSizeUsd < this.config.minTradeSizeUsd) {
+      this.logger.info('[SOLANA] sized below minimum after adjustments', {
+        label: opportunity.label,
+        targetSizeUsd,
+        balanceUsd,
+        minTradeSizeUsd: this.config.minTradeSizeUsd,
+      });
+      return null;
+    }
 
     const scale = targetSizeUsd / Math.max(opportunity.estimatedNotionalUsd, 1e-9);
+
+    this.logger.debug('[SOLANA] position sizing', {
+      label: opportunity.label,
+      balanceUsd,
+      proposedSizeUsd,
+      targetSizeUsd,
+      scale,
+      inputAmountLamports: Math.max(1, Math.round(opportunity.amountLamports * scale)),
+    });
+
     return {
       ...opportunity,
       amountLamports: Math.max(1, Math.round(opportunity.amountLamports * scale)),
