@@ -8,6 +8,7 @@ import { solanaConfig, solanaExecutorConfig } from './config';
 import { config } from '../config';
 import { Logger } from '../utils/Logger';
 import { AiScoringService, AiScoringConfig } from '../services/AiScoringService';
+import { getLiquidityRegime, makeRegimeLogEntry } from './liquidityRegime';
 
 const logger = new Logger('SolanaScanner');
 const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
@@ -181,11 +182,14 @@ export class SolanaScanner {
       }
 
       // Log prediction if confidence is high
+      const regime = getLiquidityRegime();
       if (score.successProb > config.aiMinSuccessProb) {
         const signal = score.expectedProfitPct > 0 ? 'LONG' : 'SHORT';
         await this.logPrediction(poolAddress, signal, score.successProb, pairData);
-        await this.maybeExecuteTrade(poolAddress, signal, pairData, score.successProb, score.expectedProfitPct);
-        logger.info(`✅ [SOLANA] Scored ${poolAddress}: ${signal} (${(score.successProb * 100).toFixed(1)}%)`);
+        await this.maybeExecuteTrade(poolAddress, signal, pairData, score.successProb, score.expectedProfitPct, regime);
+        logger.info(`✅ [SOLANA] Scored ${poolAddress}: ${signal} (${(score.successProb * 100).toFixed(1)}%)`, {
+          regimeLabel: regime.regimeLabel, utcHour: regime.utcHour, isWeekend: regime.isWeekend,
+        });
       }
     } catch (error) {
       logger.error(`❌ Failed to scan pool ${poolAddress}`, {
@@ -328,7 +332,8 @@ export class SolanaScanner {
     signal: 'LONG' | 'SHORT' | 'NEUTRAL',
     pairData: DexPairData,
     confidence: number,
-    expectedProfitPct: number
+    expectedProfitPct: number,
+    regime?: import('./liquidityRegime').LiquidityRegime
   ): Promise<void> {
     if (!this.executor) {
       return;
@@ -340,11 +345,15 @@ export class SolanaScanner {
     }
 
     const result = await this.executor.execute(opportunity);
+    const r = regime ?? getLiquidityRegime();
     if (result.skipped) {
       logger.info('Solana execution skipped', {
         poolAddress,
         reason: result.skipReason,
       });
+      logger.info('[SOLANA] regime_log', makeRegimeLogEntry(r, {
+        confidence, scored: true, attempted: false,
+      }));
       return;
     }
 
@@ -353,6 +362,9 @@ export class SolanaScanner {
         poolAddress,
         label: opportunity.label,
       });
+      logger.info('[SOLANA] regime_log', makeRegimeLogEntry(r, {
+        confidence, scored: true, attempted: false,
+      }));
       return;
     }
 
@@ -361,6 +373,10 @@ export class SolanaScanner {
         poolAddress,
         signature: result.signature,
       });
+      logger.info('[SOLANA] regime_log', makeRegimeLogEntry(r, {
+        confidence, scored: true, attempted: true, confirmed: true,
+        ammLabel: opportunity.label,
+      }));
       return;
     }
 
@@ -368,6 +384,10 @@ export class SolanaScanner {
       poolAddress,
       error: result.error,
     });
+    logger.info('[SOLANA] regime_log', makeRegimeLogEntry(r, {
+      confidence, scored: true, attempted: true, confirmed: false,
+      errorCode: result.error, ammLabel: opportunity.label,
+    }));
   }
 
   private buildSwapOpportunity(
