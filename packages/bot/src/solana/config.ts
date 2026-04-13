@@ -6,6 +6,7 @@
 import type { RiskPolicyConfig } from './riskPolicy';
 import type { RiskTier } from './venueRisk';
 import type { IncidentType } from './incidentRegistry';
+import type { PriorityFeeConfig } from './PriorityFeeEstimator';
 
 export type BaseAsset = 'USDC' | 'USDT';
 
@@ -183,4 +184,16 @@ export const inventoryConfig: InventoryConfig = {
   minTradeUsd: parseNumber(process.env['SOLANA_MIN_TRADE_USD'], 20),
   maxTradeUsd: parseNumber(process.env['SOLANA_MAX_TRADE_USD'], 250),
   compoundProfits: !isEnvFalse(process.env['SOLANA_COMPOUND_PROFITS'] ?? 'true'),
+};
+
+export const priorityFeeConfig: Partial<PriorityFeeConfig> = {
+  enabled: !isEnvFalse(process.env['SOLANA_DYNAMIC_PRIORITY_FEE'] ?? 'true'),
+  percentile: parseNumber(process.env['SOLANA_PRIORITY_FEE_PERCENTILE'], 75),
+  floorLamports: parseNumber(process.env['SOLANA_PRIORITY_FEE_FLOOR_LAMPORTS'], 10_000),
+  capLamports: parseNumber(process.env['SOLANA_PRIORITY_FEE_CAP_LAMPORTS'], 5_000_000),
+  staticDefaultLamports: parseNumber(
+    process.env['SOLANA_PRIORITY_FEE_MICROLAMPORTS'] ?? process.env['SOLANA_PRIORITY_FEE_STATIC_LAMPORTS'],
+    1_000_000,
+  ),
+  cacheTtlMs: parseNumber(process.env['SOLANA_PRIORITY_FEE_CACHE_TTL_MS'], 10_000),
 };

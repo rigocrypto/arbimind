@@ -4,12 +4,13 @@
  */
 
 import { SolanaExecutor, type SwapOpportunity } from './Executor';
-import { solanaConfig, solanaExecutorConfig, inventoryConfig } from './config';
+import { solanaConfig, solanaExecutorConfig, inventoryConfig, priorityFeeConfig } from './config';
 import { config } from '../config';
 import { Logger } from '../utils/Logger';
 import { AiScoringService, AiScoringConfig } from '../services/AiScoringService';
 import { getLiquidityRegime, makeRegimeLogEntry } from './liquidityRegime';
 import { SolanaInventoryManager } from './InventoryManager';
+import { PriorityFeeEstimator } from './PriorityFeeEstimator';
 import { Connection, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
 
@@ -70,7 +71,11 @@ export class SolanaScanner {
     if (config.aiModelTag) aiConfig.modelTag = config.aiModelTag;
     
     this.aiScoringService = new AiScoringService(aiConfig);
-    this.executor = solanaExecutorConfig.tradingEnabled ? new SolanaExecutor(solanaExecutorConfig) : null;
+
+    // Shared dynamic priority fee estimator
+    const feeEstimator = new PriorityFeeEstimator(priorityFeeConfig);
+
+    this.executor = solanaExecutorConfig.tradingEnabled ? new SolanaExecutor(solanaExecutorConfig, priorityFeeConfig) : null;
 
     // Set up inventory manager
     if (this.executor && inventoryConfig.autoFundEnabled) {
@@ -80,6 +85,7 @@ export class SolanaScanner {
         maxSlippageBps: solanaExecutorConfig.maxSlippageBps,
         asLegacyTransaction: solanaExecutorConfig.asLegacyTransaction,
         priorityFeeLamports: solanaExecutorConfig.priorityFeeMicroLamports,
+        feeEstimator,
       });
       this.executor.setInventoryManager(this.inventoryManager);
       this.inventoryManager.logStartupConfig();

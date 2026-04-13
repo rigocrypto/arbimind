@@ -12,6 +12,7 @@ import { getVenueRisk } from './venueRisk';
 import { evaluateVenueRisk } from './riskPolicy';
 import type { RiskPolicyConfig } from './riskPolicy';
 import type { SolanaInventoryManager } from './InventoryManager';
+import { PriorityFeeEstimator, type PriorityFeeConfig, type PriorityFeeEstimate } from './PriorityFeeEstimator';
 
 export interface SolanaExecutorConfig {
   tradingEnabled: boolean;
@@ -131,9 +132,11 @@ export class SolanaExecutor {
   private startingBalanceUsd?: number;
   private signerLogged = false;
   private inventoryManager: SolanaInventoryManager | null = null;
+  private readonly feeEstimator: PriorityFeeEstimator;
 
-  constructor(config: SolanaExecutorConfig) {
+  constructor(config: SolanaExecutorConfig, feeEstimatorConfig?: Partial<PriorityFeeConfig>) {
     this.config = config;
+    this.feeEstimator = new PriorityFeeEstimator(feeEstimatorConfig);
 
     const effectiveMaxNotionalUsd = this.config.canaryMode
       ? Math.min(this.config.maxNotionalUsd, CANARY_MAX_NOTIONAL_USD)
@@ -382,7 +385,7 @@ export class SolanaExecutor {
 
     let transaction: VersionedTransaction;
     try {
-      transaction = await this.buildSwapTransaction(quoteResponse, wallet.publicKey.toBase58());
+      transaction = await this.buildSwapTransaction(quoteResponse, wallet.publicKey.toBase58(), connection);
     } catch (error) {
       return {
         success: false,
@@ -565,8 +568,23 @@ export class SolanaExecutor {
 
   private async buildSwapTransaction(
     quoteResponse: JupiterQuoteResponse,
-    userPublicKey: string
+    userPublicKey: string,
+    connection?: Connection,
   ): Promise<VersionedTransaction> {
+    // Dynamic priority fee estimation
+    let feeEstimate: PriorityFeeEstimate | null = null;
+    let maxLamports = this.config.priorityFeeMicroLamports;
+    let priorityLevel: string = 'medium';
+    if (connection) {
+      try {
+        feeEstimate = await this.feeEstimator.estimate(connection);
+        maxLamports = feeEstimate.maxLamports;
+        priorityLevel = feeEstimate.priorityLevel;
+      } catch {
+        // Static fallback
+      }
+    }
+
     const swapRequestBody: Record<string, unknown> = {
       quoteResponse,
       userPublicKey,
@@ -575,8 +593,8 @@ export class SolanaExecutor {
       dynamicSlippage: true,
       prioritizationFeeLamports: {
         priorityLevelWithMaxLamports: {
-          maxLamports: this.config.priorityFeeMicroLamports,
-          priorityLevel: 'medium',
+          maxLamports,
+          priorityLevel,
         },
       },
       asLegacyTransaction: this.config.asLegacyTransaction,
@@ -589,6 +607,10 @@ export class SolanaExecutor {
       wrapAndUnwrapSol: swapRequestBody['wrapAndUnwrapSol'],
       asLegacyTransaction: swapRequestBody['asLegacyTransaction'],
       prioritizationFeeLamports: swapRequestBody['prioritizationFeeLamports'],
+      feeSource: feeEstimate?.source ?? 'static-config',
+      requestedMaxLamports: maxLamports,
+      requestedPriorityLevel: priorityLevel,
+      rawPercentileValue: feeEstimate?.rawPercentileValue ?? null,
       userPublicKey,
     });
 
@@ -714,7 +736,7 @@ export class SolanaExecutor {
           ...ammMeta,
         });
 
-        // Log actual transaction fee paid
+        // Log actual transaction fee paid + net edge estimate
         try {
           const txDetails = await connection.getTransaction(signature, {
             commitment: 'confirmed',
@@ -723,14 +745,27 @@ export class SolanaExecutor {
           if (txDetails?.meta) {
             const feeLamports = txDetails.meta.fee;
             const computeUnitsConsumed = txDetails.meta.computeUnitsConsumed ?? 0;
+            const feeSol = feeLamports / 1e9;
+            // Estimate fee in USD using InventoryManager's SOL price (if available)
+            const solPriceUsd = this.inventoryManager?.getInventorySnapshot()?.solPriceUsd ?? 0;
+            const executionFeeUsd = solPriceUsd > 0 ? feeSol * solPriceUsd : 0;
+            const expectedGrossUsd = opportunity.expectedProfitUsd;
+            const netExpectedAfterFeesUsd = executionFeeUsd > 0
+              ? expectedGrossUsd - executionFeeUsd
+              : expectedGrossUsd; // can't compute without SOL price
+
             this.logger.info('[SOLANA] execution fee', {
               signature,
               feeLamports,
-              feeSol: feeLamports / 1e9,
+              feeSol,
               computeUnitsConsumed,
               effectiveCuPrice: computeUnitsConsumed > 0
                 ? Math.round(((feeLamports - 5000) * 1e6) / computeUnitsConsumed)
                 : 0,
+              expectedGrossUsd,
+              executionFeeUsd: executionFeeUsd > 0 ? +executionFeeUsd.toFixed(6) : null,
+              netExpectedAfterFeesUsd: executionFeeUsd > 0 ? +netExpectedAfterFeesUsd.toFixed(6) : null,
+              solPriceUsd: solPriceUsd > 0 ? solPriceUsd : null,
             });
           }
         } catch {

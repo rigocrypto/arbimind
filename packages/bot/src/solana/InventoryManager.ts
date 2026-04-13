@@ -18,6 +18,7 @@ import {
 } from '@solana/web3.js';
 import { Logger } from '../utils/Logger';
 import type { InventoryConfig } from './config';
+import type { PriorityFeeEstimator, PriorityFeeEstimate } from './PriorityFeeEstimator';
 
 // ── Mint constants ────────────────────────────────────────────────
 const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
@@ -81,6 +82,7 @@ export class SolanaInventoryManager {
   private readonly maxSlippageBps: number;
   private readonly asLegacyTransaction: boolean;
   private readonly priorityFeeLamports: number;
+  private readonly feeEstimator: PriorityFeeEstimator | null;
 
   private lastSnapshot: InventorySnapshot | null = null;
   private lastRebalanceAtMs = 0;
@@ -94,12 +96,14 @@ export class SolanaInventoryManager {
     maxSlippageBps: number;
     asLegacyTransaction: boolean;
     priorityFeeLamports: number;
+    feeEstimator?: PriorityFeeEstimator;
   }) {
     this.config = opts.config;
     this.jupiterBaseUrl = opts.jupiterBaseUrl;
     this.maxSlippageBps = opts.maxSlippageBps;
     this.asLegacyTransaction = opts.asLegacyTransaction;
     this.priorityFeeLamports = opts.priorityFeeLamports;
+    this.feeEstimator = opts.feeEstimator ?? null;
   }
 
   // ── Startup ────────────────────────────────────────────────────
@@ -446,7 +450,21 @@ export class SolanaInventoryManager {
       routeLegs: quoteResponse.routePlan?.length ?? 0,
     });
 
-    // Step 2: Build swap
+    // Step 2: Dynamic priority fee
+    let feeEstimate: PriorityFeeEstimate | null = null;
+    let maxLamports = this.priorityFeeLamports;
+    let priorityLevel: string = 'medium';
+    if (this.feeEstimator) {
+      try {
+        feeEstimate = await this.feeEstimator.estimate(connection);
+        maxLamports = feeEstimate.maxLamports;
+        priorityLevel = feeEstimate.priorityLevel;
+      } catch {
+        // Static fallback already in place
+      }
+    }
+
+    // Step 3: Build swap
     const swapRequestBody: Record<string, unknown> = {
       quoteResponse,
       userPublicKey: wallet.publicKey.toBase58(),
@@ -455,8 +473,8 @@ export class SolanaInventoryManager {
       dynamicSlippage: true,
       prioritizationFeeLamports: {
         priorityLevelWithMaxLamports: {
-          maxLamports: this.priorityFeeLamports,
-          priorityLevel: 'medium',
+          maxLamports,
+          priorityLevel,
         },
       },
       asLegacyTransaction: this.asLegacyTransaction,
@@ -465,6 +483,10 @@ export class SolanaInventoryManager {
     this.logger.info('[INVENTORY] funding swap build request', {
       action: decision.action,
       estimatedUsd: decision.estimatedUsd,
+      feeSource: feeEstimate?.source ?? 'static-config',
+      requestedMaxLamports: maxLamports,
+      requestedPriorityLevel: priorityLevel,
+      rawPercentileValue: feeEstimate?.rawPercentileValue ?? null,
     });
 
     const swapResp = await fetch(`${this.jupiterBaseUrl}/swap`, {
