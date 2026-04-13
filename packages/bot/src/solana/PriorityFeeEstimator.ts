@@ -44,7 +44,7 @@ export const DEFAULT_PRIORITY_FEE_CONFIG: PriorityFeeConfig = {
 export interface PriorityFeeEstimate {
   maxLamports: number;
   priorityLevel: 'low' | 'medium' | 'high' | 'veryHigh';
-  source: 'dynamic' | 'cached' | 'static-fallback';
+  source: 'dynamic_account_specific' | 'dynamic_global' | 'cached' | 'static-fallback';
   sampleCount: number;
   percentile: number;
   rawPercentileValue: number;
@@ -69,9 +69,19 @@ export class PriorityFeeEstimator {
    * @param writableAccounts  Writable accounts from the swap (optional —
    *   when omitted the RPC returns global recent fees)
    */
+  /**
+   * Apply a temporary percentile boost (e.g. from LandingTracker escalation).
+   * Returns the effective percentile clamped to [1, cap].
+   */
+  private effectivePercentile(boost: number, cap: number): number {
+    const boosted = this.config.percentile + boost;
+    return Math.min(boosted, cap, 100);
+  }
+
   async estimate(
     connection: Connection,
     writableAccounts?: PublicKey[],
+    opts?: { percentileBoost?: number; percentileCap?: number },
   ): Promise<PriorityFeeEstimate> {
     if (!this.config.enabled) {
       return this.staticFallback(0);
@@ -82,9 +92,17 @@ export class PriorityFeeEstimator {
       return { ...this.cachedEstimate, source: 'cached' };
     }
 
+    const percentile = this.effectivePercentile(
+      opts?.percentileBoost ?? 0,
+      opts?.percentileCap ?? 100,
+    );
+    const hasAccounts = writableAccounts && writableAccounts.length > 0;
+    const sourceLabel: 'dynamic_account_specific' | 'dynamic_global' =
+      hasAccounts ? 'dynamic_account_specific' : 'dynamic_global';
+
     try {
       const fees = await connection.getRecentPrioritizationFees(
-        writableAccounts ? { lockedWritableAccounts: writableAccounts } : undefined,
+        hasAccounts ? { lockedWritableAccounts: writableAccounts } : undefined,
       );
 
       // Filter to non-zero fees (zero = base fee only, not useful for percentile)
@@ -96,12 +114,14 @@ export class PriorityFeeEstimator {
       if (nonZero.length === 0) {
         this.logger.debug('[PRIORITY_FEE] no non-zero fees in recent slots, using floor', {
           totalSlots: fees.length,
+          source: sourceLabel,
+          accountCount: writableAccounts?.length ?? 0,
         });
-        return this.clampAndCache(this.config.floorLamports, 0, 'dynamic', fees.length);
+        return this.clampAndCache(this.config.floorLamports, 0, sourceLabel, fees.length, percentile);
       }
 
       const idx = Math.min(
-        Math.floor((this.config.percentile / 100) * nonZero.length),
+        Math.floor((percentile / 100) * nonZero.length),
         nonZero.length - 1,
       );
       const rawValue = nonZero[idx];
@@ -109,16 +129,19 @@ export class PriorityFeeEstimator {
       this.logger.debug('[PRIORITY_FEE] estimated from recent slots', {
         sampleCount: nonZero.length,
         totalSlots: fees.length,
-        percentile: this.config.percentile,
+        percentile,
         rawPercentileValue: rawValue,
         floor: this.config.floorLamports,
         cap: this.config.capLamports,
+        source: sourceLabel,
+        accountCount: writableAccounts?.length ?? 0,
       });
 
-      return this.clampAndCache(rawValue, rawValue, 'dynamic', nonZero.length);
+      return this.clampAndCache(rawValue, rawValue, sourceLabel, nonZero.length, percentile);
     } catch (err) {
       this.logger.warn('[PRIORITY_FEE] RPC lookup failed, using static fallback', {
         error: err instanceof Error ? err.message : String(err),
+        source: sourceLabel,
       });
       return this.staticFallback(0);
     }
@@ -138,8 +161,9 @@ export class PriorityFeeEstimator {
   private clampAndCache(
     rawLamports: number,
     rawPercentileValue: number,
-    source: 'dynamic' | 'static-fallback',
+    source: 'dynamic_account_specific' | 'dynamic_global' | 'static-fallback',
     sampleCount: number,
+    effectivePercentile?: number,
   ): PriorityFeeEstimate {
     const clamped = Math.max(
       this.config.floorLamports,
@@ -151,7 +175,7 @@ export class PriorityFeeEstimator {
       priorityLevel: this.derivePriorityLevel(clamped),
       source,
       sampleCount,
-      percentile: this.config.percentile,
+      percentile: effectivePercentile ?? this.config.percentile,
       rawPercentileValue,
     };
 

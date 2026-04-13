@@ -39,7 +39,7 @@ describe('PriorityFeeEstimator', () => {
         getRecentPrioritizationFees: () => Promise.resolve(fees),
       };
       const result = await estimator.estimate(mockConnection as never);
-      expect(result.source).toBe('dynamic');
+      expect(result.source).toBe('dynamic_global');
       expect(result.sampleCount).toBe(20);
       // 75th percentile of [1000..20000]: index = floor(0.75 * 20) = 15 → 16000
       expect(result.maxLamports).toBe(16_000);
@@ -59,7 +59,7 @@ describe('PriorityFeeEstimator', () => {
         getRecentPrioritizationFees: () => Promise.resolve(fees),
       };
       const result = await estimator.estimate(mockConnection as never);
-      expect(result.source).toBe('dynamic');
+      expect(result.source).toBe('dynamic_global');
       expect(result.maxLamports).toBe(5_000);
     });
 
@@ -112,7 +112,7 @@ describe('PriorityFeeEstimator', () => {
         },
       };
       const result1 = await estimator.estimate(mockConnection as never);
-      expect(result1.source).toBe('dynamic');
+      expect(result1.source).toBe('dynamic_global');
       expect(callCount).toBe(1);
 
       const result2 = await estimator.estimate(mockConnection as never);

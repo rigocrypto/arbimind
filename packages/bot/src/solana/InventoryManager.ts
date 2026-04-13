@@ -83,6 +83,7 @@ export class SolanaInventoryManager {
   private readonly asLegacyTransaction: boolean;
   private readonly priorityFeeLamports: number;
   private readonly feeEstimator: PriorityFeeEstimator | null;
+  private readonly maxRebalanceCostBps: number;
 
   private lastSnapshot: InventorySnapshot | null = null;
   private lastRebalanceAtMs = 0;
@@ -97,6 +98,7 @@ export class SolanaInventoryManager {
     asLegacyTransaction: boolean;
     priorityFeeLamports: number;
     feeEstimator?: PriorityFeeEstimator;
+    maxRebalanceCostBps?: number;
   }) {
     this.config = opts.config;
     this.jupiterBaseUrl = opts.jupiterBaseUrl;
@@ -104,6 +106,7 @@ export class SolanaInventoryManager {
     this.asLegacyTransaction = opts.asLegacyTransaction;
     this.priorityFeeLamports = opts.priorityFeeLamports;
     this.feeEstimator = opts.feeEstimator ?? null;
+    this.maxRebalanceCostBps = opts.maxRebalanceCostBps ?? 100;
   }
 
   // ── Startup ────────────────────────────────────────────────────
@@ -449,6 +452,42 @@ export class SolanaInventoryManager {
       priceImpactPct: quoteResponse.priceImpactPct,
       routeLegs: quoteResponse.routePlan?.length ?? 0,
     });
+
+    // EXP-020: Rebalance cost gate
+    {
+      const solPriceUsd = this.lastSnapshot?.solPriceUsd ?? 0;
+      // Estimate cost as priority fee + base fee (5000 lamports)
+      const estimatedFeeLamports = this.priorityFeeLamports + 5000;
+      const estimatedCostUsd = solPriceUsd > 0 ? (estimatedFeeLamports / 1e9) * solPriceUsd : 0;
+      // Slippage from quote
+      const outAmount = Number(quoteResponse.outAmount || '0');
+      const otherThreshold = Number((quoteResponse as Record<string, unknown>)['otherAmountThreshold'] ?? outAmount);
+      const slippageCostRaw = outAmount > 0 && otherThreshold < outAmount ? outAmount - otherThreshold : 0;
+      // Approximate slippage in USD (stables ≈ $1 per unit at their decimals)
+      const slippageCostUsd = slippageCostRaw > 0 ? slippageCostRaw / 1e6 : 0;
+      const totalCostUsd = estimatedCostUsd + slippageCostUsd;
+      const costBps = decision.estimatedUsd > 0
+        ? Math.round((totalCostUsd / decision.estimatedUsd) * 10000)
+        : 0;
+
+      this.logger.info('[INVENTORY] rebalance_gate', {
+        passed: costBps <= this.maxRebalanceCostBps,
+        rebalanceAmountUsd: +decision.estimatedUsd.toFixed(2),
+        estimatedCostUsd: +totalCostUsd.toFixed(6),
+        costBps,
+        maxAllowedBps: this.maxRebalanceCostBps,
+        rejectReason: costBps > this.maxRebalanceCostBps ? 'cost_exceeds_threshold' : null,
+      });
+
+      if (costBps > this.maxRebalanceCostBps) {
+        this.logger.info('[INVENTORY] rebalance skipped — cost too high', {
+          action: decision.action,
+          costBps,
+          maxAllowedBps: this.maxRebalanceCostBps,
+        });
+        return;
+      }
+    }
 
     // Step 2: Dynamic priority fee
     let feeEstimate: PriorityFeeEstimate | null = null;

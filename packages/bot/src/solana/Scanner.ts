@@ -4,13 +4,16 @@
  */
 
 import { SolanaExecutor, type SwapOpportunity } from './Executor';
-import { solanaConfig, solanaExecutorConfig, inventoryConfig, priorityFeeConfig } from './config';
+import { solanaConfig, solanaExecutorConfig, inventoryConfig, priorityFeeConfig, exp020Config } from './config';
 import { config } from '../config';
 import { Logger } from '../utils/Logger';
 import { AiScoringService, AiScoringConfig } from '../services/AiScoringService';
 import { getLiquidityRegime, makeRegimeLogEntry } from './liquidityRegime';
 import { SolanaInventoryManager } from './InventoryManager';
 import { PriorityFeeEstimator } from './PriorityFeeEstimator';
+import { LandingTracker } from './LandingTracker';
+import { NetEdgeAccumulator } from './NetEdgeAccumulator';
+import { resolveSpeedTierPolicy, type TierPolicy } from './SpeedTierPolicy';
 import { Connection, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
 
@@ -72,10 +75,49 @@ export class SolanaScanner {
     
     this.aiScoringService = new AiScoringService(aiConfig);
 
-    // Shared dynamic priority fee estimator
-    const feeEstimator = new PriorityFeeEstimator(priorityFeeConfig);
+    // Resolve speed tier policy
+    const tierPolicy: TierPolicy = resolveSpeedTierPolicy({
+      tier: exp020Config.speedTier,
+      overrides: {
+        priorityFeePercentile: priorityFeeConfig.percentile,
+        cacheTtlMs: priorityFeeConfig.cacheTtlMs,
+        minNetProfitUsd: exp020Config.minNetProfitUsd,
+        riskBufferUsd: exp020Config.riskBufferUsd,
+      },
+    });
 
-    this.executor = solanaExecutorConfig.tradingEnabled ? new SolanaExecutor(solanaExecutorConfig, priorityFeeConfig) : null;
+    // Shared dynamic priority fee estimator (with tier-aware config)
+    const feeEstimatorConfig = {
+      ...priorityFeeConfig,
+      percentile: tierPolicy.priorityFeePercentile,
+      cacheTtlMs: tierPolicy.cacheTtlMs,
+    };
+    const feeEstimator = new PriorityFeeEstimator(feeEstimatorConfig);
+
+    // Shared landing tracker
+    const landingTracker = new LandingTracker({
+      warningThreshold: exp020Config.landingRateWarningThreshold,
+      autoEscalate: exp020Config.landingRateAutoEscalate,
+    });
+
+    // Shared net edge accumulator
+    const netEdgeAccumulator = new NetEdgeAccumulator({
+      windowSize: exp020Config.netEdgeWindow,
+      configuredMinTradeUsd: inventoryConfig.minTradeUsd,
+    });
+
+    this.executor = solanaExecutorConfig.tradingEnabled
+      ? new SolanaExecutor(solanaExecutorConfig, feeEstimatorConfig, {
+          landingTracker,
+          netEdgeAccumulator,
+          gateConfig: {
+            minNetProfitUsd: tierPolicy.minNetProfitUsd,
+            riskBufferUsd: tierPolicy.riskBufferUsd,
+            slippageFallbackUsd: exp020Config.slippageFallbackUsd,
+          },
+          tierPolicy,
+        })
+      : null;
 
     // Set up inventory manager
     if (this.executor && inventoryConfig.autoFundEnabled) {
@@ -86,6 +128,7 @@ export class SolanaScanner {
         asLegacyTransaction: solanaExecutorConfig.asLegacyTransaction,
         priorityFeeLamports: solanaExecutorConfig.priorityFeeMicroLamports,
         feeEstimator,
+        maxRebalanceCostBps: exp020Config.maxRebalanceCostBps,
       });
       this.executor.setInventoryManager(this.inventoryManager);
       this.inventoryManager.logStartupConfig();
@@ -124,6 +167,28 @@ export class SolanaScanner {
         canaryMode: solanaExecutorConfig.canaryMode,
         maxNotionalUsd: solanaExecutorConfig.maxNotionalUsd,
         maxDailyLossUsd: solanaExecutorConfig.maxDailyLossUsd,
+      });
+
+      // EXP-020 policy summary
+      const tierPolicy: TierPolicy = resolveSpeedTierPolicy({
+        tier: exp020Config.speedTier,
+        overrides: {
+          priorityFeePercentile: priorityFeeConfig.percentile,
+          minNetProfitUsd: exp020Config.minNetProfitUsd,
+          riskBufferUsd: exp020Config.riskBufferUsd,
+        },
+      });
+      logger.info('📊 EXP-020 policy summary', {
+        speedTier: exp020Config.speedTier,
+        priorityFeePercentile: tierPolicy.priorityFeePercentile,
+        cacheTtlMs: tierPolicy.cacheTtlMs,
+        minNetProfitUsd: tierPolicy.minNetProfitUsd,
+        riskBufferUsd: tierPolicy.riskBufferUsd,
+        slippageFallbackUsd: exp020Config.slippageFallbackUsd,
+        maxRebalanceCostBps: exp020Config.maxRebalanceCostBps,
+        landingRateWarningThreshold: exp020Config.landingRateWarningThreshold,
+        landingRateAutoEscalate: exp020Config.landingRateAutoEscalate,
+        netEdgeWindow: exp020Config.netEdgeWindow,
       });
     }
 

@@ -7,6 +7,7 @@ import type { RiskPolicyConfig } from './riskPolicy';
 import type { RiskTier } from './venueRisk';
 import type { IncidentType } from './incidentRegistry';
 import type { PriorityFeeConfig } from './PriorityFeeEstimator';
+import { parseSpeedTier, type SpeedTier } from './SpeedTierPolicy';
 
 export type BaseAsset = 'USDC' | 'USDT';
 
@@ -196,4 +197,27 @@ export const priorityFeeConfig: Partial<PriorityFeeConfig> = {
     1_000_000,
   ),
   cacheTtlMs: parseNumber(process.env['SOLANA_PRIORITY_FEE_CACHE_TTL_MS'], 10_000),
+};
+
+// ── EXP-020: Fee-aware execution gating ──────────────────────────────
+export interface Exp020Config {
+  speedTier: SpeedTier;
+  minNetProfitUsd: number;
+  riskBufferUsd: number;
+  slippageFallbackUsd: number;
+  maxRebalanceCostBps: number;
+  landingRateWarningThreshold: number;
+  landingRateAutoEscalate: boolean;
+  netEdgeWindow: number;
+}
+
+export const exp020Config: Exp020Config = {
+  speedTier: parseSpeedTier(process.env['SOLANA_SPEED_TIER']),
+  minNetProfitUsd: parseNonNegativeNumber(process.env['SOLANA_MIN_NET_PROFIT_USD'], 0.10),
+  riskBufferUsd: parseNonNegativeNumber(process.env['SOLANA_RISK_BUFFER_USD'], 0.05),
+  slippageFallbackUsd: parseNonNegativeNumber(process.env['SOLANA_SLIPPAGE_FALLBACK_USD'], 0.02),
+  maxRebalanceCostBps: parseNumber(process.env['SOLANA_AUTO_FUND_MAX_REBALANCE_COST_BPS'], 100),
+  landingRateWarningThreshold: parseFraction(process.env['SOLANA_LANDING_RATE_WARNING_THRESHOLD'], 0.70),
+  landingRateAutoEscalate: !isEnvFalse(process.env['SOLANA_LANDING_RATE_AUTO_ESCALATE'] ?? 'true'),
+  netEdgeWindow: parseNumber(process.env['SOLANA_NET_EDGE_WINDOW'], 20),
 };
