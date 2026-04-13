@@ -14,6 +14,7 @@ export interface SolanaExecutorConfig {
   logOnly: boolean;
   canaryMode: boolean;
   onlyDirectRoutes: boolean;
+  allowMultihop: boolean;
   computeUnitLimit: number;
   priorityFeeMicroLamports: number;
   maxPriceImpactPct: number;
@@ -148,6 +149,7 @@ export class SolanaExecutor {
       minSpreadBps: this.config.minSpreadBps,
       quoteMaxAgeMs: this.config.quoteMaxAgeMs,
       onlyDirectRoutes: this.config.onlyDirectRoutes,
+      allowMultihop: this.config.allowMultihop,
       computeUnitLimit: this.config.computeUnitLimit,
       priorityFeeMicroLamports: this.config.priorityFeeMicroLamports,
       maxPriceImpactPct: this.config.maxPriceImpactPct,
@@ -354,7 +356,7 @@ export class SolanaExecutor {
   } {
     const routePlan: RouteLeg[] = (quote.routePlan as RouteLeg[]) ?? [];
 
-    if (routePlan.length > 1) {
+    if (routePlan.length > 1 && !this.config.allowMultihop) {
       return {
         pass: false,
         rejectReason: `multi-hop route (${routePlan.length} legs)`,

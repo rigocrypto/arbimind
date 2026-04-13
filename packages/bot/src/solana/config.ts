@@ -16,6 +16,7 @@ export interface SolanaExecutorRuntimeConfig {
   logOnly: boolean;
   canaryMode: boolean;
   onlyDirectRoutes: boolean;
+  allowMultihop: boolean;
   computeUnitLimit: number;
   priorityFeeMicroLamports: number;
   maxPriceImpactPct: number;
@@ -87,6 +88,7 @@ export const solanaExecutorConfig: SolanaExecutorRuntimeConfig = {
   logOnly: !isEnvFalse(process.env['SOLANA_LOG_ONLY']),
   canaryMode: !isEnvFalse(process.env['SOLANA_CANARY_MODE']),
   onlyDirectRoutes: !isEnvFalse(process.env['SOLANA_ONLY_DIRECT_ROUTES'] || 'true'),
+  allowMultihop: isEnvTrue(process.env['SOLANA_ALLOW_MULTIHOP']),
   computeUnitLimit: Number(process.env['SOLANA_COMPUTE_UNIT_LIMIT'] ?? 300_000),
   priorityFeeMicroLamports: Number(process.env['SOLANA_PRIORITY_FEE_MICROLAMPORTS'] ?? 5_000),
   maxPriceImpactPct: Number(process.env['SOLANA_MAX_PRICE_IMPACT_PCT'] ?? 0.3),
