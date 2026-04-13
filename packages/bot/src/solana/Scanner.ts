@@ -14,6 +14,7 @@ import { PriorityFeeEstimator } from './PriorityFeeEstimator';
 import { LandingTracker } from './LandingTracker';
 import { NetEdgeAccumulator } from './NetEdgeAccumulator';
 import { resolveSpeedTierPolicy, type TierPolicy } from './SpeedTierPolicy';
+import { SessionMetrics } from './SessionMetrics';
 import { Connection, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
 
@@ -62,6 +63,7 @@ export class SolanaScanner {
   private aiScoringService: AiScoringService;
   private executor: SolanaExecutor | null;
   private inventoryManager: SolanaInventoryManager | null = null;
+  private sessionMetrics: SessionMetrics;
   private isRunning = false;
 
   constructor() {
@@ -106,6 +108,10 @@ export class SolanaScanner {
       configuredMinTradeUsd: inventoryConfig.minTradeUsd,
     });
 
+    // Session metrics — funnel counters, periodic summary
+    const summaryIntervalMs = Number(process.env['SESSION_SUMMARY_INTERVAL_MS'] || '600000');
+    this.sessionMetrics = new SessionMetrics({ summaryIntervalMs });
+
     this.executor = solanaExecutorConfig.tradingEnabled
       ? new SolanaExecutor(solanaExecutorConfig, feeEstimatorConfig, {
           landingTracker,
@@ -116,6 +122,7 @@ export class SolanaScanner {
             slippageFallbackUsd: exp020Config.slippageFallbackUsd,
           },
           tierPolicy,
+          sessionMetrics: this.sessionMetrics,
         })
       : null;
 
@@ -129,6 +136,7 @@ export class SolanaScanner {
         priorityFeeLamports: solanaExecutorConfig.priorityFeeMicroLamports,
         feeEstimator,
         maxRebalanceCostBps: exp020Config.maxRebalanceCostBps,
+        sessionMetrics: this.sessionMetrics,
       });
       this.executor.setInventoryManager(this.inventoryManager);
       this.inventoryManager.logStartupConfig();
@@ -217,6 +225,7 @@ export class SolanaScanner {
       }
     }
 
+    this.sessionMetrics.startPeriodicSummary();
     this.scanLoop();
   }
 
@@ -226,6 +235,9 @@ export class SolanaScanner {
   stop(): void {
     logger.info('🛑 Stopping Solana scanner');
     this.isRunning = false;
+    this.sessionMetrics.stopPeriodicSummary();
+    // Emit final summary on shutdown
+    this.sessionMetrics.emitSummary();
     if (this.inventoryManager) {
       this.inventoryManager.stopRebalanceLoop();
     }
@@ -488,6 +500,7 @@ export class SolanaScanner {
       return;
     }
 
+    this.sessionMetrics.recordDiscovered();
     const result = await this.executor.execute(opportunity);
     const r = regime ?? getLiquidityRegime();
     if (result.skipped) {

@@ -15,6 +15,7 @@ import type { SolanaInventoryManager } from './InventoryManager';
 import { PriorityFeeEstimator, type PriorityFeeConfig, type PriorityFeeEstimate } from './PriorityFeeEstimator';
 import { LandingTracker, type TxOutcome } from './LandingTracker';
 import { NetEdgeAccumulator } from './NetEdgeAccumulator';
+import { SessionMetrics } from './SessionMetrics';
 import type { TierPolicy } from './SpeedTierPolicy';
 
 export interface SolanaExecutorConfig {
@@ -146,6 +147,7 @@ export class SolanaExecutor {
   private readonly landingTracker: LandingTracker;
   private readonly netEdgeAccumulator: NetEdgeAccumulator;
   private readonly gateConfig: ExecutionGateConfig;
+  private readonly sessionMetrics: SessionMetrics;
 
   constructor(
     config: SolanaExecutorConfig,
@@ -155,12 +157,14 @@ export class SolanaExecutor {
       netEdgeAccumulator?: NetEdgeAccumulator;
       gateConfig?: Partial<ExecutionGateConfig>;
       tierPolicy?: TierPolicy;
+      sessionMetrics?: SessionMetrics;
     },
   ) {
     this.config = config;
     this.feeEstimator = new PriorityFeeEstimator(feeEstimatorConfig);
     this.landingTracker = deps?.landingTracker ?? new LandingTracker();
     this.netEdgeAccumulator = deps?.netEdgeAccumulator ?? new NetEdgeAccumulator();
+    this.sessionMetrics = deps?.sessionMetrics ?? new SessionMetrics();
 
     // Merge gate config: explicit overrides > tier defaults > compiled defaults
     const tierMinNet = deps?.tierPolicy?.minNetProfitUsd;
@@ -529,6 +533,8 @@ export class SolanaExecutor {
         slippageCostUsd,
       );
 
+      this.sessionMetrics.recordGateEvaluated();
+
       this.logger.info('[SOLANA] execution_gate', {
         passed: gate.passed,
         expectedGrossUsd: +sizedOpportunity.expectedProfitUsd.toFixed(6),
@@ -542,18 +548,23 @@ export class SolanaExecutor {
       });
 
       if (!gate.passed) {
+        this.sessionMetrics.recordGateRejected(gate.rejectReason!);
         return {
           success: false,
           skipped: true,
           skipReason: `execution gate: ${gate.rejectReason}`,
         };
       }
+
+      this.sessionMetrics.recordGatePassed();
     }
 
     let transaction: VersionedTransaction;
     try {
       transaction = await this.buildSwapTransaction(quoteResponse, wallet.publicKey.toBase58(), connection);
+      this.sessionMetrics.recordSwapBuilt();
     } catch (error) {
+      this.sessionMetrics.recordSwapBuildFailed();
       return {
         success: false,
         error: `swap build failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -891,19 +902,31 @@ export class SolanaExecutor {
     let lastError: string | undefined;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
       try {
+        const submitAgeMs = opportunity.quotedAtMs ? Date.now() - opportunity.quotedAtMs : undefined;
         const signature = await connection.sendTransaction(transaction, {
           skipPreflight: false,
           maxRetries: 2,
+        });
+        this.sessionMetrics.recordSubmitted();
+        if (submitAgeMs !== undefined) this.sessionMetrics.recordQuoteAge(submitAgeMs);
+
+        this.logger.info('[SOLANA] tx_submitted', {
+          signature,
+          attempt,
+          quoteAgeMs: submitAgeMs ?? null,
+          label: opportunity.label,
         });
 
         const confirmation = await connection.confirmTransaction(signature, 'confirmed');
         if (confirmation.value.err) {
           lastError = `tx confirmed with error: ${JSON.stringify(confirmation.value.err)}`;
           this.landingTracker.record('failed');
+          this.sessionMetrics.recordFailed();
           continue;
         }
 
         this.landingTracker.record('confirmed');
+        this.sessionMetrics.recordConfirmed();
 
         this.logger.info('Solana swap confirmed', {
           signature,
@@ -954,6 +977,16 @@ export class SolanaExecutor {
                 slippageCostUsd: 0, // Actual slippage would require comparing expected vs actual output
                 netEdgeUsd: netExpectedAfterFeesUsd,
               });
+              this.sessionMetrics.recordFeeNormalization(
+                opportunity.estimatedNotionalUsd,
+                executionFeeUsd,
+                netExpectedAfterFeesUsd,
+              );
+              this.sessionMetrics.recordTradeEconomics(
+                expectedGrossUsd,
+                executionFeeUsd,
+                netExpectedAfterFeesUsd,
+              );
             }
           }
         } catch {
@@ -970,9 +1003,11 @@ export class SolanaExecutor {
         lastError = error instanceof Error ? error.message : String(error);
         if (error instanceof TransactionExpiredBlockheightExceededError) {
           this.landingTracker.record('expired');
+          this.sessionMetrics.recordExpired();
           break;
         }
         this.landingTracker.record('failed');
+        this.sessionMetrics.recordFailed();
         this.logger.warn(`Solana swap attempt ${attempt} failed`, {
           error: lastError,
           label: opportunity.label,

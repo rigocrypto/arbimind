@@ -19,6 +19,7 @@ import {
 import { Logger } from '../utils/Logger';
 import type { InventoryConfig } from './config';
 import type { PriorityFeeEstimator, PriorityFeeEstimate } from './PriorityFeeEstimator';
+import type { SessionMetrics } from './SessionMetrics';
 
 // ── Mint constants ────────────────────────────────────────────────
 const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
@@ -84,6 +85,7 @@ export class SolanaInventoryManager {
   private readonly priorityFeeLamports: number;
   private readonly feeEstimator: PriorityFeeEstimator | null;
   private readonly maxRebalanceCostBps: number;
+  private readonly sessionMetrics: SessionMetrics | null;
 
   private lastSnapshot: InventorySnapshot | null = null;
   private lastRebalanceAtMs = 0;
@@ -99,6 +101,7 @@ export class SolanaInventoryManager {
     priorityFeeLamports: number;
     feeEstimator?: PriorityFeeEstimator;
     maxRebalanceCostBps?: number;
+    sessionMetrics?: SessionMetrics;
   }) {
     this.config = opts.config;
     this.jupiterBaseUrl = opts.jupiterBaseUrl;
@@ -107,6 +110,7 @@ export class SolanaInventoryManager {
     this.priorityFeeLamports = opts.priorityFeeLamports;
     this.feeEstimator = opts.feeEstimator ?? null;
     this.maxRebalanceCostBps = opts.maxRebalanceCostBps ?? 100;
+    this.sessionMetrics = opts.sessionMetrics ?? null;
   }
 
   // ── Startup ────────────────────────────────────────────────────
@@ -478,8 +482,10 @@ export class SolanaInventoryManager {
         maxAllowedBps: this.maxRebalanceCostBps,
         rejectReason: costBps > this.maxRebalanceCostBps ? 'cost_exceeds_threshold' : null,
       });
+      this.sessionMetrics?.recordRebalanceEvaluated();
 
       if (costBps > this.maxRebalanceCostBps) {
+        this.sessionMetrics?.recordRebalanceRejected();
         this.logger.info('[INVENTORY] rebalance skipped — cost too high', {
           action: decision.action,
           costBps,
