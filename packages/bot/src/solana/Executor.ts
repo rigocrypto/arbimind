@@ -776,12 +776,7 @@ export class SolanaExecutor {
       wrapAndUnwrapSol: true,
       dynamicComputeUnitLimit: true,
       dynamicSlippage: true,
-      prioritizationFeeLamports: {
-        priorityLevelWithMaxLamports: {
-          maxLamports,
-          priorityLevel,
-        },
-      },
+      prioritizationFeeLamports: maxLamports,
       asLegacyTransaction: this.config.asLegacyTransaction,
     };
 
