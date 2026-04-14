@@ -517,12 +517,7 @@ export class SolanaInventoryManager {
       wrapAndUnwrapSol: true,
       dynamicComputeUnitLimit: true,
       dynamicSlippage: true,
-      prioritizationFeeLamports: {
-        priorityLevelWithMaxLamports: {
-          maxLamports,
-          priorityLevel,
-        },
-      },
+      prioritizationFeeLamports: maxLamports,
       asLegacyTransaction: this.asLegacyTransaction,
     };
 
