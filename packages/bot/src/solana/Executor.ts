@@ -596,6 +596,21 @@ export class SolanaExecutor {
     // Capture pre-trade balance for PnL
     const preTradeBaseBalance = this.inventoryManager?.getAvailableTradingCapitalUsd() ?? 0;
 
+    // --- Pre-swap balance snapshot for realized PnL ---
+    let preSnap: { sourceBalance: number; destBalance: number; solBalance: number } | null = null;
+    try {
+      const [srcBal, dstBal, solLamports] = await Promise.all([
+        this.fetchTokenBalance(connection, wallet.publicKey, sizedOpportunity.inputMint),
+        this.fetchTokenBalance(connection, wallet.publicKey, sizedOpportunity.outputMint),
+        connection.getBalance(wallet.publicKey, 'confirmed'),
+      ]);
+      preSnap = { sourceBalance: srcBal, destBalance: dstBal, solBalance: solLamports / 1e9 };
+    } catch (err) {
+      this.logger.warn('[SOLANA] pre-swap balance snapshot failed (PnL will be skipped)', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
     const result = await this.signAndSend(transaction, wallet, sizedOpportunity, connection, ammMeta);
 
     // Record PnL after trade
@@ -605,6 +620,72 @@ export class SolanaExecutor {
         this.inventoryManager.recordTradeResult(preTradeBaseBalance, postSnapshot.availableTradingCapitalUsd);
       } catch (err) {
         this.logger.warn('[SOLANA] post-trade PnL snapshot failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // --- Post-swap realized PnL capture ---
+    if (result.success && preSnap) {
+      try {
+        const [postSrcBal, postDstBal, postSolLamports] = await Promise.all([
+          this.fetchTokenBalance(connection, wallet.publicKey, sizedOpportunity.inputMint),
+          this.fetchTokenBalance(connection, wallet.publicKey, sizedOpportunity.outputMint),
+          connection.getBalance(wallet.publicKey, 'confirmed'),
+        ]);
+        const postSnap = { sourceBalance: postSrcBal, destBalance: postDstBal, solBalance: postSolLamports / 1e9 };
+
+        const realizedSourceDelta = preSnap.sourceBalance - postSnap.sourceBalance;   // spent
+        const realizedDestDelta   = postSnap.destBalance  - preSnap.destBalance;      // received
+        const realizedSolFeeDelta = preSnap.solBalance     - postSnap.solBalance;      // fee in SOL
+
+        const solPriceUsd = this.inventoryManager?.getInventorySnapshot()?.solPriceUsd ?? 0;
+        const wrappedSolMint = 'So11111111111111111111111111111111111111112';
+        const stableMints = new Set([
+          'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+          'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+        ]);
+
+        const srcPriceUsd = stableMints.has(sizedOpportunity.inputMint) ? 1
+          : sizedOpportunity.inputMint === wrappedSolMint ? solPriceUsd : 0;
+        const dstPriceUsd = stableMints.has(sizedOpportunity.outputMint) ? 1
+          : sizedOpportunity.outputMint === wrappedSolMint ? solPriceUsd : 0;
+
+        const canComputePnl = srcPriceUsd > 0 && dstPriceUsd > 0 && solPriceUsd > 0;
+        const realizedPnlUsd = canComputePnl
+          ? (realizedDestDelta * dstPriceUsd) - (realizedSourceDelta * srcPriceUsd) - (realizedSolFeeDelta * solPriceUsd)
+          : null;
+
+        const expectedDestAmount = Number(quoteResponse.outAmount);
+        const outputDecimals = stableMints.has(sizedOpportunity.outputMint) ? 6
+          : sizedOpportunity.outputMint === wrappedSolMint ? 9 : 6;
+        const expectedDestHuman = expectedDestAmount / 10 ** outputDecimals;
+        const realizedSlippageBps = expectedDestHuman > 0
+          ? Math.round(((expectedDestHuman - realizedDestDelta) / expectedDestHuman) * 10000)
+          : null;
+
+        this.logger.info('[SOLANA] swap_realized', {
+          signature: result.signature,
+          venue: ammMeta.ammLabel,
+          sourceToken: sizedOpportunity.inputMint,
+          destToken: sizedOpportunity.outputMint,
+          notionalUsd: +sizedOpportunity.estimatedNotionalUsd.toFixed(4),
+          expectedGrossUsd: +sizedOpportunity.expectedProfitUsd.toFixed(6),
+          expectedDestAmount: expectedDestHuman,
+          realizedSourceDelta: +realizedSourceDelta.toFixed(6),
+          realizedDestDelta: +realizedDestDelta.toFixed(6),
+          realizedSolFeeDeltaSol: +realizedSolFeeDelta.toFixed(9),
+          realizedPnlUsd: realizedPnlUsd !== null ? +realizedPnlUsd.toFixed(6) : null,
+          realizedSlippageBps,
+          profitable: realizedPnlUsd !== null ? realizedPnlUsd > 0 : null,
+          slippageWithinBounds: realizedSlippageBps !== null
+            ? realizedSlippageBps <= (this.config.maxSlippageBps * 2)
+            : null,
+          pricingAvailable: canComputePnl,
+        });
+      } catch (err) {
+        this.logger.warn('[SOLANA] post-swap realized PnL capture failed', {
+          signature: result.signature,
           error: err instanceof Error ? err.message : String(err),
         });
       }
@@ -1194,6 +1275,36 @@ export class SolanaExecutor {
       estimatedNotionalUsd: targetSizeUsd,
       expectedProfitUsd: opportunity.expectedProfitUsd * scale,
     };
+  }
+
+  /** Read human-readable balance for a single token mint (SOL returns native SOL balance). */
+  private async fetchTokenBalance(
+    connection: Connection,
+    owner: PublicKey,
+    mint: string,
+  ): Promise<number> {
+    const wrappedSolMint = 'So11111111111111111111111111111111111111112';
+    if (mint === wrappedSolMint) {
+      const lamports = await connection.getBalance(owner, 'confirmed');
+      return lamports / 1e9;
+    }
+
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(owner, {
+      mint: new PublicKey(mint),
+    }, 'confirmed');
+
+    let rawAmount = 0;
+    let decimals = 6;
+    for (const account of tokenAccounts.value) {
+      const parsed = account.account.data.parsed as {
+        info?: { tokenAmount?: { amount?: string; decimals?: number } };
+      };
+      const tokenAmount = parsed.info?.tokenAmount;
+      if (!tokenAmount) continue;
+      rawAmount += Number(tokenAmount.amount || '0');
+      decimals = tokenAmount.decimals ?? decimals;
+    }
+    return rawAmount / 10 ** decimals;
   }
 
   private async fetchInputBalanceUsd(
