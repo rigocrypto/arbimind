@@ -40,6 +40,7 @@ export interface SolanaExecutorConfig {
   drawdownTriggerPct: number;
   drawdownScale: number;
   maxNotionalUsd: number;
+  minNotionalUsd: number;
   minExpectedProfitUsd: number;
   maxDailyLossUsd: number;
   maxSlippageBps: number;
@@ -333,6 +334,13 @@ export class SolanaExecutor {
 
     // Inventory manager trading gate
     if (this.inventoryManager) {
+      // Change 2: Route direction guard — skip if inputMint was recently funded
+      if (this.inventoryManager.isMintFundingLocked(opportunity.inputMint)) {
+        return this.skip(
+          `funding_cooldown: inputMint ${opportunity.inputMint} was recently funded, skipping to prevent wash loop`,
+          opportunity
+        );
+      }
       const gate = this.inventoryManager.checkTradingGate();
       if (!gate.allowed) {
         return this.skip(`inventory gate: ${gate.reason}`, opportunity);
@@ -365,6 +373,14 @@ export class SolanaExecutor {
     const sizedOpportunity = await this.applyPositionSizing(opportunity, connection, wallet.publicKey.toBase58());
     if (!sizedOpportunity) {
       return this.skip('unable to calculate dynamic trade size', opportunity);
+    }
+
+    // Change 3: Minimum effective notional — prevent dust-sized trades
+    if (this.config.minNotionalUsd > 0 && sizedOpportunity.estimatedNotionalUsd < this.config.minNotionalUsd) {
+      return this.skip(
+        `below_min_notional: $${sizedOpportunity.estimatedNotionalUsd.toFixed(2)} < $${this.config.minNotionalUsd.toFixed(2)}`,
+        sizedOpportunity
+      );
     }
 
     if (sizedOpportunity.estimatedNotionalUsd > maxNotionalUsd) {

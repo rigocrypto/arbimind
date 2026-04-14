@@ -19,6 +19,7 @@ export interface InventoryConfig {
   targetSolReserve: number;
   autoFundMinSwapUsd: number;
   fundingRebalanceIntervalMs: number;
+  fundingCooldownMs: number;
   positionSizeFraction: number;
   minTradeUsd: number;
   maxTradeUsd: number;
@@ -55,6 +56,7 @@ export interface SolanaExecutorRuntimeConfig {
   drawdownTriggerPct: number;
   drawdownScale: number;
   maxNotionalUsd: number;
+  minNotionalUsd: number;
   minExpectedProfitUsd: number;
   maxDailyLossUsd: number;
   maxSlippageBps: number;
@@ -140,6 +142,7 @@ export const solanaExecutorConfig: SolanaExecutorRuntimeConfig = {
   drawdownTriggerPct: parseFraction(process.env['SOLANA_DRAWDOWN_TRIGGER_PCT'], 0.8),
   drawdownScale: parseFraction(process.env['SOLANA_DRAWDOWN_SCALE'], 0.5),
   maxNotionalUsd: parseNumber(process.env['SOLANA_MAX_NOTIONAL_USD'], 5),
+  minNotionalUsd: parseNonNegativeNumber(process.env['SOLANA_MIN_NOTIONAL_USD'], 3),
   minExpectedProfitUsd: parseNonNegativeNumber(process.env['SOLANA_MIN_EXPECTED_PROFIT_USD'], 0.1),
   maxDailyLossUsd: parseNumber(process.env['SOLANA_MAX_DAILY_LOSS_USD'], 25),
   maxSlippageBps: parseNumber(process.env['SOLANA_MAX_SLIPPAGE_BPS'] || process.env['MAX_SLIPPAGE_BPS'], 50),
@@ -181,6 +184,7 @@ export const inventoryConfig: InventoryConfig = {
   targetSolReserve: parseNumber(process.env['SOLANA_TARGET_SOL_RESERVE'], 0.25),
   autoFundMinSwapUsd: parseNumber(process.env['SOLANA_AUTO_FUND_MIN_SWAP_USD'], 25),
   fundingRebalanceIntervalMs: parseNumber(process.env['SOLANA_FUNDING_REBALANCE_INTERVAL_MS'], 30_000),
+  fundingCooldownMs: parseNumber(process.env['SOLANA_FUNDING_COOLDOWN_MS'], 300_000),
   positionSizeFraction: parseFraction(process.env['SOLANA_POSITION_SIZE_FRACTION'], 0.25),
   minTradeUsd: parseNumber(process.env['SOLANA_MIN_TRADE_USD'], 20),
   maxTradeUsd: parseNumber(process.env['SOLANA_MAX_TRADE_USD'], 250),

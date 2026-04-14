@@ -92,6 +92,7 @@ export class SolanaInventoryManager {
   private cumulativeRealizedPnlUsd = 0;
   private locked = false;
   private rebalanceTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly recentlyFundedMints = new Map<string, number>();
 
   constructor(opts: {
     config: InventoryConfig;
@@ -600,6 +601,29 @@ export class SolanaInventoryManager {
       estimatedUsd: decision.estimatedUsd,
       ...feeLogFields,
     });
+
+    // Record cooldown so executor skips trading the funded mint
+    this.recordFundingEvent(decision.outputMint);
+  }
+
+  // ── Funding cooldown ──────────────────────────────────────────
+  private recordFundingEvent(outputMint: string): void {
+    this.recentlyFundedMints.set(outputMint, Date.now());
+    this.logger.info('[INVENTORY] funding_cooldown_set', {
+      mint: outputMint,
+      cooldownMs: this.config.fundingCooldownMs,
+    });
+  }
+
+  isMintFundingLocked(mint: string): boolean {
+    const fundedAt = this.recentlyFundedMints.get(mint);
+    if (fundedAt === undefined) return false;
+    const elapsed = Date.now() - fundedAt;
+    if (elapsed >= this.config.fundingCooldownMs) {
+      this.recentlyFundedMints.delete(mint);
+      return false;
+    }
+    return true;
   }
 
   // ── PnL tracking ──────────────────────────────────────────────
