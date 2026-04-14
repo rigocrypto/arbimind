@@ -58,6 +58,10 @@ export interface ExecutionGateConfig {
   slippageFallbackUsd: number;
   /** Fraction of quote-based slippage used in gate (0–1, default 0.5). */
   slippageDiscountFactor: number;
+  /** Fixed USD haircut subtracted from quoted edge to account for observed execution drag. */
+  executionHaircutUsd: number;
+  /** Minimum net edge in basis points of notional. 0 = disabled. */
+  minEdgeBps: number;
 }
 
 export interface SwapOpportunity {
@@ -177,6 +181,8 @@ export class SolanaExecutor {
       riskBufferUsd: deps?.gateConfig?.riskBufferUsd ?? tierRisk ?? 0.03,
       slippageFallbackUsd: deps?.gateConfig?.slippageFallbackUsd ?? 0.05,
       slippageDiscountFactor: deps?.gateConfig?.slippageDiscountFactor ?? 0.5,
+      executionHaircutUsd: deps?.gateConfig?.executionHaircutUsd ?? 0.045,
+      minEdgeBps: deps?.gateConfig?.minEdgeBps ?? 60,
     };
 
     const effectiveMaxNotionalUsd = this.config.canaryMode
@@ -259,6 +265,7 @@ export class SolanaExecutor {
     expectedGrossUsd: number,
     estimatedExecutionFeeUsd: number,
     estimatedSlippageCostUsd: number,
+    notionalUsd: number,
   ): {
     passed: boolean;
     netExpectedUsd: number;
@@ -268,7 +275,8 @@ export class SolanaExecutor {
       expectedGrossUsd -
       estimatedExecutionFeeUsd -
       estimatedSlippageCostUsd -
-      this.gateConfig.riskBufferUsd;
+      this.gateConfig.riskBufferUsd -
+      this.gateConfig.executionHaircutUsd;
 
     if (estimatedExecutionFeeUsd >= expectedGrossUsd) {
       return { passed: false, netExpectedUsd, rejectReason: 'fee_exceeds_gross' };
@@ -280,6 +288,13 @@ export class SolanaExecutor {
     const GATE_PRECISION = 1e-9;
     if (netExpectedUsd < this.gateConfig.minNetProfitUsd - GATE_PRECISION) {
       return { passed: false, netExpectedUsd, rejectReason: 'net_below_floor' };
+    }
+    // Minimum edge in basis points of notional
+    if (this.gateConfig.minEdgeBps > 0 && notionalUsd > 0) {
+      const edgeBps = (netExpectedUsd / notionalUsd) * 10_000;
+      if (edgeBps < this.gateConfig.minEdgeBps) {
+        return { passed: false, netExpectedUsd, rejectReason: 'edge_bps_too_low' };
+      }
     }
     return { passed: true, netExpectedUsd, rejectReason: null };
   }
@@ -551,18 +566,25 @@ export class SolanaExecutor {
         sizedOpportunity.expectedProfitUsd,
         estimatedExecutionFeeUsd,
         slippageCostUsd,
+        sizedOpportunity.estimatedNotionalUsd,
       );
 
       this.sessionMetrics.recordGateEvaluated();
+
+      const notionalUsd = sizedOpportunity.estimatedNotionalUsd;
+      const edgeBps = notionalUsd > 0 ? +((gate.netExpectedUsd / notionalUsd) * 10_000).toFixed(1) : 0;
 
       this.logger.info('[SOLANA] execution_gate', {
         passed: gate.passed,
         expectedGrossUsd: +sizedOpportunity.expectedProfitUsd.toFixed(6),
         estimatedExecutionFeeUsd: +estimatedExecutionFeeUsd.toFixed(6),
         estimatedSlippageCostUsd: +slippageCostUsd.toFixed(6),
+        executionHaircutUsd: this.gateConfig.executionHaircutUsd,
         slippageSource,
         riskBufferUsd: this.gateConfig.riskBufferUsd,
         netExpectedUsd: +gate.netExpectedUsd.toFixed(6),
+        edgeBps,
+        minEdgeBps: this.gateConfig.minEdgeBps,
         minNetProfitUsd: this.gateConfig.minNetProfitUsd,
         rejectReason: gate.rejectReason,
       });

@@ -216,6 +216,10 @@ export interface Exp020Config {
   riskBufferUsd: number;
   slippageFallbackUsd: number;
   slippageDiscountFactor: number;
+  /** Fixed USD haircut subtracted from quoted edge to account for observed execution drag. */
+  executionHaircutUsd: number;
+  /** Minimum net edge in basis points of notional. 0 = disabled. */
+  minEdgeBps: number;
   maxRebalanceCostBps: number;
   landingRateWarningThreshold: number;
   landingRateAutoEscalate: boolean;
@@ -228,6 +232,8 @@ export const exp020Config: Exp020Config = {
   riskBufferUsd: parseNonNegativeNumber(process.env['SOLANA_RISK_BUFFER_USD'], 0.05),
   slippageFallbackUsd: parseNonNegativeNumber(process.env['SOLANA_SLIPPAGE_FALLBACK_USD'], 0.02),
   slippageDiscountFactor: parseFraction(process.env['SOLANA_SLIPPAGE_DISCOUNT_FACTOR'], 0.5),
+  executionHaircutUsd: parseNonNegativeNumber(process.env['SOLANA_EXECUTION_HAIRCUT_USD'], 0.045),
+  minEdgeBps: parseNonNegativeNumber(process.env['SOLANA_MIN_EDGE_BPS'], 60),
   maxRebalanceCostBps: parseNumber(process.env['SOLANA_AUTO_FUND_MAX_REBALANCE_COST_BPS'], 100),
   landingRateWarningThreshold: parseFraction(process.env['SOLANA_LANDING_RATE_WARNING_THRESHOLD'], 0.70),
   landingRateAutoEscalate: !isEnvFalse(process.env['SOLANA_LANDING_RATE_AUTO_ESCALATE'] ?? 'true'),
