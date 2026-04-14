@@ -440,12 +440,7 @@ export class FundingManager {
         wrapAndUnwrapSol: true,
         dynamicComputeUnitLimit: true,
         dynamicSlippage: true,
-        prioritizationFeeLamports: {
-          priorityLevelWithMaxLamports: {
-            maxLamports: 5000,
-            priorityLevel: 'low',
-          },
-        },
+        prioritizationFeeLamports: 5000,
         asLegacyTransaction: true,
       }),
     });
