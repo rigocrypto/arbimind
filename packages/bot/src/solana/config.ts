@@ -209,6 +209,7 @@ export interface Exp020Config {
   minNetProfitUsd: number;
   riskBufferUsd: number;
   slippageFallbackUsd: number;
+  slippageDiscountFactor: number;
   maxRebalanceCostBps: number;
   landingRateWarningThreshold: number;
   landingRateAutoEscalate: boolean;
@@ -220,6 +221,7 @@ export const exp020Config: Exp020Config = {
   minNetProfitUsd: parseNonNegativeNumber(process.env['SOLANA_MIN_NET_PROFIT_USD'], 0.10),
   riskBufferUsd: parseNonNegativeNumber(process.env['SOLANA_RISK_BUFFER_USD'], 0.05),
   slippageFallbackUsd: parseNonNegativeNumber(process.env['SOLANA_SLIPPAGE_FALLBACK_USD'], 0.02),
+  slippageDiscountFactor: parseFraction(process.env['SOLANA_SLIPPAGE_DISCOUNT_FACTOR'], 0.5),
   maxRebalanceCostBps: parseNumber(process.env['SOLANA_AUTO_FUND_MAX_REBALANCE_COST_BPS'], 100),
   landingRateWarningThreshold: parseFraction(process.env['SOLANA_LANDING_RATE_WARNING_THRESHOLD'], 0.70),
   landingRateAutoEscalate: !isEnvFalse(process.env['SOLANA_LANDING_RATE_AUTO_ESCALATE'] ?? 'true'),

@@ -56,6 +56,8 @@ export interface ExecutionGateConfig {
   minNetProfitUsd: number;
   riskBufferUsd: number;
   slippageFallbackUsd: number;
+  /** Fraction of quote-based slippage used in gate (0–1, default 0.5). */
+  slippageDiscountFactor: number;
 }
 
 export interface SwapOpportunity {
@@ -174,6 +176,7 @@ export class SolanaExecutor {
       minNetProfitUsd: deps?.gateConfig?.minNetProfitUsd ?? tierMinNet ?? 0.08,
       riskBufferUsd: deps?.gateConfig?.riskBufferUsd ?? tierRisk ?? 0.03,
       slippageFallbackUsd: deps?.gateConfig?.slippageFallbackUsd ?? 0.05,
+      slippageDiscountFactor: deps?.gateConfig?.slippageDiscountFactor ?? 0.5,
     };
 
     const effectiveMaxNotionalUsd = this.config.canaryMode
@@ -241,8 +244,9 @@ export class SolanaExecutor {
       otherAmountThreshold < outAmount
     ) {
       const slippageTokens = (outAmount - otherAmountThreshold) / 10 ** outputDecimals;
+      const rawSlippageCostUsd = slippageTokens * outputTokenPriceUsd;
       return {
-        slippageCostUsd: slippageTokens * outputTokenPriceUsd,
+        slippageCostUsd: rawSlippageCostUsd * this.gateConfig.slippageDiscountFactor,
         source: 'quote',
       };
     }

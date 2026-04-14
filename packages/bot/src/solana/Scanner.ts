@@ -124,6 +124,7 @@ export class SolanaScanner {
             minNetProfitUsd: tierPolicy.minNetProfitUsd,
             riskBufferUsd: tierPolicy.riskBufferUsd,
             slippageFallbackUsd: exp020Config.slippageFallbackUsd,
+            slippageDiscountFactor: exp020Config.slippageDiscountFactor,
           },
           tierPolicy,
           sessionMetrics: this.sessionMetrics,
