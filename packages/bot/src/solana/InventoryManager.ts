@@ -94,6 +94,13 @@ export class SolanaInventoryManager {
   private rebalanceTimer: ReturnType<typeof setInterval> | null = null;
   private readonly recentlyFundedMints = new Map<string, number>();
 
+  // ── Post-trade cooldown state ─────────────────────────────────
+  private lastConfirmedTrade: {
+    inputMint: string;
+    outputMint: string;
+    confirmedAt: number;
+  } | null = null;
+
   constructor(opts: {
     config: InventoryConfig;
     jupiterBaseUrl: string;
@@ -128,7 +135,31 @@ export class SolanaInventoryManager {
       minTradeUsd: this.config.minTradeUsd,
       maxTradeUsd: this.config.maxTradeUsd,
       compoundProfits: this.config.compoundProfits,
+      postTradeCooldownMs: this.config.postTradeCooldownMs,
+      solRebalanceBandLow: this.config.solRebalanceBandLow,
+      solRebalanceBandHigh: this.config.solRebalanceBandHigh,
     });
+  }
+
+  // ── Post-trade cooldown API ────────────────────────────────────
+  recordConfirmedTrade(inputMint: string, outputMint: string): void {
+    this.lastConfirmedTrade = { inputMint, outputMint, confirmedAt: Date.now() };
+    this.logger.info('[INVENTORY] post_trade_cooldown_set', {
+      inputMint,
+      outputMint,
+      cooldownMs: this.config.postTradeCooldownMs,
+    });
+  }
+
+  isRebalanceBlocked(rebalanceInputMint: string, rebalanceOutputMint: string): boolean {
+    if (!this.lastConfirmedTrade) return false;
+    const elapsed = Date.now() - this.lastConfirmedTrade.confirmedAt;
+    if (elapsed >= this.config.postTradeCooldownMs) return false;
+    // Block the exact reversal of the last trade
+    const isReversal =
+      rebalanceInputMint === this.lastConfirmedTrade.outputMint &&
+      rebalanceOutputMint === this.lastConfirmedTrade.inputMint;
+    return isReversal;
   }
 
   // ── Funding lock ───────────────────────────────────────────────
@@ -310,8 +341,14 @@ export class SolanaInventoryManager {
     const decisions: RebalanceDecision[] = [];
     const solPriceUsd = snapshot.solPriceUsd;
 
+    // ── Hysteresis band: tolerate SOL within band around target ──
+    const bandLow = this.config.targetSolReserve * this.config.solRebalanceBandLow;
+    const bandHigh = this.config.targetSolReserve * this.config.solRebalanceBandHigh;
+    const solInBand = snapshot.solBalance >= bandLow && snapshot.solBalance <= bandHigh;
+
     // Priority 1: SOL reserve deficit — swap small amount of base to SOL
-    if (snapshot.solReserveDeficit > 0 && snapshot.baseAssetBalance > this.config.autoFundMinSwapUsd) {
+    // Only act if SOL is below the band low (not just below target)
+    if (snapshot.solBalance < bandLow && snapshot.solReserveDeficit > 0 && snapshot.baseAssetBalance > this.config.autoFundMinSwapUsd) {
       // Swap enough base to restore to target reserve
       const solNeeded = Math.min(
         this.config.targetSolReserve - snapshot.solBalance + snapshot.solReserveDeficit,
@@ -333,16 +370,17 @@ export class SolanaInventoryManager {
       return decisions;
     }
 
-    // Priority 2: Excess SOL → swap to base asset
-    if (snapshot.solReserveExcess > 0) {
-      const excessUsd = snapshot.solReserveExcess * solPriceUsd;
+    // Priority 2: Excess SOL → swap to base asset (only if above band high)
+    if (snapshot.solBalance > bandHigh) {
+      const excessSol = snapshot.solBalance - this.config.targetSolReserve;
+      const excessUsd = excessSol * solPriceUsd;
       if (excessUsd >= this.config.autoFundMinSwapUsd) {
         decisions.push({
           action: 'swap_sol_to_base',
           reason: `excess SOL: ${snapshot.solBalance.toFixed(4)} above target ${this.config.targetSolReserve}`,
           inputMint: WRAPPED_SOL_MINT,
           outputMint: this.config.baseAssetMint,
-          amountRaw: Math.floor(snapshot.solReserveExcess * 1e9),
+          amountRaw: Math.floor(excessSol * 1e9),
           estimatedUsd: excessUsd,
         });
       }
@@ -393,6 +431,19 @@ export class SolanaInventoryManager {
 
       const decisions = this.computeRebalanceDecisions(snapshot);
       for (const decision of decisions) {
+        // Post-trade cooldown: block reverse of recent trade
+        if (this.isRebalanceBlocked(decision.inputMint, decision.outputMint)) {
+          const elapsed = Date.now() - (this.lastConfirmedTrade?.confirmedAt ?? 0);
+          this.logger.info('[INVENTORY] rebalance blocked — post_trade_cooldown', {
+            action: decision.action,
+            blockedDirection: `${decision.inputMint.slice(0, 6)}→${decision.outputMint.slice(0, 6)}`,
+            elapsedMs: elapsed,
+            cooldownMs: this.config.postTradeCooldownMs,
+            remainingMs: this.config.postTradeCooldownMs - elapsed,
+          });
+          continue;
+        }
+
         this.logger.info('[INVENTORY] rebalance decision', {
           action: decision.action,
           reason: decision.reason,

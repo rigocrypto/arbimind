@@ -643,6 +643,13 @@ export class SolanaExecutor {
           error: err instanceof Error ? err.message : String(err),
         });
       }
+
+      // Post-trade cooldown: tell InventoryManager what was just traded
+      // so it blocks the reverse rebalance for the cooldown window
+      this.inventoryManager.recordConfirmedTrade(
+        sizedOpportunity.inputMint,
+        sizedOpportunity.outputMint,
+      );
     }
 
     // --- Post-swap realized PnL capture ---

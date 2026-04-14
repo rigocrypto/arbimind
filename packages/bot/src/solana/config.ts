@@ -24,6 +24,9 @@ export interface InventoryConfig {
   minTradeUsd: number;
   maxTradeUsd: number;
   compoundProfits: boolean;
+  postTradeCooldownMs: number;
+  solRebalanceBandLow: number;
+  solRebalanceBandHigh: number;
 }
 
 export interface SolanaConfig {
@@ -189,6 +192,9 @@ export const inventoryConfig: InventoryConfig = {
   minTradeUsd: parseNumber(process.env['SOLANA_MIN_TRADE_USD'], 20),
   maxTradeUsd: parseNumber(process.env['SOLANA_MAX_TRADE_USD'], 250),
   compoundProfits: !isEnvFalse(process.env['SOLANA_COMPOUND_PROFITS'] ?? 'true'),
+  postTradeCooldownMs: parseNonNegativeNumber(process.env['SOLANA_POST_TRADE_COOLDOWN_MS'], 600_000),
+  solRebalanceBandLow: parseFraction(process.env['SOLANA_REBALANCE_BAND_LOW'], 0.6),
+  solRebalanceBandHigh: parseNumber(process.env['SOLANA_REBALANCE_BAND_HIGH'], 1.8),
 };
 
 export const priorityFeeConfig: Partial<PriorityFeeConfig> = {
