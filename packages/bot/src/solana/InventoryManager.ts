@@ -25,19 +25,25 @@ import type { SessionMetrics } from './SessionMetrics';
 const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
 const MINT_USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const MINT_USDT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
+const MINT_JUP = 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN';
+const MINT_MSOL = 'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So';
 
-const SUPPORTED_MINTS = new Set([WRAPPED_SOL_MINT, MINT_USDC, MINT_USDT]);
+const SUPPORTED_MINTS = new Set([WRAPPED_SOL_MINT, MINT_USDC, MINT_USDT, MINT_JUP, MINT_MSOL]);
 
 const MINT_DECIMALS: Record<string, number> = {
   [WRAPPED_SOL_MINT]: 9,
   [MINT_USDC]: 6,
   [MINT_USDT]: 6,
+  [MINT_JUP]: 6,
+  [MINT_MSOL]: 9,
 };
 
 const MINT_SYMBOL: Record<string, string> = {
   [WRAPPED_SOL_MINT]: 'SOL',
   [MINT_USDC]: 'USDC',
   [MINT_USDT]: 'USDT',
+  [MINT_JUP]: 'JUP',
+  [MINT_MSOL]: 'mSOL',
 };
 
 // ── Types ─────────────────────────────────────────────────────────

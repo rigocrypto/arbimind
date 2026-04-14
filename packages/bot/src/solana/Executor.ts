@@ -17,6 +17,7 @@ import { LandingTracker } from './LandingTracker';
 import { NetEdgeAccumulator } from './NetEdgeAccumulator';
 import { SessionMetrics } from './SessionMetrics';
 import type { TierPolicy } from './SpeedTierPolicy';
+import { TOKEN_REGISTRY, MINT_TO_SYMBOL } from './config';
 
 export interface SolanaExecutorConfig {
   tradingEnabled: boolean;
@@ -553,8 +554,13 @@ export class SolanaExecutor {
         (quoteResponse as Record<string, unknown>)['outputMint'] ?? sizedOpportunity.outputMint,
       );
       const isOutputStable = ['EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'].includes(outputMint);
-      const outputTokenPriceUsd = isOutputStable ? 1 : (outputMint === 'So11111111111111111111111111111111111111112' ? solPriceUsd : null);
-      const outputDecimals = isOutputStable ? 6 : (outputMint === 'So11111111111111111111111111111111111111112' ? 9 : 6);
+      const outputTokenPriceUsd = isOutputStable
+        ? 1
+        : outputMint === 'So11111111111111111111111111111111111111112'
+          ? solPriceUsd
+          : await this.fetchTokenPriceUsd(outputMint);
+      const outputSymbol = MINT_TO_SYMBOL[outputMint];
+      const outputDecimals = outputSymbol ? (TOKEN_REGISTRY[outputSymbol]?.decimals ?? 6) : 6;
 
       const { slippageCostUsd, source: slippageSource } = this.estimateSlippageCostUsd(
         quoteResponse,
@@ -695,10 +701,14 @@ export class SolanaExecutor {
           'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
         ]);
 
-        const srcPriceUsd = stableMints.has(sizedOpportunity.inputMint) ? 1
-          : sizedOpportunity.inputMint === wrappedSolMint ? solPriceUsd : 0;
-        const dstPriceUsd = stableMints.has(sizedOpportunity.outputMint) ? 1
-          : sizedOpportunity.outputMint === wrappedSolMint ? solPriceUsd : 0;
+        const resolvePriceUsd = async (mint: string): Promise<number> => {
+          if (stableMints.has(mint)) return 1;
+          if (mint === wrappedSolMint) return solPriceUsd;
+          try { return await this.fetchTokenPriceUsd(mint); } catch { return 0; }
+        };
+
+        const srcPriceUsd = await resolvePriceUsd(sizedOpportunity.inputMint);
+        const dstPriceUsd = await resolvePriceUsd(sizedOpportunity.outputMint);
 
         const canComputePnl = srcPriceUsd > 0 && dstPriceUsd > 0 && solPriceUsd > 0;
         const realizedPnlUsd = canComputePnl
@@ -706,8 +716,8 @@ export class SolanaExecutor {
           : null;
 
         const expectedDestAmount = Number(quoteResponse.outAmount);
-        const outputDecimals = stableMints.has(sizedOpportunity.outputMint) ? 6
-          : sizedOpportunity.outputMint === wrappedSolMint ? 9 : 6;
+        const pnlOutputSymbol = MINT_TO_SYMBOL[sizedOpportunity.outputMint];
+        const outputDecimals = pnlOutputSymbol ? (TOKEN_REGISTRY[pnlOutputSymbol]?.decimals ?? 6) : 6;
         const expectedDestHuman = expectedDestAmount / 10 ** outputDecimals;
         const realizedSlippageBps = expectedDestHuman > 0
           ? Math.round(((expectedDestHuman - realizedDestDelta) / expectedDestHuman) * 10000)
@@ -1404,27 +1414,46 @@ export class SolanaExecutor {
       return tokenAmount;
     }
 
-    return 0;
+    // Non-stable, non-SOL token: look up price via Jupiter
+    try {
+      const priceUsd = await this.fetchTokenPriceUsd(inputMint);
+      return tokenAmount * priceUsd;
+    } catch {
+      this.logger.debug('[SOLANA] fetchInputBalanceUsd: price lookup failed for non-standard token', { inputMint });
+      return 0;
+    }
   }
 
   private async fetchSolPriceUsd(): Promise<number> {
+    return this.fetchTokenPriceUsd('So11111111111111111111111111111111111111112');
+  }
+
+  /** Fetch the USD price of any token via a Jupiter quote to USDC. */
+  private async fetchTokenPriceUsd(mint: string): Promise<number> {
+    const usdcMint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+    if (mint === usdcMint || mint === 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB') return 1;
+
+    const symbol = MINT_TO_SYMBOL[mint];
+    const decimals = symbol ? (TOKEN_REGISTRY[symbol]?.decimals ?? 9) : 9;
+    const oneToken = 10 ** decimals;
+
     const url = new URL(`${this.config.jupiterBaseUrl}/quote`);
-    url.searchParams.set('inputMint', 'So11111111111111111111111111111111111111112');
-    url.searchParams.set('outputMint', 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
-    url.searchParams.set('amount', '1000000000');
+    url.searchParams.set('inputMint', mint);
+    url.searchParams.set('outputMint', usdcMint);
+    url.searchParams.set('amount', String(oneToken));
     url.searchParams.set('slippageBps', '50');
 
     const response = await fetch(url.toString());
     if (!response.ok) {
-      throw new Error(`Jupiter SOL price HTTP ${response.status}`);
+      throw new Error(`Jupiter price lookup HTTP ${response.status} for ${mint}`);
     }
 
     const quote = await response.json() as JupiterQuoteResponse;
     const outAmount = Number(quote.outAmount || '0');
     if (!Number.isFinite(outAmount) || outAmount <= 0) {
-      throw new Error('Jupiter SOL price returned invalid outAmount');
+      throw new Error(`Jupiter price returned invalid outAmount for ${mint}`);
     }
 
-    return outAmount / 1_000_000;
+    return outAmount / 1_000_000; // USDC has 6 decimals
   }
 }
