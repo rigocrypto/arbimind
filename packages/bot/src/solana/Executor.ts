@@ -576,6 +576,10 @@ export class SolanaExecutor {
       );
 
       this.sessionMetrics.recordGateEvaluated();
+      this.sessionMetrics.recordGrossEdge(
+        sizedOpportunity.label,
+        sizedOpportunity.expectedProfitUsd,
+      );
 
       const notionalUsd = sizedOpportunity.estimatedNotionalUsd;
       const edgeBps = notionalUsd > 0 ? +((gate.netExpectedUsd / notionalUsd) * 10_000).toFixed(1) : 0;

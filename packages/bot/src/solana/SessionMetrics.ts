@@ -119,6 +119,10 @@ export class SessionMetrics {
   private netEdgeUsdTotal = 0;
   private tradeCount = 0;
 
+  // Best gross edge per pair (reset each summary interval)
+  private bestGrossPerPair: Record<string, number> = {};
+  private bestGrossOverall = 0;
+
   constructor(config?: Partial<SessionMetricsConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
@@ -201,6 +205,15 @@ export class SessionMetrics {
     this.tradeCount++;
   }
 
+  recordGrossEdge(pairLabel: string, grossUsd: number): void {
+    if (grossUsd > (this.bestGrossPerPair[pairLabel] ?? 0)) {
+      this.bestGrossPerPair[pairLabel] = grossUsd;
+    }
+    if (grossUsd > this.bestGrossOverall) {
+      this.bestGrossOverall = grossUsd;
+    }
+  }
+
   // ── Snapshot / summary ─────────────────────────────────────────
 
   getFunnelSnapshot(): FunnelSnapshot {
@@ -275,6 +288,8 @@ export class SessionMetrics {
     const summary = this.getSummary();
     logger.info('[SESSION] periodic_summary', {
       ...summary,
+      bestGrossOverallUsd: +this.bestGrossOverall.toFixed(6),
+      bestGrossPerPair: { ...this.bestGrossPerPair },
       // Flatten reject reasons for structured logging
       ...Object.fromEntries(
         Object.entries(summary.rejectReasons).map(([k, v]) => [`reject_${k}`, v]),

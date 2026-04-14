@@ -28,6 +28,7 @@ type DexPairData = {
   volumeH24?: number;
   liquidityUsd?: number;
   priceUsd?: number;
+  priceNative?: number;
   baseMint?: string;
   baseSymbol?: string;
   quoteMint?: string;
@@ -39,6 +40,7 @@ type DexScreenerResponse = {
     volume?: { h24?: number };
     liquidity?: { usd?: number };
     priceUsd?: number;
+    priceNative?: string;
     baseToken?: { address?: string; symbol?: string };
     quoteToken?: { address?: string; symbol?: string };
   };
@@ -461,6 +463,7 @@ export class SolanaScanner {
         volumeH24: pair.volume?.h24,
         liquidityUsd: pair.liquidity?.usd,
         priceUsd: pair.priceUsd,
+        priceNative: pair.priceNative ? Number(pair.priceNative) : undefined,
         baseMint: pair.baseToken?.address,
         baseSymbol: pair.baseToken?.symbol,
         quoteMint: pair.quoteToken?.address,
@@ -691,7 +694,12 @@ export class SolanaScanner {
 
     if (signal === 'LONG') {
       // Buy base with quote: input = quote token, output = base token
-      const inputPriceUsd = STABLE_SYMBOLS.has(quoteSymbol) ? 1 : priceUsd;
+      // priceUsd = base token USD price; for non-stable quote we need the quote token price.
+      // Derive from priceNative: quoteUsd = baseUsd / priceNative (e.g. mSOL $115 / 1.37 = SOL $84)
+      const priceNative = pairData.priceNative;
+      const inputPriceUsd = STABLE_SYMBOLS.has(quoteSymbol)
+        ? 1
+        : (priceNative && priceNative > 0 ? priceUsd / priceNative : priceUsd);
       const inputAmountRaw = Math.round((cappedNotionalUsd / inputPriceUsd) * 10 ** quoteMeta.decimals);
       return {
         inputMint: quoteMeta.mint,
