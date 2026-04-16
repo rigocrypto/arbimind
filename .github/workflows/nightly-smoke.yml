@@ -79,7 +79,7 @@ jobs:
           $tail | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-      - name: Open failure issue
+      - name: Upsert failure tracking issue
         if: steps.smoke.outcome == 'failure'
         uses: actions/github-script@v9
         env:
@@ -89,11 +89,20 @@ jobs:
         with:
           script: |
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const stamp = new Date().toISOString();
-            const title = `Nightly Smoke Failure - ${stamp}`;
-            const body = [
-              `Nightly smoke failed. @ops`,
-              '',
+            const title = 'CI: recurring nightly smoke failures';
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+
+            const tracker = issues.find(i => i.title === title);
+
+            const failureNote = [
+              `❌ Nightly smoke failed. @ops`,
+              `- Time (UTC): ${new Date().toISOString()}`,
               `- Backend: ${process.env.BACKEND_BASE}`,
               `- UI: ${process.env.UI_BASE}`,
               `- Workflow run: ${runUrl}`,
@@ -104,11 +113,30 @@ jobs:
               '```'
             ].join('\n');
 
-            await github.rest.issues.create({
+            if (!tracker) {
+              const body = [
+                'This issue tracks recurring nightly smoke failures.',
+                '',
+                'The workflow appends each failing run as a comment to avoid issue spam.',
+                '',
+                '### Latest failure',
+                failureNote
+              ].join('\n');
+
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body
+              });
+              return;
+            }
+
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title,
-              body
+              issue_number: tracker.number,
+              body: failureNote
             });
 
       - name: Notify failure webhook
@@ -136,12 +164,13 @@ jobs:
 
           Invoke-RestMethod -Uri $env:ALERT_WEBHOOK_URL -Method Post -ContentType 'application/json' -Body $payload
 
-      - name: Comment green and close old failure issues
+      - name: Comment green and close failure tracker
         if: steps.smoke.outcome == 'success'
         uses: actions/github-script@v9
         with:
           script: |
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const title = 'CI: recurring nightly smoke failures';
             const { data: issues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -149,27 +178,22 @@ jobs:
               per_page: 100
             });
 
-            const nightlyFailures = issues
-              .filter(i => i.title && i.title.startsWith('Nightly Smoke Failure -'))
-              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            const tracker = issues.find(i => i.title === title);
 
-            if (!nightlyFailures.length) {
+            if (!tracker) {
               return;
             }
 
-            const latest = nightlyFailures[0];
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: latest.number,
+              issue_number: tracker.number,
               body: `✅ Green: nightly smoke passed. Run: ${runUrl}`
             });
 
-            for (const issue of nightlyFailures) {
-              await github.rest.issues.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue.number,
-                state: 'closed'
-              });
-            }
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: tracker.number,
+              state: 'closed'
+            });
