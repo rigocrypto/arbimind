@@ -82,5 +82,8 @@
       "@eslint/config-array": "^0.23.0",
       "eslint>minimatch": "3.1.4"
     }
+  },
+  "dependencies": {
+    "protobufjs": "7.5.5"
   }
 }
