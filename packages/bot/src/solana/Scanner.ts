@@ -4,7 +4,7 @@
  */
 
 import { SolanaExecutor, type SwapOpportunity } from './Executor';
-import { solanaConfig, solanaExecutorConfig, inventoryConfig, priorityFeeConfig, exp020Config } from './config';
+import { solanaConfig, solanaExecutorConfig, inventoryConfig, priorityFeeConfig, exp020Config, enabledPairs, TOKEN_REGISTRY } from './config';
 import { config } from '../config';
 import { Logger } from '../utils/Logger';
 import { AiScoringService, AiScoringConfig } from '../services/AiScoringService';
@@ -20,7 +20,6 @@ import { Connection, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
 
 const logger = new Logger('SolanaScanner');
-const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
 const STABLE_SYMBOLS = new Set(['USDC', 'USDT']);
 const SOLANA_MIN_EXECUTION_CONFIDENCE = Number.parseFloat(process.env['SOLANA_MIN_EXECUTION_CONFIDENCE'] || '0.85');
 
@@ -28,6 +27,7 @@ type DexPairData = {
   volumeH24?: number;
   liquidityUsd?: number;
   priceUsd?: number;
+  priceNative?: number;
   baseMint?: string;
   baseSymbol?: string;
   quoteMint?: string;
@@ -39,6 +39,7 @@ type DexScreenerResponse = {
     volume?: { h24?: number };
     liquidity?: { usd?: number };
     priceUsd?: number;
+    priceNative?: string;
     baseToken?: { address?: string; symbol?: string };
     quoteToken?: { address?: string; symbol?: string };
   };
@@ -124,6 +125,9 @@ export class SolanaScanner {
             minNetProfitUsd: tierPolicy.minNetProfitUsd,
             riskBufferUsd: tierPolicy.riskBufferUsd,
             slippageFallbackUsd: exp020Config.slippageFallbackUsd,
+            slippageDiscountFactor: exp020Config.slippageDiscountFactor,
+            executionHaircutUsd: exp020Config.executionHaircutUsd,
+            minEdgeBps: exp020Config.minEdgeBps,
           },
           tierPolicy,
           sessionMetrics: this.sessionMetrics,
@@ -211,10 +215,17 @@ export class SolanaScanner {
         minNetProfitUsd: tierPolicy.minNetProfitUsd,
         riskBufferUsd: tierPolicy.riskBufferUsd,
         slippageFallbackUsd: exp020Config.slippageFallbackUsd,
+        executionHaircutUsd: exp020Config.executionHaircutUsd,
+        minEdgeBps: exp020Config.minEdgeBps,
         maxRebalanceCostBps: exp020Config.maxRebalanceCostBps,
         landingRateWarningThreshold: exp020Config.landingRateWarningThreshold,
         landingRateAutoEscalate: exp020Config.landingRateAutoEscalate,
         netEdgeWindow: exp020Config.netEdgeWindow,
+      });
+
+      logger.info('🎯 Enabled trading pairs', {
+        pairs: enabledPairs.map(p => `${p.base}/${p.quote}`),
+        pairCount: enabledPairs.length,
       });
     }
 
@@ -377,22 +388,28 @@ export class SolanaScanner {
         return;
       }
 
+      // Resolve pair metadata for AI scoring
+      const pairBaseSymbol = pairData.baseSymbol?.toUpperCase() ?? 'UNKNOWN';
+      const pairQuoteSymbol = pairData.quoteSymbol?.toUpperCase() ?? 'UNKNOWN';
+      const pairBaseMeta = TOKEN_REGISTRY[pairBaseSymbol];
+      const pairQuoteMeta = TOKEN_REGISTRY[pairQuoteSymbol];
+
       // Score with AI
       const score = await this.aiScoringService.scoreOpportunity(
         {
-          tokenA: 'SOL',
-          tokenB: 'USDC',
+          tokenA: pairBaseMeta?.symbol ?? pairBaseSymbol,
+          tokenB: pairQuoteMeta?.symbol ?? pairQuoteSymbol,
           dex1: 'RAYDIUM',
           dex2: 'RAYDIUM',
-          amountIn: '1000000000', // 1 SOL in lamports
+          amountIn: String(10 ** (pairBaseMeta?.decimals ?? 9)),
           amountOut1: '0',
           amountOut2: '0',
           profit: '0',
           profitPercent: 0.5,
           gasEstimate: '0',
           netProfit: '0',
-          decimalsIn: 9,  // SOL = 9 decimals
-          decimalsOut: 6, // USDC = 6 decimals
+          decimalsIn: pairBaseMeta?.decimals ?? 9,
+          decimalsOut: pairQuoteMeta?.decimals ?? 6,
           route: 'SOLANA',
           timestamp: Date.now(),
         },
@@ -445,6 +462,7 @@ export class SolanaScanner {
         volumeH24: pair.volume?.h24,
         liquidityUsd: pair.liquidity?.usd,
         priceUsd: pair.priceUsd,
+        priceNative: pair.priceNative ? Number(pair.priceNative) : undefined,
         baseMint: pair.baseToken?.address,
         baseSymbol: pair.baseToken?.symbol,
         quoteMint: pair.quoteToken?.address,
@@ -633,16 +651,35 @@ export class SolanaScanner {
     const baseSymbol = pairData.baseSymbol.toUpperCase();
     const quoteSymbol = pairData.quoteSymbol.toUpperCase();
     const priceUsd = Number(pairData.priceUsd ?? 0);
+
+    // Check if pair is in the enabled list (order-independent)
+    const isEnabled = enabledPairs.some(p =>
+      (p.base === baseSymbol && p.quote === quoteSymbol) ||
+      (p.base === quoteSymbol && p.quote === baseSymbol)
+    );
+    if (!isEnabled) {
+      logger.debug(`Skipping Solana execution for ${poolAddress}: pair ${baseSymbol}/${quoteSymbol} not in enabled pairs`);
+      return null;
+    }
+
+    if (priceUsd <= 0) {
+      logger.debug(`Skipping Solana execution for ${poolAddress}: invalid base price`);
+      return null;
+    }
+
+    // Resolve token metadata from registry (canonical mints + decimals)
+    const baseMeta = TOKEN_REGISTRY[baseSymbol];
+    const quoteMeta = TOKEN_REGISTRY[quoteSymbol];
+    if (!baseMeta || !quoteMeta) {
+      logger.debug(`Skipping Solana execution for ${poolAddress}: ${baseSymbol} or ${quoteSymbol} not in token registry`);
+      return null;
+    }
+
     const cappedNotionalUsd = solanaExecutorConfig.canaryMode
       ? Math.min(solanaExecutorConfig.maxNotionalUsd, 5)
       : solanaExecutorConfig.maxNotionalUsd;
     const spreadBps = Math.abs(expectedProfitPct) * 100;
     const expectedProfitUsd = Math.abs(expectedProfitPct) * cappedNotionalUsd / 100;
-
-    if (baseSymbol !== 'SOL' || !STABLE_SYMBOLS.has(quoteSymbol) || priceUsd <= 0) {
-      logger.debug(`Skipping Solana execution for ${poolAddress}: unsupported pair ${baseSymbol}/${quoteSymbol}`);
-      return null;
-    }
 
     if (confidence < Math.max(config.aiMinSuccessProb, SOLANA_MIN_EXECUTION_CONFIDENCE)) {
       logger.debug(`Skipping Solana execution for ${poolAddress}: confidence ${confidence.toFixed(2)} below execution threshold`);
@@ -655,25 +692,35 @@ export class SolanaScanner {
     }
 
     if (signal === 'LONG') {
+      // Buy base with quote: input = quote token, output = base token
+      // priceUsd = base token USD price; for non-stable quote we need the quote token price.
+      // Derive from priceNative: quoteUsd = baseUsd / priceNative (e.g. mSOL $115 / 1.37 = SOL $84)
+      const priceNative = pairData.priceNative;
+      const inputPriceUsd = STABLE_SYMBOLS.has(quoteSymbol)
+        ? 1
+        : (priceNative && priceNative > 0 ? priceUsd / priceNative : priceUsd);
+      const inputAmountRaw = Math.round((cappedNotionalUsd / inputPriceUsd) * 10 ** quoteMeta.decimals);
       return {
-        inputMint: pairData.quoteMint,
-        outputMint: pairData.baseMint === WRAPPED_SOL_MINT ? pairData.baseMint : WRAPPED_SOL_MINT,
-        amountLamports: Math.max(1, Math.round(cappedNotionalUsd * 1_000_000)),
+        inputMint: quoteMeta.mint,
+        outputMint: baseMeta.mint,
+        amountLamports: Math.max(1, inputAmountRaw),
         estimatedNotionalUsd: cappedNotionalUsd,
         expectedProfitUsd,
         spreadBps,
-        label: `${quoteSymbol}->SOL @ ${poolAddress}`,
+        label: `${quoteMeta.symbol}->${baseMeta.symbol} @ ${poolAddress}`,
       };
     }
 
+    // SHORT: sell base for quote: input = base token, output = quote token
+    const inputAmountRaw = Math.round((cappedNotionalUsd / priceUsd) * 10 ** baseMeta.decimals);
     return {
-      inputMint: pairData.baseMint,
-      outputMint: pairData.quoteMint,
-      amountLamports: Math.max(1, Math.round((cappedNotionalUsd / priceUsd) * 1_000_000_000)),
+      inputMint: baseMeta.mint,
+      outputMint: quoteMeta.mint,
+      amountLamports: Math.max(1, inputAmountRaw),
       estimatedNotionalUsd: cappedNotionalUsd,
       expectedProfitUsd,
       spreadBps,
-      label: `SOL->${quoteSymbol} @ ${poolAddress}`,
+      label: `${baseMeta.symbol}->${quoteMeta.symbol} @ ${poolAddress}`,
     };
   }
 }

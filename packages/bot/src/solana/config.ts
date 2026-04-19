@@ -19,10 +19,14 @@ export interface InventoryConfig {
   targetSolReserve: number;
   autoFundMinSwapUsd: number;
   fundingRebalanceIntervalMs: number;
+  fundingCooldownMs: number;
   positionSizeFraction: number;
   minTradeUsd: number;
   maxTradeUsd: number;
   compoundProfits: boolean;
+  postTradeCooldownMs: number;
+  solRebalanceBandLow: number;
+  solRebalanceBandHigh: number;
 }
 
 export interface SolanaConfig {
@@ -55,6 +59,7 @@ export interface SolanaExecutorRuntimeConfig {
   drawdownTriggerPct: number;
   drawdownScale: number;
   maxNotionalUsd: number;
+  minNotionalUsd: number;
   minExpectedProfitUsd: number;
   maxDailyLossUsd: number;
   maxSlippageBps: number;
@@ -140,6 +145,7 @@ export const solanaExecutorConfig: SolanaExecutorRuntimeConfig = {
   drawdownTriggerPct: parseFraction(process.env['SOLANA_DRAWDOWN_TRIGGER_PCT'], 0.8),
   drawdownScale: parseFraction(process.env['SOLANA_DRAWDOWN_SCALE'], 0.5),
   maxNotionalUsd: parseNumber(process.env['SOLANA_MAX_NOTIONAL_USD'], 5),
+  minNotionalUsd: parseNonNegativeNumber(process.env['SOLANA_MIN_NOTIONAL_USD'], 3),
   minExpectedProfitUsd: parseNonNegativeNumber(process.env['SOLANA_MIN_EXPECTED_PROFIT_USD'], 0.1),
   maxDailyLossUsd: parseNumber(process.env['SOLANA_MAX_DAILY_LOSS_USD'], 25),
   maxSlippageBps: parseNumber(process.env['SOLANA_MAX_SLIPPAGE_BPS'] || process.env['MAX_SLIPPAGE_BPS'], 50),
@@ -181,10 +187,14 @@ export const inventoryConfig: InventoryConfig = {
   targetSolReserve: parseNumber(process.env['SOLANA_TARGET_SOL_RESERVE'], 0.25),
   autoFundMinSwapUsd: parseNumber(process.env['SOLANA_AUTO_FUND_MIN_SWAP_USD'], 25),
   fundingRebalanceIntervalMs: parseNumber(process.env['SOLANA_FUNDING_REBALANCE_INTERVAL_MS'], 30_000),
+  fundingCooldownMs: parseNumber(process.env['SOLANA_FUNDING_COOLDOWN_MS'], 300_000),
   positionSizeFraction: parseFraction(process.env['SOLANA_POSITION_SIZE_FRACTION'], 0.25),
   minTradeUsd: parseNumber(process.env['SOLANA_MIN_TRADE_USD'], 20),
   maxTradeUsd: parseNumber(process.env['SOLANA_MAX_TRADE_USD'], 250),
   compoundProfits: !isEnvFalse(process.env['SOLANA_COMPOUND_PROFITS'] ?? 'true'),
+  postTradeCooldownMs: parseNonNegativeNumber(process.env['SOLANA_POST_TRADE_COOLDOWN_MS'], 600_000),
+  solRebalanceBandLow: parseFraction(process.env['SOLANA_REBALANCE_BAND_LOW'], 0.6),
+  solRebalanceBandHigh: parseNumber(process.env['SOLANA_REBALANCE_BAND_HIGH'], 1.8),
 };
 
 export const priorityFeeConfig: Partial<PriorityFeeConfig> = {
@@ -205,6 +215,11 @@ export interface Exp020Config {
   minNetProfitUsd: number;
   riskBufferUsd: number;
   slippageFallbackUsd: number;
+  slippageDiscountFactor: number;
+  /** Fixed USD haircut subtracted from quoted edge to account for observed execution drag. */
+  executionHaircutUsd: number;
+  /** Minimum net edge in basis points of notional. 0 = disabled. */
+  minEdgeBps: number;
   maxRebalanceCostBps: number;
   landingRateWarningThreshold: number;
   landingRateAutoEscalate: boolean;
@@ -216,8 +231,49 @@ export const exp020Config: Exp020Config = {
   minNetProfitUsd: parseNonNegativeNumber(process.env['SOLANA_MIN_NET_PROFIT_USD'], 0.10),
   riskBufferUsd: parseNonNegativeNumber(process.env['SOLANA_RISK_BUFFER_USD'], 0.05),
   slippageFallbackUsd: parseNonNegativeNumber(process.env['SOLANA_SLIPPAGE_FALLBACK_USD'], 0.02),
+  slippageDiscountFactor: parseFraction(process.env['SOLANA_SLIPPAGE_DISCOUNT_FACTOR'], 0.5),
+  executionHaircutUsd: parseNonNegativeNumber(process.env['SOLANA_EXECUTION_HAIRCUT_USD'], 0.045),
+  minEdgeBps: parseNonNegativeNumber(process.env['SOLANA_MIN_EDGE_BPS'], 60),
   maxRebalanceCostBps: parseNumber(process.env['SOLANA_AUTO_FUND_MAX_REBALANCE_COST_BPS'], 100),
   landingRateWarningThreshold: parseFraction(process.env['SOLANA_LANDING_RATE_WARNING_THRESHOLD'], 0.70),
   landingRateAutoEscalate: !isEnvFalse(process.env['SOLANA_LANDING_RATE_AUTO_ESCALATE'] ?? 'true'),
   netEdgeWindow: parseNumber(process.env['SOLANA_NET_EDGE_WINDOW'], 20),
 };
+
+// ── Multi-pair support ────────────────────────────────────────────
+export interface TokenMeta {
+  mint: string;
+  symbol: string;
+  decimals: number;
+}
+
+export const TOKEN_REGISTRY: Record<string, TokenMeta> = {
+  SOL: { mint: 'So11111111111111111111111111111111111111112', symbol: 'SOL', decimals: 9 },
+  USDC: { mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', symbol: 'USDC', decimals: 6 },
+  USDT: { mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', symbol: 'USDT', decimals: 6 },
+  JUP: { mint: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN', symbol: 'JUP', decimals: 6 },
+  MSOL: { mint: 'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So', symbol: 'mSOL', decimals: 9 },
+};
+
+export const MINT_TO_SYMBOL: Record<string, string> = Object.fromEntries(
+  Object.entries(TOKEN_REGISTRY).map(([key, meta]) => [meta.mint, key]),
+);
+
+export interface EnabledPair {
+  base: string;
+  quote: string;
+}
+
+function parseEnabledPairs(value: string | undefined): EnabledPair[] {
+  const raw = (value || 'SOL/USDC').split(',').map(s => s.trim()).filter(Boolean);
+  return raw.map(pair => {
+    const parts = pair.split('/');
+    if (parts.length !== 2) return null;
+    const base = parts[0].trim().toUpperCase();
+    const quote = parts[1].trim().toUpperCase();
+    if (!TOKEN_REGISTRY[base] || !TOKEN_REGISTRY[quote]) return null;
+    return { base, quote };
+  }).filter((p): p is EnabledPair => p !== null);
+}
+
+export const enabledPairs: EnabledPair[] = parseEnabledPairs(process.env['SOLANA_ENABLED_PAIRS']);

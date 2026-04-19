@@ -25,19 +25,28 @@ import type { SessionMetrics } from './SessionMetrics';
 const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
 const MINT_USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const MINT_USDT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
+const MINT_RAY = '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R';
+const MINT_JUP = 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN';
+const MINT_MSOL = 'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So';
 
-const SUPPORTED_MINTS = new Set([WRAPPED_SOL_MINT, MINT_USDC, MINT_USDT]);
+const SUPPORTED_MINTS = new Set([WRAPPED_SOL_MINT, MINT_USDC, MINT_USDT, MINT_RAY, MINT_JUP, MINT_MSOL]);
 
 const MINT_DECIMALS: Record<string, number> = {
   [WRAPPED_SOL_MINT]: 9,
   [MINT_USDC]: 6,
   [MINT_USDT]: 6,
+  [MINT_RAY]: 6,
+  [MINT_JUP]: 6,
+  [MINT_MSOL]: 9,
 };
 
 const MINT_SYMBOL: Record<string, string> = {
   [WRAPPED_SOL_MINT]: 'SOL',
   [MINT_USDC]: 'USDC',
   [MINT_USDT]: 'USDT',
+  [MINT_RAY]: 'RAY',
+  [MINT_JUP]: 'JUP',
+  [MINT_MSOL]: 'mSOL',
 };
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -92,6 +101,14 @@ export class SolanaInventoryManager {
   private cumulativeRealizedPnlUsd = 0;
   private locked = false;
   private rebalanceTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly recentlyFundedMints = new Map<string, number>();
+
+  // ── Post-trade cooldown state ─────────────────────────────────
+  private lastConfirmedTrade: {
+    inputMint: string;
+    outputMint: string;
+    confirmedAt: number;
+  } | null = null;
 
   constructor(opts: {
     config: InventoryConfig;
@@ -127,7 +144,31 @@ export class SolanaInventoryManager {
       minTradeUsd: this.config.minTradeUsd,
       maxTradeUsd: this.config.maxTradeUsd,
       compoundProfits: this.config.compoundProfits,
+      postTradeCooldownMs: this.config.postTradeCooldownMs,
+      solRebalanceBandLow: this.config.solRebalanceBandLow,
+      solRebalanceBandHigh: this.config.solRebalanceBandHigh,
     });
+  }
+
+  // ── Post-trade cooldown API ────────────────────────────────────
+  recordConfirmedTrade(inputMint: string, outputMint: string): void {
+    this.lastConfirmedTrade = { inputMint, outputMint, confirmedAt: Date.now() };
+    this.logger.info('[INVENTORY] post_trade_cooldown_set', {
+      inputMint,
+      outputMint,
+      cooldownMs: this.config.postTradeCooldownMs,
+    });
+  }
+
+  isRebalanceBlocked(rebalanceInputMint: string, rebalanceOutputMint: string): boolean {
+    if (!this.lastConfirmedTrade) return false;
+    const elapsed = Date.now() - this.lastConfirmedTrade.confirmedAt;
+    if (elapsed >= this.config.postTradeCooldownMs) return false;
+    // Block the exact reversal of the last trade
+    const isReversal =
+      rebalanceInputMint === this.lastConfirmedTrade.outputMint &&
+      rebalanceOutputMint === this.lastConfirmedTrade.inputMint;
+    return isReversal;
   }
 
   // ── Funding lock ───────────────────────────────────────────────
@@ -309,8 +350,13 @@ export class SolanaInventoryManager {
     const decisions: RebalanceDecision[] = [];
     const solPriceUsd = snapshot.solPriceUsd;
 
+    // ── Hysteresis band: tolerate SOL within band around target ──
+    const bandLow = this.config.targetSolReserve * this.config.solRebalanceBandLow;
+    const bandHigh = this.config.targetSolReserve * this.config.solRebalanceBandHigh;
+
     // Priority 1: SOL reserve deficit — swap small amount of base to SOL
-    if (snapshot.solReserveDeficit > 0 && snapshot.baseAssetBalance > this.config.autoFundMinSwapUsd) {
+    // Only act if SOL is below the band low (not just below target)
+    if (snapshot.solBalance < bandLow && snapshot.solReserveDeficit > 0 && snapshot.baseAssetBalance > this.config.autoFundMinSwapUsd) {
       // Swap enough base to restore to target reserve
       const solNeeded = Math.min(
         this.config.targetSolReserve - snapshot.solBalance + snapshot.solReserveDeficit,
@@ -332,16 +378,17 @@ export class SolanaInventoryManager {
       return decisions;
     }
 
-    // Priority 2: Excess SOL → swap to base asset
-    if (snapshot.solReserveExcess > 0) {
-      const excessUsd = snapshot.solReserveExcess * solPriceUsd;
+    // Priority 2: Excess SOL → swap to base asset (only if above band high)
+    if (snapshot.solBalance > bandHigh) {
+      const excessSol = snapshot.solBalance - this.config.targetSolReserve;
+      const excessUsd = excessSol * solPriceUsd;
       if (excessUsd >= this.config.autoFundMinSwapUsd) {
         decisions.push({
           action: 'swap_sol_to_base',
           reason: `excess SOL: ${snapshot.solBalance.toFixed(4)} above target ${this.config.targetSolReserve}`,
           inputMint: WRAPPED_SOL_MINT,
           outputMint: this.config.baseAssetMint,
-          amountRaw: Math.floor(snapshot.solReserveExcess * 1e9),
+          amountRaw: Math.floor(excessSol * 1e9),
           estimatedUsd: excessUsd,
         });
       }
@@ -392,6 +439,19 @@ export class SolanaInventoryManager {
 
       const decisions = this.computeRebalanceDecisions(snapshot);
       for (const decision of decisions) {
+        // Post-trade cooldown: block reverse of recent trade
+        if (this.isRebalanceBlocked(decision.inputMint, decision.outputMint)) {
+          const elapsed = Date.now() - (this.lastConfirmedTrade?.confirmedAt ?? 0);
+          this.logger.info('[INVENTORY] rebalance blocked — post_trade_cooldown', {
+            action: decision.action,
+            blockedDirection: `${decision.inputMint.slice(0, 6)}→${decision.outputMint.slice(0, 6)}`,
+            elapsedMs: elapsed,
+            cooldownMs: this.config.postTradeCooldownMs,
+            remainingMs: this.config.postTradeCooldownMs - elapsed,
+          });
+          continue;
+        }
+
         this.logger.info('[INVENTORY] rebalance decision', {
           action: decision.action,
           reason: decision.reason,
@@ -516,12 +576,7 @@ export class SolanaInventoryManager {
       wrapAndUnwrapSol: true,
       dynamicComputeUnitLimit: true,
       dynamicSlippage: true,
-      prioritizationFeeLamports: {
-        priorityLevelWithMaxLamports: {
-          maxLamports,
-          priorityLevel,
-        },
-      },
+      prioritizationFeeLamports: maxLamports,
       asLegacyTransaction: this.asLegacyTransaction,
     };
 
@@ -600,6 +655,29 @@ export class SolanaInventoryManager {
       estimatedUsd: decision.estimatedUsd,
       ...feeLogFields,
     });
+
+    // Record cooldown so executor skips trading the funded mint
+    this.recordFundingEvent(decision.outputMint);
+  }
+
+  // ── Funding cooldown ──────────────────────────────────────────
+  private recordFundingEvent(outputMint: string): void {
+    this.recentlyFundedMints.set(outputMint, Date.now());
+    this.logger.info('[INVENTORY] funding_cooldown_set', {
+      mint: outputMint,
+      cooldownMs: this.config.fundingCooldownMs,
+    });
+  }
+
+  isMintFundingLocked(mint: string): boolean {
+    const fundedAt = this.recentlyFundedMints.get(mint);
+    if (fundedAt === undefined) return false;
+    const elapsed = Date.now() - fundedAt;
+    if (elapsed >= this.config.fundingCooldownMs) {
+      this.recentlyFundedMints.delete(mint);
+      return false;
+    }
+    return true;
   }
 
   // ── PnL tracking ──────────────────────────────────────────────

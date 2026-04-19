@@ -17,6 +17,7 @@ import { LandingTracker } from './LandingTracker';
 import { NetEdgeAccumulator } from './NetEdgeAccumulator';
 import { SessionMetrics } from './SessionMetrics';
 import type { TierPolicy } from './SpeedTierPolicy';
+import { TOKEN_REGISTRY, MINT_TO_SYMBOL } from './config';
 
 export interface SolanaExecutorConfig {
   tradingEnabled: boolean;
@@ -40,6 +41,7 @@ export interface SolanaExecutorConfig {
   drawdownTriggerPct: number;
   drawdownScale: number;
   maxNotionalUsd: number;
+  minNotionalUsd: number;
   minExpectedProfitUsd: number;
   maxDailyLossUsd: number;
   maxSlippageBps: number;
@@ -55,6 +57,12 @@ export interface ExecutionGateConfig {
   minNetProfitUsd: number;
   riskBufferUsd: number;
   slippageFallbackUsd: number;
+  /** Fraction of quote-based slippage used in gate (0–1, default 0.5). */
+  slippageDiscountFactor: number;
+  /** Fixed USD haircut subtracted from quoted edge to account for observed execution drag. */
+  executionHaircutUsd: number;
+  /** Minimum net edge in basis points of notional. 0 = disabled. */
+  minEdgeBps: number;
 }
 
 export interface SwapOpportunity {
@@ -173,6 +181,9 @@ export class SolanaExecutor {
       minNetProfitUsd: deps?.gateConfig?.minNetProfitUsd ?? tierMinNet ?? 0.08,
       riskBufferUsd: deps?.gateConfig?.riskBufferUsd ?? tierRisk ?? 0.03,
       slippageFallbackUsd: deps?.gateConfig?.slippageFallbackUsd ?? 0.05,
+      slippageDiscountFactor: deps?.gateConfig?.slippageDiscountFactor ?? 0.5,
+      executionHaircutUsd: deps?.gateConfig?.executionHaircutUsd ?? 0.045,
+      minEdgeBps: deps?.gateConfig?.minEdgeBps ?? 60,
     };
 
     const effectiveMaxNotionalUsd = this.config.canaryMode
@@ -240,8 +251,9 @@ export class SolanaExecutor {
       otherAmountThreshold < outAmount
     ) {
       const slippageTokens = (outAmount - otherAmountThreshold) / 10 ** outputDecimals;
+      const rawSlippageCostUsd = slippageTokens * outputTokenPriceUsd;
       return {
-        slippageCostUsd: slippageTokens * outputTokenPriceUsd,
+        slippageCostUsd: rawSlippageCostUsd * this.gateConfig.slippageDiscountFactor,
         source: 'quote',
       };
     }
@@ -254,6 +266,7 @@ export class SolanaExecutor {
     expectedGrossUsd: number,
     estimatedExecutionFeeUsd: number,
     estimatedSlippageCostUsd: number,
+    notionalUsd: number,
   ): {
     passed: boolean;
     netExpectedUsd: number;
@@ -263,7 +276,8 @@ export class SolanaExecutor {
       expectedGrossUsd -
       estimatedExecutionFeeUsd -
       estimatedSlippageCostUsd -
-      this.gateConfig.riskBufferUsd;
+      this.gateConfig.riskBufferUsd -
+      this.gateConfig.executionHaircutUsd;
 
     if (estimatedExecutionFeeUsd >= expectedGrossUsd) {
       return { passed: false, netExpectedUsd, rejectReason: 'fee_exceeds_gross' };
@@ -275,6 +289,13 @@ export class SolanaExecutor {
     const GATE_PRECISION = 1e-9;
     if (netExpectedUsd < this.gateConfig.minNetProfitUsd - GATE_PRECISION) {
       return { passed: false, netExpectedUsd, rejectReason: 'net_below_floor' };
+    }
+    // Minimum edge in basis points of notional
+    if (this.gateConfig.minEdgeBps > 0 && notionalUsd > 0) {
+      const edgeBps = (netExpectedUsd / notionalUsd) * 10_000;
+      if (edgeBps < this.gateConfig.minEdgeBps) {
+        return { passed: false, netExpectedUsd, rejectReason: 'edge_bps_too_low' };
+      }
     }
     return { passed: true, netExpectedUsd, rejectReason: null };
   }
@@ -333,6 +354,13 @@ export class SolanaExecutor {
 
     // Inventory manager trading gate
     if (this.inventoryManager) {
+      // Change 2: Route direction guard — skip if inputMint was recently funded
+      if (this.inventoryManager.isMintFundingLocked(opportunity.inputMint)) {
+        return this.skip(
+          `funding_cooldown: inputMint ${opportunity.inputMint} was recently funded, skipping to prevent wash loop`,
+          opportunity
+        );
+      }
       const gate = this.inventoryManager.checkTradingGate();
       if (!gate.allowed) {
         return this.skip(`inventory gate: ${gate.reason}`, opportunity);
@@ -365,6 +393,14 @@ export class SolanaExecutor {
     const sizedOpportunity = await this.applyPositionSizing(opportunity, connection, wallet.publicKey.toBase58());
     if (!sizedOpportunity) {
       return this.skip('unable to calculate dynamic trade size', opportunity);
+    }
+
+    // Change 3: Minimum effective notional — prevent dust-sized trades
+    if (this.config.minNotionalUsd > 0 && sizedOpportunity.estimatedNotionalUsd < this.config.minNotionalUsd) {
+      return this.skip(
+        `below_min_notional: $${sizedOpportunity.estimatedNotionalUsd.toFixed(2)} < $${this.config.minNotionalUsd.toFixed(2)}`,
+        sizedOpportunity
+      );
     }
 
     if (sizedOpportunity.estimatedNotionalUsd > maxNotionalUsd) {
@@ -518,8 +554,13 @@ export class SolanaExecutor {
         (quoteResponse as Record<string, unknown>)['outputMint'] ?? sizedOpportunity.outputMint,
       );
       const isOutputStable = ['EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'].includes(outputMint);
-      const outputTokenPriceUsd = isOutputStable ? 1 : (outputMint === 'So11111111111111111111111111111111111111112' ? solPriceUsd : null);
-      const outputDecimals = isOutputStable ? 6 : (outputMint === 'So11111111111111111111111111111111111111112' ? 9 : 6);
+      const outputTokenPriceUsd = isOutputStable
+        ? 1
+        : outputMint === 'So11111111111111111111111111111111111111112'
+          ? solPriceUsd
+          : await this.fetchTokenPriceUsd(outputMint);
+      const outputSymbol = MINT_TO_SYMBOL[outputMint];
+      const outputDecimals = outputSymbol ? (TOKEN_REGISTRY[outputSymbol]?.decimals ?? 6) : 6;
 
       const { slippageCostUsd, source: slippageSource } = this.estimateSlippageCostUsd(
         quoteResponse,
@@ -531,18 +572,29 @@ export class SolanaExecutor {
         sizedOpportunity.expectedProfitUsd,
         estimatedExecutionFeeUsd,
         slippageCostUsd,
+        sizedOpportunity.estimatedNotionalUsd,
       );
 
       this.sessionMetrics.recordGateEvaluated();
+      this.sessionMetrics.recordGrossEdge(
+        sizedOpportunity.label,
+        sizedOpportunity.expectedProfitUsd,
+      );
+
+      const notionalUsd = sizedOpportunity.estimatedNotionalUsd;
+      const edgeBps = notionalUsd > 0 ? +((gate.netExpectedUsd / notionalUsd) * 10_000).toFixed(1) : 0;
 
       this.logger.info('[SOLANA] execution_gate', {
         passed: gate.passed,
         expectedGrossUsd: +sizedOpportunity.expectedProfitUsd.toFixed(6),
         estimatedExecutionFeeUsd: +estimatedExecutionFeeUsd.toFixed(6),
         estimatedSlippageCostUsd: +slippageCostUsd.toFixed(6),
+        executionHaircutUsd: this.gateConfig.executionHaircutUsd,
         slippageSource,
         riskBufferUsd: this.gateConfig.riskBufferUsd,
         netExpectedUsd: +gate.netExpectedUsd.toFixed(6),
+        edgeBps,
+        minEdgeBps: this.gateConfig.minEdgeBps,
         minNetProfitUsd: this.gateConfig.minNetProfitUsd,
         rejectReason: gate.rejectReason,
       });
@@ -596,6 +648,21 @@ export class SolanaExecutor {
     // Capture pre-trade balance for PnL
     const preTradeBaseBalance = this.inventoryManager?.getAvailableTradingCapitalUsd() ?? 0;
 
+    // --- Pre-swap balance snapshot for realized PnL ---
+    let preSnap: { sourceBalance: number; destBalance: number; solBalance: number } | null = null;
+    try {
+      const [srcBal, dstBal, solLamports] = await Promise.all([
+        this.fetchTokenBalance(connection, wallet.publicKey, sizedOpportunity.inputMint),
+        this.fetchTokenBalance(connection, wallet.publicKey, sizedOpportunity.outputMint),
+        connection.getBalance(wallet.publicKey, 'confirmed'),
+      ]);
+      preSnap = { sourceBalance: srcBal, destBalance: dstBal, solBalance: solLamports / 1e9 };
+    } catch (err) {
+      this.logger.warn('[SOLANA] pre-swap balance snapshot failed (PnL will be skipped)', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
     const result = await this.signAndSend(transaction, wallet, sizedOpportunity, connection, ammMeta);
 
     // Record PnL after trade
@@ -605,6 +672,83 @@ export class SolanaExecutor {
         this.inventoryManager.recordTradeResult(preTradeBaseBalance, postSnapshot.availableTradingCapitalUsd);
       } catch (err) {
         this.logger.warn('[SOLANA] post-trade PnL snapshot failed', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      // Post-trade cooldown: tell InventoryManager what was just traded
+      // so it blocks the reverse rebalance for the cooldown window
+      this.inventoryManager.recordConfirmedTrade(
+        sizedOpportunity.inputMint,
+        sizedOpportunity.outputMint,
+      );
+    }
+
+    // --- Post-swap realized PnL capture ---
+    if (result.success && preSnap) {
+      try {
+        const [postSrcBal, postDstBal, postSolLamports] = await Promise.all([
+          this.fetchTokenBalance(connection, wallet.publicKey, sizedOpportunity.inputMint),
+          this.fetchTokenBalance(connection, wallet.publicKey, sizedOpportunity.outputMint),
+          connection.getBalance(wallet.publicKey, 'confirmed'),
+        ]);
+        const postSnap = { sourceBalance: postSrcBal, destBalance: postDstBal, solBalance: postSolLamports / 1e9 };
+
+        const realizedSourceDelta = preSnap.sourceBalance - postSnap.sourceBalance;   // spent
+        const realizedDestDelta   = postSnap.destBalance  - preSnap.destBalance;      // received
+        const realizedSolFeeDelta = preSnap.solBalance     - postSnap.solBalance;      // fee in SOL
+
+        const solPriceUsd = this.inventoryManager?.getInventorySnapshot()?.solPriceUsd ?? 0;
+        const wrappedSolMint = 'So11111111111111111111111111111111111111112';
+        const stableMints = new Set([
+          'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+          'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+        ]);
+
+        const resolvePriceUsd = async (mint: string): Promise<number> => {
+          if (stableMints.has(mint)) return 1;
+          if (mint === wrappedSolMint) return solPriceUsd;
+          try { return await this.fetchTokenPriceUsd(mint); } catch { return 0; }
+        };
+
+        const srcPriceUsd = await resolvePriceUsd(sizedOpportunity.inputMint);
+        const dstPriceUsd = await resolvePriceUsd(sizedOpportunity.outputMint);
+
+        const canComputePnl = srcPriceUsd > 0 && dstPriceUsd > 0 && solPriceUsd > 0;
+        const realizedPnlUsd = canComputePnl
+          ? (realizedDestDelta * dstPriceUsd) - (realizedSourceDelta * srcPriceUsd) - (realizedSolFeeDelta * solPriceUsd)
+          : null;
+
+        const expectedDestAmount = Number(quoteResponse.outAmount);
+        const pnlOutputSymbol = MINT_TO_SYMBOL[sizedOpportunity.outputMint];
+        const outputDecimals = pnlOutputSymbol ? (TOKEN_REGISTRY[pnlOutputSymbol]?.decimals ?? 6) : 6;
+        const expectedDestHuman = expectedDestAmount / 10 ** outputDecimals;
+        const realizedSlippageBps = expectedDestHuman > 0
+          ? Math.round(((expectedDestHuman - realizedDestDelta) / expectedDestHuman) * 10000)
+          : null;
+
+        this.logger.info('[SOLANA] swap_realized', {
+          signature: result.signature,
+          venue: ammMeta.ammLabel,
+          sourceToken: sizedOpportunity.inputMint,
+          destToken: sizedOpportunity.outputMint,
+          notionalUsd: +sizedOpportunity.estimatedNotionalUsd.toFixed(4),
+          expectedGrossUsd: +sizedOpportunity.expectedProfitUsd.toFixed(6),
+          expectedDestAmount: expectedDestHuman,
+          realizedSourceDelta: +realizedSourceDelta.toFixed(6),
+          realizedDestDelta: +realizedDestDelta.toFixed(6),
+          realizedSolFeeDeltaSol: +realizedSolFeeDelta.toFixed(9),
+          realizedPnlUsd: realizedPnlUsd !== null ? +realizedPnlUsd.toFixed(6) : null,
+          realizedSlippageBps,
+          profitable: realizedPnlUsd !== null ? realizedPnlUsd > 0 : null,
+          slippageWithinBounds: realizedSlippageBps !== null
+            ? realizedSlippageBps <= (this.config.maxSlippageBps * 2)
+            : null,
+          pricingAvailable: canComputePnl,
+        });
+      } catch (err) {
+        this.logger.warn('[SOLANA] post-swap realized PnL capture failed', {
+          signature: result.signature,
           error: err instanceof Error ? err.message : String(err),
         });
       }
@@ -1196,6 +1340,36 @@ export class SolanaExecutor {
     };
   }
 
+  /** Read human-readable balance for a single token mint (SOL returns native SOL balance). */
+  private async fetchTokenBalance(
+    connection: Connection,
+    owner: PublicKey,
+    mint: string,
+  ): Promise<number> {
+    const wrappedSolMint = 'So11111111111111111111111111111111111111112';
+    if (mint === wrappedSolMint) {
+      const lamports = await connection.getBalance(owner, 'confirmed');
+      return lamports / 1e9;
+    }
+
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(owner, {
+      mint: new PublicKey(mint),
+    }, 'confirmed');
+
+    let rawAmount = 0;
+    let decimals = 6;
+    for (const account of tokenAccounts.value) {
+      const parsed = account.account.data.parsed as {
+        info?: { tokenAmount?: { amount?: string; decimals?: number } };
+      };
+      const tokenAmount = parsed.info?.tokenAmount;
+      if (!tokenAmount) continue;
+      rawAmount += Number(tokenAmount.amount || '0');
+      decimals = tokenAmount.decimals ?? decimals;
+    }
+    return rawAmount / 10 ** decimals;
+  }
+
   private async fetchInputBalanceUsd(
     connection: Connection,
     walletPublicKey: string,
@@ -1244,27 +1418,46 @@ export class SolanaExecutor {
       return tokenAmount;
     }
 
-    return 0;
+    // Non-stable, non-SOL token: look up price via Jupiter
+    try {
+      const priceUsd = await this.fetchTokenPriceUsd(inputMint);
+      return tokenAmount * priceUsd;
+    } catch {
+      this.logger.debug('[SOLANA] fetchInputBalanceUsd: price lookup failed for non-standard token', { inputMint });
+      return 0;
+    }
   }
 
   private async fetchSolPriceUsd(): Promise<number> {
+    return this.fetchTokenPriceUsd('So11111111111111111111111111111111111111112');
+  }
+
+  /** Fetch the USD price of any token via a Jupiter quote to USDC. */
+  private async fetchTokenPriceUsd(mint: string): Promise<number> {
+    const usdcMint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+    if (mint === usdcMint || mint === 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB') return 1;
+
+    const symbol = MINT_TO_SYMBOL[mint];
+    const decimals = symbol ? (TOKEN_REGISTRY[symbol]?.decimals ?? 9) : 9;
+    const oneToken = 10 ** decimals;
+
     const url = new URL(`${this.config.jupiterBaseUrl}/quote`);
-    url.searchParams.set('inputMint', 'So11111111111111111111111111111111111111112');
-    url.searchParams.set('outputMint', 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
-    url.searchParams.set('amount', '1000000000');
+    url.searchParams.set('inputMint', mint);
+    url.searchParams.set('outputMint', usdcMint);
+    url.searchParams.set('amount', String(oneToken));
     url.searchParams.set('slippageBps', '50');
 
     const response = await fetch(url.toString());
     if (!response.ok) {
-      throw new Error(`Jupiter SOL price HTTP ${response.status}`);
+      throw new Error(`Jupiter price lookup HTTP ${response.status} for ${mint}`);
     }
 
     const quote = await response.json() as JupiterQuoteResponse;
     const outAmount = Number(quote.outAmount || '0');
     if (!Number.isFinite(outAmount) || outAmount <= 0) {
-      throw new Error('Jupiter SOL price returned invalid outAmount');
+      throw new Error(`Jupiter price returned invalid outAmount for ${mint}`);
     }
 
-    return outAmount / 1_000_000;
+    return outAmount / 1_000_000; // USDC has 6 decimals
   }
 }
