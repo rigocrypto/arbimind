@@ -20,7 +20,6 @@ import { Connection, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
 
 const logger = new Logger('SolanaScanner');
-const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
 const STABLE_SYMBOLS = new Set(['USDC', 'USDT']);
 const SOLANA_MIN_EXECUTION_CONFIDENCE = Number.parseFloat(process.env['SOLANA_MIN_EXECUTION_CONFIDENCE'] || '0.85');
 
