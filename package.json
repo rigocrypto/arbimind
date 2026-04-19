@@ -80,7 +80,8 @@
       "@solana/web3.js>bn.js": "5.2.3",
       "esbuild": ">=0.25.0",
       "@eslint/config-array": "^0.23.0",
-      "eslint>minimatch": "3.1.4"
+      "eslint>minimatch": "3.1.4",
+      "protobufjs": "7.5.5"
     }
   },
   "dependencies": {
