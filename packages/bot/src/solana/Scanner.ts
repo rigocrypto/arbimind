@@ -375,22 +375,42 @@ export class SolanaScanner {
       }
     }
 
-    for (const pool of solanaConfig.watchedPools) {
-      await this.scanPool(pool);
+    const snapshots: Array<{ poolAddress: string; pairData: DexPairData }> = [];
+
+    for (const poolAddress of solanaConfig.watchedPools) {
+      const pairData = await this.fetchDexPair(poolAddress);
+      if (!pairData) {
+        logger.debug(`📊 Skipping ${poolAddress}: no data`);
+        continue;
+      }
+      snapshots.push({ poolAddress, pairData });
+    }
+
+    if (!snapshots.length) return;
+
+    const priceChanges = snapshots
+      .map((s) => s.pairData.priceChangeH24)
+      .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+
+    const marketBaselinePriceChangeH24 = priceChanges.length
+      ? priceChanges.reduce((sum, v) => sum + v, 0) / priceChanges.length
+      : 0;
+
+    for (const { poolAddress, pairData } of snapshots) {
+      await this.scanPool(poolAddress, pairData, marketBaselinePriceChangeH24);
     }
   }
 
   /**
    * Scan a single pool: fetch data, score, log prediction
    */
-  private async scanPool(poolAddress: string): Promise<void> {
+  private async scanPool(
+    poolAddress: string,
+    pairData: DexPairData,
+    marketBaselinePriceChangeH24: number
+  ): Promise<void> {
     try {
-      // Fetch pool data from DexScreener
-      const pairData = await this.fetchDexPair(poolAddress);
-      if (!pairData) {
-        logger.debug(`📊 Skipping ${poolAddress}: no data`);
-        return;
-      }
+      const relativeEdgePct = (pairData.priceChangeH24 ?? 0) - marketBaselinePriceChangeH24;
 
       // Resolve pair metadata for AI scoring
       const pairBaseSymbol = pairData.baseSymbol?.toUpperCase() ?? 'UNKNOWN';
@@ -409,7 +429,7 @@ export class SolanaScanner {
           amountOut1: '0',
           amountOut2: '0',
           profit: '0',
-          profitPercent: pairData.priceChangeH24 ?? 0,
+          profitPercent: relativeEdgePct,
           gasEstimate: '0',
           netProfit: '0',
           decimalsIn: pairBaseMeta?.decimals ?? 9,
@@ -432,6 +452,12 @@ export class SolanaScanner {
         await this.logPrediction(poolAddress, signal, score.successProb, pairData);
         await this.maybeExecuteTrade(poolAddress, signal, pairData, score.successProb, score.expectedProfitPct, regime);
         logger.info(`✅ [SOLANA] Scored ${poolAddress}: ${signal} (${(score.successProb * 100).toFixed(1)}%)`, {
+          baseSymbol: pairBaseSymbol,
+          quoteSymbol: pairQuoteSymbol,
+          priceChangeH24: pairData.priceChangeH24 ?? 0,
+          marketBaselinePriceChangeH24,
+          relativeEdgePct,
+          expectedProfitPct: score.expectedProfitPct,
           regimeLabel: regime.regimeLabel, utcHour: regime.utcHour, isWeekend: regime.isWeekend,
         });
       }
