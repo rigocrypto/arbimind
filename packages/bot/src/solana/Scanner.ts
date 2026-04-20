@@ -452,6 +452,12 @@ export class SolanaScanner {
         await this.logPrediction(poolAddress, signal, score.successProb, pairData);
         await this.maybeExecuteTrade(poolAddress, signal, pairData, score.successProb, score.expectedProfitPct, regime);
         logger.info(`✅ [SOLANA] Scored ${poolAddress}: ${signal} (${(score.successProb * 100).toFixed(1)}%)`, {
+          baseSymbol: pairBaseSymbol,
+          quoteSymbol: pairQuoteSymbol,
+          priceChangeH24: pairData.priceChangeH24 ?? 0,
+          marketBaselinePriceChangeH24,
+          relativeEdgePct,
+          expectedProfitPct: score.expectedProfitPct,
           regimeLabel: regime.regimeLabel, utcHour: regime.utcHour, isWeekend: regime.isWeekend,
         });
       }
