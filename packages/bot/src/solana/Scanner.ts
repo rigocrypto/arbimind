@@ -419,21 +419,47 @@ export class SolanaScanner {
     const edgeByPool = new Map<string, ArbEdgeContext>();
     const totalCostBps = ARB_SLIPPAGE_BPS + ARB_FEE_BPS + ARB_HAIRCUT_BPS;
 
-    for (const group of snapshotsByBase.values()) {
+    for (const [baseSymbol, group] of snapshotsByBase.entries()) {
       if (group.length < 2) continue;
-      const referencePriceUsd = group.reduce((sum, item) => sum + item.priceUsd, 0) / group.length;
-      if (!Number.isFinite(referencePriceUsd) || referencePriceUsd <= 0) continue;
+      const prices = group.map(item => item.priceUsd);
+      const minPriceInGroup = Math.min(...prices);
+      const maxPriceInGroup = Math.max(...prices);
+      const avgPriceInGroup = prices.reduce((s, p) => s + p, 0) / prices.length;
+      if (!Number.isFinite(avgPriceInGroup) || avgPriceInGroup <= 0) continue;
+
+      // Pairwise spread: true arb range between best-opposing pools in this group
+      const pairwiseSpreadBps = ((maxPriceInGroup - minPriceInGroup) / minPriceInGroup) * 10_000;
+      logger.debug(`📐 [arb-group] ${baseSymbol}`, {
+        poolCount: group.length,
+        minPrice: minPriceInGroup,
+        maxPrice: maxPriceInGroup,
+        pairwiseSpreadBps: Number(pairwiseSpreadBps.toFixed(3)),
+        totalCostBps,
+      });
 
       for (const item of group) {
-        const deltaBps = ((item.priceUsd - referencePriceUsd) / referencePriceUsd) * 10_000;
-        const grossSpreadBps = Math.abs(deltaBps);
-        // If price is below reference, treat as LONG edge; if above, treat as SHORT edge.
-        const directionalGrossBps = deltaBps < 0 ? grossSpreadBps : -grossSpreadBps;
+        // Compare each pool against its best-opposing counterpart (max vs min), not the average.
+        // Pool above avg → SHORT candidate: sell here, buy at the min-price pool.
+        // Pool below avg → LONG candidate: buy here, sell at the max-price pool.
+        let grossSpreadBps: number;
+        let directionalGrossBps: number;
+        let referencePriceUsd: number;
+
+        if (item.priceUsd >= avgPriceInGroup) {
+          grossSpreadBps = ((item.priceUsd - minPriceInGroup) / minPriceInGroup) * 10_000;
+          directionalGrossBps = -grossSpreadBps; // negative → SHORT
+          referencePriceUsd = minPriceInGroup;
+        } else {
+          grossSpreadBps = ((maxPriceInGroup - item.priceUsd) / item.priceUsd) * 10_000;
+          directionalGrossBps = grossSpreadBps;  // positive → LONG
+          referencePriceUsd = maxPriceInGroup;
+        }
+
         const netEdgeBps = directionalGrossBps >= 0
           ? Math.max(0, directionalGrossBps - totalCostBps)
           : Math.min(0, directionalGrossBps + totalCostBps);
         const netEdgePct = netEdgeBps / 100;
-        const effectiveConfidence = this.clamp(0.5 + netEdgeBps / ARB_CONFIDENCE_BPS_SCALE);
+        const effectiveConfidence = this.clamp(0.5 + Math.abs(netEdgeBps) / ARB_CONFIDENCE_BPS_SCALE);
 
         edgeByPool.set(item.poolAddress, {
           poolPriceUsd: item.priceUsd,
