@@ -134,11 +134,13 @@ export class SolanaInventoryManager {
   logStartupConfig(): void {
     this.logger.info('[INVENTORY] startup config', {
       autoFundEnabled: this.config.autoFundEnabled,
+      autoRebalanceEnabled: this.config.autoRebalanceEnabled,
       baseAsset: this.config.baseAsset,
       baseAssetMint: this.config.baseAssetMint,
       minSolReserve: this.config.minSolReserve,
       targetSolReserve: this.config.targetSolReserve,
       autoFundMinSwapUsd: this.config.autoFundMinSwapUsd,
+      maxRebalanceNotionalUsd: this.config.maxRebalanceNotionalUsd,
       fundingRebalanceIntervalMs: this.config.fundingRebalanceIntervalMs,
       positionSizeFraction: this.config.positionSizeFraction,
       minTradeUsd: this.config.minTradeUsd,
@@ -188,7 +190,7 @@ export class SolanaInventoryManager {
 
   // ── Periodic rebalance loop ────────────────────────────────────
   startRebalanceLoop(connection: Connection, wallet: Keypair): void {
-    if (!this.config.autoFundEnabled) {
+    if (!this.config.autoFundEnabled || !this.config.autoRebalanceEnabled) {
       this.logger.info('[INVENTORY] auto-funding disabled, skipping rebalance loop');
       return;
     }
@@ -413,7 +415,7 @@ export class SolanaInventoryManager {
 
   // ── Execute rebalance ──────────────────────────────────────────
   async runFundingRebalanceIfNeeded(connection: Connection, wallet: Keypair): Promise<void> {
-    if (!this.config.autoFundEnabled) return;
+    if (!this.config.autoFundEnabled || !this.config.autoRebalanceEnabled) return;
 
     const now = Date.now();
     if (now - this.lastRebalanceAtMs < this.config.fundingRebalanceIntervalMs) return;
@@ -459,6 +461,15 @@ export class SolanaInventoryManager {
           outputMint: decision.outputMint,
           estimatedUsd: decision.estimatedUsd,
         });
+
+        if (decision.estimatedUsd > this.config.maxRebalanceNotionalUsd) {
+          this.logger.info('[INVENTORY] rebalance skipped — notional above cap', {
+            action: decision.action,
+            estimatedUsd: +decision.estimatedUsd.toFixed(2),
+            maxRebalanceNotionalUsd: this.config.maxRebalanceNotionalUsd,
+          });
+          continue;
+        }
 
         try {
           await this.executeFundingSwap(connection, wallet, decision);
@@ -681,13 +692,26 @@ export class SolanaInventoryManager {
   }
 
   // ── PnL tracking ──────────────────────────────────────────────
-  recordTradeResult(preTradeBaseBalance: number, postTradeBaseBalance: number): void {
-    const realizedPnl = postTradeBaseBalance - preTradeBaseBalance;
+  recordTradeResult(
+    preTradeBaseBalance: number,
+    postTradeBaseBalance: number,
+    inputMint: string,
+    outputMint: string,
+  ): void {
+    const baseBalanceDeltaUsd = postTradeBaseBalance - preTradeBaseBalance;
+    const settlesToBase = outputMint === this.config.baseAssetMint;
+
+    // Only treat balance delta as realized PnL when the swap settles back into the base asset.
+    const realizedPnl = settlesToBase ? baseBalanceDeltaUsd : 0;
     this.cumulativeRealizedPnlUsd += realizedPnl;
 
     this.logger.info('[INVENTORY] trade PnL', {
       preTradeBaseBalance,
       postTradeBaseBalance,
+      inputMint,
+      outputMint,
+      settlesToBase,
+      baseBalanceDeltaUsd,
       realizedPnlUsd: realizedPnl,
       cumulativeRealizedPnlUsd: this.cumulativeRealizedPnlUsd,
       compoundingEnabled: this.config.compoundProfits,

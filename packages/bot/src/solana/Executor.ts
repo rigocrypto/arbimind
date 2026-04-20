@@ -44,6 +44,8 @@ export interface SolanaExecutorConfig {
   minNotionalUsd: number;
   minExpectedProfitUsd: number;
   maxDailyLossUsd: number;
+  stopLossPct: number;
+  takeProfitPct: number;
   maxSlippageBps: number;
   quoteMaxAgeMs: number;
   rpcUrl: string;
@@ -195,6 +197,8 @@ export class SolanaExecutor {
       effectiveMaxNotionalUsd,
       minExpectedProfitUsd: this.config.minExpectedProfitUsd,
       minExpectedProfitEnvRaw: process.env['SOLANA_MIN_EXPECTED_PROFIT_USD'] || null,
+      stopLossPct: this.config.stopLossPct,
+      takeProfitPct: this.config.takeProfitPct,
       jupiterBaseUrl: this.config.jupiterBaseUrl,
       canaryMode: this.config.canaryMode,
       tradeSizeMode: this.config.tradeSizeMode,
@@ -340,6 +344,11 @@ export class SolanaExecutor {
         `daily loss cap reached ($${dailyLossUsd.toFixed(2)} >= $${this.config.maxDailyLossUsd.toFixed(2)})`,
         opportunity
       );
+    }
+
+    const pnlGuard = this.evaluatePnlCircuitBreakers(opportunity);
+    if (pnlGuard) {
+      return pnlGuard;
     }
 
     const signer = this.getWallet();
@@ -669,7 +678,12 @@ export class SolanaExecutor {
     if (this.inventoryManager && result.success) {
       try {
         const postSnapshot = await this.inventoryManager.refreshBalances(connection, wallet.publicKey.toBase58());
-        this.inventoryManager.recordTradeResult(preTradeBaseBalance, postSnapshot.availableTradingCapitalUsd);
+        this.inventoryManager.recordTradeResult(
+          preTradeBaseBalance,
+          postSnapshot.availableTradingCapitalUsd,
+          sizedOpportunity.inputMint,
+          sizedOpportunity.outputMint,
+        );
       } catch (err) {
         this.logger.warn('[SOLANA] post-trade PnL snapshot failed', {
           error: err instanceof Error ? err.message : String(err),
@@ -1265,6 +1279,56 @@ export class SolanaExecutor {
       skipped: true,
       skipReason: reason,
     };
+  }
+
+  private evaluatePnlCircuitBreakers(opportunity: SwapOpportunity): ExecutionResult | null {
+    if (!this.inventoryManager) {
+      return null;
+    }
+
+    if (this.config.stopLossPct <= 0 && this.config.takeProfitPct <= 0) {
+      return null;
+    }
+
+    const snapshot = this.inventoryManager.getInventorySnapshot();
+    if (this.startingBalanceUsd === undefined && snapshot && snapshot.availableTradingCapitalUsd > 0) {
+      this.startingBalanceUsd = snapshot.availableTradingCapitalUsd;
+    }
+
+    if (!this.startingBalanceUsd || this.startingBalanceUsd <= 0) {
+      return null;
+    }
+
+    const cumulativePnlUsd = this.inventoryManager.getCumulativeRealizedPnlUsd();
+    const realizedPnlPct = cumulativePnlUsd / this.startingBalanceUsd;
+
+    if (this.config.stopLossPct > 0 && realizedPnlPct <= -this.config.stopLossPct) {
+      this.logger.warn('[SOLANA] stop-loss circuit breaker hit', {
+        cumulativePnlUsd,
+        startingBalanceUsd: this.startingBalanceUsd,
+        realizedPnlPct,
+        stopLossPct: this.config.stopLossPct,
+      });
+      return this.skip(
+        `stop-loss hit (${(realizedPnlPct * 100).toFixed(2)}% <= -${(this.config.stopLossPct * 100).toFixed(2)}%)`,
+        opportunity,
+      );
+    }
+
+    if (this.config.takeProfitPct > 0 && realizedPnlPct >= this.config.takeProfitPct) {
+      this.logger.warn('[SOLANA] take-profit circuit breaker hit', {
+        cumulativePnlUsd,
+        startingBalanceUsd: this.startingBalanceUsd,
+        realizedPnlPct,
+        takeProfitPct: this.config.takeProfitPct,
+      });
+      return this.skip(
+        `take-profit hit (${(realizedPnlPct * 100).toFixed(2)}% >= ${(this.config.takeProfitPct * 100).toFixed(2)}%)`,
+        opportunity,
+      );
+    }
+
+    return null;
   }
 
   private async applyPositionSizing(

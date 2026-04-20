@@ -13,11 +13,13 @@ export type BaseAsset = 'USDC' | 'USDT';
 
 export interface InventoryConfig {
   autoFundEnabled: boolean;
+  autoRebalanceEnabled: boolean;
   baseAsset: BaseAsset;
   baseAssetMint: string;
   minSolReserve: number;
   targetSolReserve: number;
   autoFundMinSwapUsd: number;
+  maxRebalanceNotionalUsd: number;
   fundingRebalanceIntervalMs: number;
   fundingCooldownMs: number;
   positionSizeFraction: number;
@@ -62,6 +64,8 @@ export interface SolanaExecutorRuntimeConfig {
   minNotionalUsd: number;
   minExpectedProfitUsd: number;
   maxDailyLossUsd: number;
+  stopLossPct: number;
+  takeProfitPct: number;
   maxSlippageBps: number;
   quoteMaxAgeMs: number;
   rpcUrl: string;
@@ -93,6 +97,14 @@ function parseNonNegativeNumber(value: string | undefined, fallback: number): nu
 function parseFraction(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 && parsed <= 1 ? parsed : fallback;
+}
+
+function parsePercent(value: string | undefined, fallbackFraction: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallbackFraction;
+  if (parsed <= 1) return parsed;
+  if (parsed <= 100) return parsed / 100;
+  return fallbackFraction;
 }
 
 function parseMode(value: string | undefined): 'fixed' | 'dynamic' {
@@ -148,6 +160,8 @@ export const solanaExecutorConfig: SolanaExecutorRuntimeConfig = {
   minNotionalUsd: parseNonNegativeNumber(process.env['SOLANA_MIN_NOTIONAL_USD'], 3),
   minExpectedProfitUsd: parseNonNegativeNumber(process.env['SOLANA_MIN_EXPECTED_PROFIT_USD'], 0.1),
   maxDailyLossUsd: parseNumber(process.env['SOLANA_MAX_DAILY_LOSS_USD'], 25),
+  stopLossPct: parsePercent(process.env['SOLANA_STOP_LOSS_PCT'], 0),
+  takeProfitPct: parsePercent(process.env['SOLANA_TAKE_PROFIT_PCT'], 0),
   maxSlippageBps: parseNumber(process.env['SOLANA_MAX_SLIPPAGE_BPS'] || process.env['MAX_SLIPPAGE_BPS'], 50),
   quoteMaxAgeMs: parseNumber(process.env['QUOTE_MAX_AGE_MS'], 2_000),
   rpcUrl:
@@ -181,11 +195,13 @@ function parseBaseAsset(value: string | undefined): BaseAsset {
 
 export const inventoryConfig: InventoryConfig = {
   autoFundEnabled: isEnvTrue(process.env['SOLANA_AUTO_FUND_ENABLED']),
+  autoRebalanceEnabled: !isEnvFalse(process.env['SOLANA_AUTO_REBALANCE_ENABLED'] ?? 'true'),
   baseAsset: parseBaseAsset(process.env['SOLANA_BASE_ASSET']),
   baseAssetMint: parseBaseAsset(process.env['SOLANA_BASE_ASSET']) === 'USDT' ? MINT_USDT : MINT_USDC,
   minSolReserve: parseNumber(process.env['SOLANA_MIN_SOL_RESERVE'], 0.15),
   targetSolReserve: parseNumber(process.env['SOLANA_TARGET_SOL_RESERVE'], 0.25),
   autoFundMinSwapUsd: parseNumber(process.env['SOLANA_AUTO_FUND_MIN_SWAP_USD'], 25),
+  maxRebalanceNotionalUsd: parseNumber(process.env['SOLANA_MAX_REBALANCE_NOTIONAL_USD'], 5),
   fundingRebalanceIntervalMs: parseNumber(process.env['SOLANA_FUNDING_REBALANCE_INTERVAL_MS'], 30_000),
   fundingCooldownMs: parseNumber(process.env['SOLANA_FUNDING_COOLDOWN_MS'], 300_000),
   positionSizeFraction: parseFraction(process.env['SOLANA_POSITION_SIZE_FRACTION'], 0.25),
@@ -251,6 +267,7 @@ export const TOKEN_REGISTRY: Record<string, TokenMeta> = {
   SOL: { mint: 'So11111111111111111111111111111111111111112', symbol: 'SOL', decimals: 9 },
   USDC: { mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', symbol: 'USDC', decimals: 6 },
   USDT: { mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', symbol: 'USDT', decimals: 6 },
+  RAY: { mint: '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R', symbol: 'RAY', decimals: 6 },
   JUP: { mint: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN', symbol: 'JUP', decimals: 6 },
   MSOL: { mint: 'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So', symbol: 'mSOL', decimals: 9 },
 };

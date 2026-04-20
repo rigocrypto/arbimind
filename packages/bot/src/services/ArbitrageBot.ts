@@ -1224,14 +1224,30 @@ export class ArbitrageBot {
     const now = Date.now();
     if (now - this.lastGasPriceRefreshMs < 15_000) return; // refresh at most every 15s
     try {
-      const feeData = await this.provider.getFeeData();
-      const price = feeData.maxFeePerGas ?? feeData.gasPrice;
-      if (price && price > 0n) {
-        this.cachedGasPriceWei = Number(price);
-        this.lastGasPriceRefreshMs = now;
+      // Prefer direct RPC gas price to avoid third-party fee API noise on some providers.
+      if (this.provider instanceof ethers.JsonRpcProvider) {
+        const gasPriceHex = await this.provider.send('eth_gasPrice', []);
+        if (typeof gasPriceHex === 'string') {
+          const parsed = BigInt(gasPriceHex);
+          if (parsed > 0n) {
+            this.cachedGasPriceWei = Number(parsed);
+            this.lastGasPriceRefreshMs = now;
+            return;
+          }
+        }
       }
     } catch {
-      // keep cached value on failure
+      // Fallback to ethers feeData when direct gas RPC is unavailable.
+      try {
+        const feeData = await this.provider.getFeeData();
+        const price = feeData.maxFeePerGas ?? feeData.gasPrice;
+        if (price && price > 0n) {
+          this.cachedGasPriceWei = Number(price);
+          this.lastGasPriceRefreshMs = now;
+        }
+      } catch {
+        // keep cached value on failure
+      }
     }
   }
 
