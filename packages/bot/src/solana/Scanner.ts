@@ -407,7 +407,7 @@ export class SolanaScanner {
           amountOut1: '0',
           amountOut2: '0',
           profit: '0',
-          profitPercent: 0.5,
+          profitPercent: 0,
           gasEstimate: '0',
           netProfit: '0',
           decimalsIn: pairBaseMeta?.decimals ?? 9,
@@ -415,7 +415,7 @@ export class SolanaScanner {
           route: 'SOLANA',
           timestamp: Date.now(),
         },
-        { chain: 'solana', pairAddress: poolAddress }
+        { chain: 'solana', pairAddress: poolAddress, volumeUsd: pairData.volumeH24, liquidityUsd: pairData.liquidityUsd }
       );
 
       if (!score) {

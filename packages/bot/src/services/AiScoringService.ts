@@ -23,14 +23,14 @@ export class AiScoringService {
 
   public async scoreOpportunity(
     opportunity: ArbitrageOpportunity,
-    context: { chain: 'evm' | 'solana'; pairAddress: string }
+    context: { chain: 'evm' | 'solana'; pairAddress: string; volumeUsd?: number; liquidityUsd?: number }
   ): Promise<AiScoreResult | null> {
     if (!this.config.predictUrl) return null;
 
     const payload = {
       profitPct: opportunity.profitPercent ?? 0,
-      volumeUsd: 0,
-      liquidity: 0,
+      volumeUsd: context.volumeUsd ?? 0,
+      liquidity: context.liquidityUsd ?? 0,
       slippage: 0.5,
       gasPrice: 20
     };
