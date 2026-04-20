@@ -111,8 +111,8 @@ importers:
         specifier: ^8.20.0
         version: 8.20.0
       rate-limiter-flexible:
-        specifier: ^5.0.0
-        version: 5.0.5
+        specifier: ^11.0.1
+        version: 11.0.1
       redis:
         specifier: ^5.11.0
         version: 5.11.0
@@ -7690,8 +7690,8 @@ packages:
     resolution: {integrity: sha512-Hrgsx+orqoygnmhFbKaHE6c296J+HTAQXoxEF6gNupROmmGJRoyzfG3ccAveqCBrwr/2yxQ5BVd/GTl5agOwSg==}
     engines: {node: '>= 0.6'}
 
-  rate-limiter-flexible@5.0.5:
-    resolution: {integrity: sha512-+/dSQfo+3FYwYygUs/V2BBdwGa9nFtakDwKt4l0bnvNB53TNT++QSFewwHX9qXrZJuMe9j+TUaU21lm5ARgqdQ==}
+  rate-limiter-flexible@11.0.1:
+    resolution: {integrity: sha512-hvyCUefjRund2N6hro2H8Dql7OvB6+B3Qv2FLWWbdsdyQScXf4+N0tM0Bryz11awTtNxx6C1QbHYb1rCiAx7pA==}
 
   raw-body@3.0.2:
     resolution: {integrity: sha512-K5zQjDllxWkf7Z5xJdV0/B0WTNqx6vxG70zJE4N0kBs4LovmEYWJzQGxC9bS9RAKu3bgM40lrd5zoLJ12MQ5BA==}
@@ -19246,7 +19246,7 @@ snapshots:
 
   range-parser@1.2.1: {}
 
-  rate-limiter-flexible@5.0.5: {}
+  rate-limiter-flexible@11.0.1: {}
 
   raw-body@3.0.2:
     dependencies:
