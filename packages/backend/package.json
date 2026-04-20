@@ -46,7 +46,7 @@
     "mongoose": "^9.4.1",
     "node-cron": "^3.0.3",
     "pg": "^8.20.0",
-    "rate-limiter-flexible": "^5.0.0",
+    "rate-limiter-flexible": "^11.0.1",
     "redis": "^5.11.0",
     "winston": "^3.11.0",
     "ws": "^8.20.0",
