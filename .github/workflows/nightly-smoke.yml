@@ -47,10 +47,9 @@ jobs:
           UI_BASE: ${{ secrets.UI_BASE }}
           ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
         run: |
+          [void][scriptblock]::Create((Get-Content ./scripts/smoke-post-deploy.ps1 -Raw))
+
           $args = @(
-            '-NoProfile',
-            '-ExecutionPolicy', 'Bypass',
-            '-File', './scripts/smoke-post-deploy.ps1',
             '-BackendBase', $env:BACKEND_BASE,
             '-UiBase', $env:UI_BASE
           )
@@ -59,7 +58,7 @@ jobs:
             $args += @('-AdminKey', $env:ADMIN_API_KEY)
           }
 
-          & powershell @args *>&1 | Tee-Object -FilePath smoke.log
+          & ./scripts/smoke-post-deploy.ps1 @args *>&1 | Tee-Object -FilePath smoke.log
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }

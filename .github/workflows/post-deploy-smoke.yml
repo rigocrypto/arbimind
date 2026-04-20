@@ -59,10 +59,9 @@ jobs:
           EVM_ARB_ACCOUNT: ${{ secrets.EVM_ARB_ACCOUNT }}
           SOLANA_ARB_ACCOUNT: ${{ secrets.SOLANA_ARB_ACCOUNT }}
         run: |
+          [void][scriptblock]::Create((Get-Content ./scripts/smoke-post-deploy.ps1 -Raw))
+
           $args = @(
-            '-NoProfile',
-            '-ExecutionPolicy', 'Bypass',
-            '-File', './scripts/smoke-post-deploy.ps1',
             '-BackendBase', '${{ steps.resolve.outputs.backend }}',
             '-UiBase', '${{ steps.resolve.outputs.ui }}'
           )
@@ -83,7 +82,7 @@ jobs:
             $args += @('-OnlyAnalytics')
           }
 
-          & powershell @args
+          & ./scripts/smoke-post-deploy.ps1 @args
 
       - name: Notify failure webhook
         if: failure()

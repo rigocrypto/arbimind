@@ -86,12 +86,12 @@ function Invoke-AnalyticsSmoke {
         source     = 'smoke-script'
       } | ConvertTo-Json -Depth 6
 
-      $post = Invoke-RestMethod -Uri "$api/analytics/events" -Method Post -ContentType 'application/json' -Body $payload
+      $post = Invoke-RestMethod -Uri ("{0}/analytics/events" -f $api) -Method Post -ContentType 'application/json' -Body $payload
       if (-not $post.ok -or [string]::IsNullOrWhiteSpace([string]$post.id)) {
         throw 'Analytics POST response missing ok/id'
       }
 
-      $list = Invoke-RestMethod -Uri "$api/analytics/events?limit=50" -Method Get
+      $list = Invoke-RestMethod -Uri ("{0}/analytics/events?limit=50" -f $api) -Method Get
       if (-not $list.ok -or $null -eq $list.events) {
         throw 'Analytics GET response missing ok/events'
       }
@@ -130,7 +130,7 @@ function Invoke-AnalyticsSmoke {
 
   Invoke-Check -Name 'Analytics CTA A/B report' -Block {
     try {
-      $report = Invoke-RestMethod -Uri "$api/analytics/ab-cta?window=7d" -Method Get
+      $report = Invoke-RestMethod -Uri ("{0}/analytics/ab-cta?window=7d" -f $api) -Method Get
       if (-not $report.ok) {
         throw 'A/B report response missing ok=true'
       }
@@ -202,21 +202,21 @@ if ($OnlyBotCanarySanity) {
 }
 
 Invoke-Check -Name 'API health' -Block {
-  $res = Invoke-RestMethod -Uri "$api/health" -Method Get
+  $res = Invoke-RestMethod -Uri ("{0}/health" -f $api) -Method Get
   $ok = ($res.status -eq 'healthy' -or $res.success -eq $true -or $res.ok -eq $true)
   Add-Result -Name 'API health' -Ok $ok -Detail ("status=" + (Coalesce $res.status))
 }
 
 Invoke-Check -Name 'RPC health' -Block {
   try {
-    $res = Invoke-RestMethod -Uri "$api/rpc/health?chain=$RpcChains" -Method Get
+    $res = Invoke-RestMethod -Uri ("{0}/rpc/health?chain={1}" -f $api, $RpcChains) -Method Get
     $ok = $res.ok -eq $true
     $detail = if ($res.health) { ($res.health | ConvertTo-Json -Compress) } else { 'no-health-object' }
     Add-Result -Name 'RPC health' -Ok $ok -Detail $detail
   } catch {
     if ($_.Exception.Response -and $_.Exception.Response.StatusCode.value__ -in @(503, 429)) {
       $code = $_.Exception.Response.StatusCode.value__
-      Add-Result -Name 'RPC health' -Ok $true -Detail "degraded ($code — non-blocking)"
+      Add-Result -Name 'RPC health' -Ok $true -Detail ("degraded ({0} - non-blocking)" -f $code)
       return
     }
     throw
@@ -227,7 +227,7 @@ Invoke-AnalyticsSmoke
 
 Invoke-Check -Name 'Snapshots health (EVM)' -Block {
   try {
-    $res = Invoke-RestMethod -Uri "$api/snapshots/health?chain=evm" -Method Get
+    $res = Invoke-RestMethod -Uri ("{0}/snapshots/health?chain=evm" -f $api) -Method Get
     $ok = $res.ok -eq $true
     Add-Result -Name 'Snapshots health (EVM)' -Ok $ok -Detail ("stale=" + (Coalesce $res.stale))
   } catch {
@@ -246,7 +246,7 @@ Invoke-Check -Name 'Snapshots health (EVM)' -Block {
 
 Invoke-Check -Name 'Snapshots health (Solana)' -Block {
   try {
-    $res = Invoke-RestMethod -Uri "$api/snapshots/health?chain=solana" -Method Get
+    $res = Invoke-RestMethod -Uri ("{0}/snapshots/health?chain=solana" -f $api) -Method Get
     $ok = $res.ok -eq $true
     Add-Result -Name 'Snapshots health (Solana)' -Ok $ok -Detail ("stale=" + (Coalesce $res.stale))
   } catch {
@@ -267,7 +267,7 @@ if ($AdminKey) {
   Invoke-Check -Name 'Admin snapshots last-run (EVM)' -Block {
     try {
       $headers = @{ 'X-ADMIN-KEY' = $AdminKey }
-      $res = Invoke-RestMethod -Uri "$api/admin/snapshots/last-run?chain=evm" -Method Get -Headers $headers
+      $res = Invoke-RestMethod -Uri ("{0}/admin/snapshots/last-run?chain=evm" -f $api) -Method Get -Headers $headers
       Add-Result -Name 'Admin snapshots last-run (EVM)' -Ok $true -Detail ("ok=" + (Coalesce $res.ok))
     } catch {
       if ($_.Exception.Response -and $_.Exception.Response.StatusCode.value__ -eq 503) {
@@ -281,7 +281,7 @@ if ($AdminKey) {
   Invoke-Check -Name 'Admin snapshots last-run (Solana)' -Block {
     try {
       $headers = @{ 'X-ADMIN-KEY' = $AdminKey }
-      $res = Invoke-RestMethod -Uri "$api/admin/snapshots/last-run?chain=solana" -Method Get -Headers $headers
+      $res = Invoke-RestMethod -Uri ("{0}/admin/snapshots/last-run?chain=solana" -f $api) -Method Get -Headers $headers
       Add-Result -Name 'Admin snapshots last-run (Solana)' -Ok $true -Detail ("ok=" + (Coalesce $res.ok))
     } catch {
       if ($_.Exception.Response -and $_.Exception.Response.StatusCode.value__ -eq 503) {
@@ -384,7 +384,7 @@ if ($UiBase) {
 if ($EvmAddress -and $EvmAddress -match '^0x[a-fA-F0-9]{40}$') {
   Invoke-Check -Name 'Portfolio EVM summary' -Block {
     try {
-      $res = Invoke-RestMethod -Uri "$api/portfolio/evm?address=$EvmAddress" -Method Get
+      $res = Invoke-RestMethod -Uri ("{0}/portfolio/evm?address={1}" -f $api, $EvmAddress) -Method Get
       $ok = $res.chain -eq 'evm'
       Add-Result -Name 'Portfolio EVM summary' -Ok $ok -Detail ("chain=" + (Coalesce $res.chain))
     } catch {
@@ -397,7 +397,7 @@ if ($EvmAddress -and $EvmAddress -match '^0x[a-fA-F0-9]{40}$') {
   }
 
   Invoke-Check -Name 'Portfolio EVM timeseries' -Block {
-    $res = Invoke-RestMethod -Uri "$api/portfolio/evm/timeseries?address=$EvmAddress&range=30d" -Method Get
+    $res = Invoke-RestMethod -Uri ("{0}/portfolio/evm/timeseries?address={1}&range=30d" -f $api, $EvmAddress) -Method Get
     $ok = ($null -ne $res.points)
     Add-Result -Name 'Portfolio EVM timeseries' -Ok $ok -Detail ("method=" + (Coalesce $res.method))
   }
@@ -407,7 +407,7 @@ $base58Regex = '^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{32
 if ($SolanaAddress -and $SolanaAddress -match $base58Regex) {
   Invoke-Check -Name 'Portfolio Solana summary' -Block {
     try {
-      $res = Invoke-RestMethod -Uri "$api/portfolio/solana?address=$SolanaAddress" -Method Get
+      $res = Invoke-RestMethod -Uri ("{0}/portfolio/solana?address={1}" -f $api, $SolanaAddress) -Method Get
       $ok = $res.chain -eq 'solana'
       Add-Result -Name 'Portfolio Solana summary' -Ok $ok -Detail ("chain=" + (Coalesce $res.chain))
     } catch {
@@ -420,7 +420,7 @@ if ($SolanaAddress -and $SolanaAddress -match $base58Regex) {
   }
 
   Invoke-Check -Name 'Portfolio Solana timeseries' -Block {
-    $res = Invoke-RestMethod -Uri "$api/portfolio/solana/timeseries?address=$SolanaAddress&range=30d" -Method Get
+    $res = Invoke-RestMethod -Uri ("{0}/portfolio/solana/timeseries?address={1}&range=30d" -f $api, $SolanaAddress) -Method Get
     $ok = ($null -ne $res.points)
     Add-Result -Name 'Portfolio Solana timeseries' -Ok $ok -Detail ("method=" + (Coalesce $res.method))
   }
