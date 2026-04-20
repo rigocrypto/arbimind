@@ -69,7 +69,7 @@ export class ArbModel {
 
   public predict(inputs: ArbInput): ArbPrediction {
     if (!this.model) {
-      const expectedProfitPct = Math.max(0, inputs.profitPct * 0.8);
+      const expectedProfitPct = inputs.profitPct * 0.8;
       const successProb = clamp(0.5 + inputs.profitPct / 200, 0, 1);
       return { expectedProfitPct, successProb };
     }

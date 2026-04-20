@@ -28,6 +28,7 @@ type DexPairData = {
   liquidityUsd?: number;
   priceUsd?: number;
   priceNative?: number;
+  priceChangeH24?: number;
   baseMint?: string;
   baseSymbol?: string;
   quoteMint?: string;
@@ -40,6 +41,7 @@ type DexScreenerResponse = {
     liquidity?: { usd?: number };
     priceUsd?: number;
     priceNative?: string;
+    priceChange?: { h24?: number };
     baseToken?: { address?: string; symbol?: string };
     quoteToken?: { address?: string; symbol?: string };
   };
@@ -407,7 +409,7 @@ export class SolanaScanner {
           amountOut1: '0',
           amountOut2: '0',
           profit: '0',
-          profitPercent: 0.5,
+          profitPercent: pairData.priceChangeH24 ?? 0,
           gasEstimate: '0',
           netProfit: '0',
           decimalsIn: pairBaseMeta?.decimals ?? 9,
@@ -415,7 +417,7 @@ export class SolanaScanner {
           route: 'SOLANA',
           timestamp: Date.now(),
         },
-        { chain: 'solana', pairAddress: poolAddress }
+        { chain: 'solana', pairAddress: poolAddress, volumeUsd: pairData.volumeH24, liquidityUsd: pairData.liquidityUsd }
       );
 
       if (!score) {
@@ -465,6 +467,7 @@ export class SolanaScanner {
         liquidityUsd: pair.liquidity?.usd,
         priceUsd: pair.priceUsd,
         priceNative: pair.priceNative ? Number(pair.priceNative) : undefined,
+        priceChangeH24: pair.priceChange?.h24,
         baseMint: pair.baseToken?.address,
         baseSymbol: pair.baseToken?.symbol,
         quoteMint: pair.quoteToken?.address,
