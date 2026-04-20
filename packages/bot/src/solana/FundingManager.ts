@@ -26,6 +26,8 @@ const MINT_DECIMALS: Record<string, number> = {
 // ── Types ────────────────────────────────────────────────────────
 
 export interface FundingManagerConfig {
+  /** Master switch for auto-rebalance execution */
+  autoRebalanceEnabled: boolean;
   /** Target SOL reserve (above this, excess is swept to base) */
   targetSolReserve: number;
   /** Minimum SOL reserve (below this, trading is blocked) */
@@ -36,6 +38,8 @@ export interface FundingManagerConfig {
   baseAsset: 'USDC' | 'USDT';
   /** Minimum swap amount in USD to trigger a rebalance */
   minRebalanceUsd: number;
+  /** Maximum notional per rebalance swap in USD */
+  maxRebalanceNotionalUsd: number;
   /** Maximum cost in BPS for a rebalance swap */
   maxRebalanceCostBps: number;
   /** Cooldown between rebalance swaps in ms */
@@ -96,11 +100,13 @@ export class FundingManager {
   constructor(config: FundingManagerConfig) {
     this.config = config;
     this.logger.info('[FUNDING] initialized', {
+      autoRebalanceEnabled: config.autoRebalanceEnabled,
       baseAsset: config.baseAsset,
       baseAssetMint: config.baseAssetMint,
       targetSolReserve: config.targetSolReserve,
       minSolReserve: config.minSolReserve,
       minRebalanceUsd: config.minRebalanceUsd,
+      maxRebalanceNotionalUsd: config.maxRebalanceNotionalUsd,
       maxRebalanceCostBps: config.maxRebalanceCostBps,
       rebalanceCooldownMs: config.rebalanceCooldownMs,
     });
@@ -121,6 +127,12 @@ export class FundingManager {
    *  6. Update lastRebalanceAt (only on success)
    */
   async checkAndRebalance(connection: Connection, wallet: Keypair): Promise<RebalanceResult> {
+    if (!this.config.autoRebalanceEnabled) {
+      const result: RebalanceResult = { triggered: false, reason: 'auto_rebalance_disabled' };
+      this.emitDecisionLog(wallet.publicKey, result);
+      return result;
+    }
+
     const walletPubkey = wallet.publicKey;
     const snapshot = await this.takeSnapshot(connection, walletPubkey);
     this.logSnapshot(snapshot, walletPubkey);
@@ -153,6 +165,15 @@ export class FundingManager {
     // ── Case 1: SOL excess → base asset ────────────────────────
     if (snapshot.solExcessVsTarget > 0) {
       const excessUsd = snapshot.solExcessVsTarget * snapshot.solPriceUsd;
+      if (excessUsd > this.config.maxRebalanceNotionalUsd) {
+        const result: RebalanceResult = {
+          triggered: false,
+          reason: 'notional_above_cap',
+          details: { estimatedUsd: excessUsd, maxRebalanceNotionalUsd: this.config.maxRebalanceNotionalUsd },
+        };
+        this.emitDecisionLog(walletPubkey, result);
+        return result;
+      }
       if (excessUsd < this.config.minRebalanceUsd) {
         const result: RebalanceResult = { triggered: false, reason: 'below_min_usd' };
         this.emitDecisionLog(walletPubkey, result);
@@ -186,6 +207,15 @@ export class FundingManager {
       : snapshot.usdcBalance;
 
     if (nonBaseBalance >= this.config.minRebalanceUsd) {
+      if (nonBaseBalance > this.config.maxRebalanceNotionalUsd) {
+        const result: RebalanceResult = {
+          triggered: false,
+          reason: 'notional_above_cap',
+          details: { estimatedUsd: nonBaseBalance, maxRebalanceNotionalUsd: this.config.maxRebalanceNotionalUsd },
+        };
+        this.emitDecisionLog(walletPubkey, result);
+        return result;
+      }
       const decimals = MINT_DECIMALS[nonBaseMint] ?? 6;
       const amountRaw = Math.floor(nonBaseBalance * 10 ** decimals);
       const nonBaseSymbol = this.config.baseAsset === 'USDC' ? 'USDT' : 'USDC';

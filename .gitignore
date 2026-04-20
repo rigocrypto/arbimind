@@ -25,3 +25,8 @@ packages/contracts/lib/v3-periphery
 packages/backend/.env
 packages/ui/.env.local
 runtime_probe.txt
+
+# Local working artifacts
+.codex-worktrees/
+packages/bot/coverage/
+.keep-local/

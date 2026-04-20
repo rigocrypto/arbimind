@@ -9,11 +9,13 @@ const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
 
 function makeConfig(overrides?: Partial<FundingManagerConfig>): FundingManagerConfig {
   return {
+    autoRebalanceEnabled: true,
     targetSolReserve: 0.25,
     minSolReserve: 0.15,
     baseAssetMint: MINT_USDC,
     baseAsset: 'USDC',
     minRebalanceUsd: 5,
+    maxRebalanceNotionalUsd: 1_000,
     maxRebalanceCostBps: 30,
     rebalanceCooldownMs: 60_000,
     jupiterBaseUrl: 'https://lite-api.jup.ag/swap/v1',

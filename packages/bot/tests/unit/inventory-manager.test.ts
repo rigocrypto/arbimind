@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { InventoryConfig } from '../../src/solana/config';
 
+const MINT_USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+const MINT_USDT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
+
 // We test the pure logic methods of SolanaInventoryManager by constructing it
 // with a known config and exercising snapshot-based helpers.
 // Network-dependent methods (refreshBalances, executeFundingSwap) are excluded,
@@ -9,16 +12,22 @@ import type { InventoryConfig } from '../../src/solana/config';
 function makeConfig(overrides: Partial<InventoryConfig> = {}): InventoryConfig {
   return {
     autoFundEnabled: true,
+    autoRebalanceEnabled: true,
     baseAsset: 'USDC',
-    baseAssetMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+    baseAssetMint: MINT_USDC,
     minSolReserve: 0.15,
     targetSolReserve: 0.25,
     autoFundMinSwapUsd: 0.50,
+    maxRebalanceNotionalUsd: 1000,
     fundingRebalanceIntervalMs: 60_000,
+    fundingCooldownMs: 300_000,
     positionSizeFraction: 0.25,
     minTradeUsd: 0.20,
     maxTradeUsd: 250,
     compoundProfits: true,
+    postTradeCooldownMs: 600_000,
+    solRebalanceBandLow: 0.6,
+    solRebalanceBandHigh: 1.8,
     ...overrides,
   };
 }
@@ -182,16 +191,16 @@ describe('PnL tracking', () => {
     const mgr = await createManager();
     expect(mgr.getCumulativeRealizedPnlUsd()).toBe(0);
 
-    mgr.recordTradeResult(100, 100.5); // +0.50
+    mgr.recordTradeResult(100, 100.5, MINT_USDT, MINT_USDC); // +0.50 settled to base
     expect(mgr.getCumulativeRealizedPnlUsd()).toBeCloseTo(0.5);
 
-    mgr.recordTradeResult(100.5, 101.2); // +0.70
+    mgr.recordTradeResult(100.5, 101.2, MINT_USDT, MINT_USDC); // +0.70 settled to base
     expect(mgr.getCumulativeRealizedPnlUsd()).toBeCloseTo(1.2);
   });
 
   it('tracks negative PnL', async () => {
     const mgr = await createManager();
-    mgr.recordTradeResult(100, 99.5); // -0.50
+    mgr.recordTradeResult(100, 99.5, MINT_USDT, MINT_USDC); // -0.50 settled to base
     expect(mgr.getCumulativeRealizedPnlUsd()).toBeCloseTo(-0.5);
   });
 });
