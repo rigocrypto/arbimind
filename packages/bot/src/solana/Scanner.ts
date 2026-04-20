@@ -506,7 +506,17 @@ export class SolanaScanner {
       const effectiveExpectedProfitPct = edgeContext.netEdgePct;
       const signal = effectiveExpectedProfitPct > 0 ? 'LONG' : (effectiveExpectedProfitPct < 0 ? 'SHORT' : 'NEUTRAL');
       if (signal === 'NEUTRAL') {
-        logger.debug(`📊 Skipping ${poolAddress}: net edge neutral after costs`);
+        logger.debug(`📊 Skipping ${poolAddress}: net edge neutral after costs`, {
+          baseSymbol: pairBaseSymbol,
+          quoteSymbol: pairQuoteSymbol,
+          poolPriceUsd: edgeContext.poolPriceUsd,
+          referencePriceUsd: edgeContext.referencePriceUsd,
+          grossSpreadBps: edgeContext.grossSpreadBps,
+          totalCostBps,
+          netEdgeBps: edgeContext.netEdgeBps,
+          netEdgePct: edgeContext.netEdgePct,
+          comparablePoolCount: edgeContext.comparablePoolCount,
+        });
         return;
       }
 
