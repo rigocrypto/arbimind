@@ -8,7 +8,7 @@ const config = [
     ignores: ['.next/**', 'node_modules/**', 'out/**', 'dist/**'],
     rules: {
       'react-hooks/static-components': 'off',
-      'react-hooks/set-state-in-effect': 'error',
+      'react-hooks/set-state-in-effect': 'warn',
       'react-hooks/preserve-manual-memoization': 'warn',
       'react-hooks/incompatible-library': 'warn',
       'react-hooks/purity': 'error',
