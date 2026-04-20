@@ -22,6 +22,20 @@ import bs58 from 'bs58';
 const logger = new Logger('SolanaScanner');
 const STABLE_SYMBOLS = new Set(['USDC', 'USDT']);
 const SOLANA_MIN_EXECUTION_CONFIDENCE = Number.parseFloat(process.env['SOLANA_MIN_EXECUTION_CONFIDENCE'] || '0.85');
+const ARB_SLIPPAGE_BPS = Number(process.env['SOLANA_ARB_SLIPPAGE_BPS'] || '10');
+const ARB_FEE_BPS = Number(process.env['SOLANA_ARB_FEE_BPS'] || '5');
+const ARB_HAIRCUT_BPS = Number(process.env['SOLANA_ARB_HAIRCUT_BPS'] || '2');
+const ARB_CONFIDENCE_BPS_SCALE = Number(process.env['SOLANA_ARB_CONFIDENCE_BPS_SCALE'] || '300');
+
+type ArbEdgeContext = {
+  poolPriceUsd: number;
+  referencePriceUsd: number;
+  grossSpreadBps: number;
+  netEdgeBps: number;
+  netEdgePct: number;
+  effectiveConfidence: number;
+  comparablePoolCount: number;
+};
 
 type DexPairData = {
   volumeH24?: number;
@@ -72,6 +86,10 @@ export class SolanaScanner {
   private scanConnection: Connection | null = null;
   private scanWallet: Keypair | null = null;
   private isRunning = false;
+
+  private clamp(value: number, min = 0, max = 1): number {
+    return Math.min(max, Math.max(min, value));
+  }
 
   constructor() {
     const aiConfig: AiScoringConfig = {
@@ -388,16 +406,49 @@ export class SolanaScanner {
 
     if (!snapshots.length) return;
 
-    const priceChanges = snapshots
-      .map((s) => s.pairData.priceChangeH24)
-      .filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+    const snapshotsByBase = new Map<string, Array<{ poolAddress: string; pairData: DexPairData; priceUsd: number }>>();
+    for (const snapshot of snapshots) {
+      const baseSymbol = snapshot.pairData.baseSymbol?.toUpperCase();
+      const priceUsd = Number(snapshot.pairData.priceUsd ?? 0);
+      if (!baseSymbol || !Number.isFinite(priceUsd) || priceUsd <= 0) continue;
+      const bucket = snapshotsByBase.get(baseSymbol) ?? [];
+      bucket.push({ ...snapshot, priceUsd });
+      snapshotsByBase.set(baseSymbol, bucket);
+    }
 
-    const marketBaselinePriceChangeH24 = priceChanges.length
-      ? priceChanges.reduce((sum, v) => sum + v, 0) / priceChanges.length
-      : 0;
+    const edgeByPool = new Map<string, ArbEdgeContext>();
+    const totalCostBps = ARB_SLIPPAGE_BPS + ARB_FEE_BPS + ARB_HAIRCUT_BPS;
+
+    for (const group of snapshotsByBase.values()) {
+      if (group.length < 2) continue;
+      const referencePriceUsd = group.reduce((sum, item) => sum + item.priceUsd, 0) / group.length;
+      if (!Number.isFinite(referencePriceUsd) || referencePriceUsd <= 0) continue;
+
+      for (const item of group) {
+        const deltaBps = ((item.priceUsd - referencePriceUsd) / referencePriceUsd) * 10_000;
+        const grossSpreadBps = Math.abs(deltaBps);
+        // If price is below reference, treat as LONG edge; if above, treat as SHORT edge.
+        const directionalGrossBps = deltaBps < 0 ? grossSpreadBps : -grossSpreadBps;
+        const netEdgeBps = directionalGrossBps >= 0
+          ? Math.max(0, directionalGrossBps - totalCostBps)
+          : Math.min(0, directionalGrossBps + totalCostBps);
+        const netEdgePct = netEdgeBps / 100;
+        const effectiveConfidence = this.clamp(0.5 + netEdgeBps / ARB_CONFIDENCE_BPS_SCALE);
+
+        edgeByPool.set(item.poolAddress, {
+          poolPriceUsd: item.priceUsd,
+          referencePriceUsd,
+          grossSpreadBps,
+          netEdgeBps,
+          netEdgePct,
+          effectiveConfidence,
+          comparablePoolCount: group.length,
+        });
+      }
+    }
 
     for (const { poolAddress, pairData } of snapshots) {
-      await this.scanPool(poolAddress, pairData, marketBaselinePriceChangeH24);
+      await this.scanPool(poolAddress, pairData, edgeByPool.get(poolAddress) ?? null, totalCostBps);
     }
   }
 
@@ -407,10 +458,14 @@ export class SolanaScanner {
   private async scanPool(
     poolAddress: string,
     pairData: DexPairData,
-    marketBaselinePriceChangeH24: number
+    edgeContext: ArbEdgeContext | null,
+    totalCostBps: number
   ): Promise<void> {
     try {
-      const relativeEdgePct = (pairData.priceChangeH24 ?? 0) - marketBaselinePriceChangeH24;
+      if (!edgeContext) {
+        logger.debug(`📊 Skipping ${poolAddress}: no comparable cross-pool reference for arb spread`);
+        return;
+      }
 
       // Resolve pair metadata for AI scoring
       const pairBaseSymbol = pairData.baseSymbol?.toUpperCase() ?? 'UNKNOWN';
@@ -429,7 +484,7 @@ export class SolanaScanner {
           amountOut1: '0',
           amountOut2: '0',
           profit: '0',
-          profitPercent: relativeEdgePct,
+          profitPercent: edgeContext.netEdgePct,
           gasEstimate: '0',
           netProfit: '0',
           decimalsIn: pairBaseMeta?.decimals ?? 9,
@@ -447,17 +502,31 @@ export class SolanaScanner {
 
       // Log prediction if confidence is high
       const regime = getLiquidityRegime();
-      if (score.successProb > config.aiMinSuccessProb) {
-        const signal = score.expectedProfitPct > 0 ? 'LONG' : 'SHORT';
-        await this.logPrediction(poolAddress, signal, score.successProb, pairData);
-        await this.maybeExecuteTrade(poolAddress, signal, pairData, score.successProb, score.expectedProfitPct, regime);
-        logger.info(`✅ [SOLANA] Scored ${poolAddress}: ${signal} (${(score.successProb * 100).toFixed(1)}%)`, {
+      const effectiveConfidence = edgeContext.effectiveConfidence;
+      const effectiveExpectedProfitPct = edgeContext.netEdgePct;
+      const signal = effectiveExpectedProfitPct > 0 ? 'LONG' : (effectiveExpectedProfitPct < 0 ? 'SHORT' : 'NEUTRAL');
+      if (signal === 'NEUTRAL') {
+        logger.debug(`📊 Skipping ${poolAddress}: net edge neutral after costs`);
+        return;
+      }
+
+      if (effectiveConfidence > config.aiMinSuccessProb) {
+        await this.logPrediction(poolAddress, signal, effectiveConfidence, pairData);
+        await this.maybeExecuteTrade(poolAddress, signal, pairData, effectiveConfidence, effectiveExpectedProfitPct, regime);
+        logger.info(`✅ [SOLANA] Scored ${poolAddress}: ${signal} (${(effectiveConfidence * 100).toFixed(1)}%)`, {
           baseSymbol: pairBaseSymbol,
           quoteSymbol: pairQuoteSymbol,
+          poolPriceUsd: edgeContext.poolPriceUsd,
+          referencePriceUsd: edgeContext.referencePriceUsd,
+          grossSpreadBps: edgeContext.grossSpreadBps,
+          totalCostBps,
+          netEdgeBps: edgeContext.netEdgeBps,
+          netEdgePct: edgeContext.netEdgePct,
+          comparablePoolCount: edgeContext.comparablePoolCount,
+          aiSuccessProbRaw: score.successProb,
+          aiExpectedProfitPctRaw: score.expectedProfitPct,
           priceChangeH24: pairData.priceChangeH24 ?? 0,
-          marketBaselinePriceChangeH24,
-          relativeEdgePct,
-          expectedProfitPct: score.expectedProfitPct,
+          expectedProfitPct: effectiveExpectedProfitPct,
           regimeLabel: regime.regimeLabel, utcHour: regime.utcHour, isWeekend: regime.isWeekend,
         });
       }
