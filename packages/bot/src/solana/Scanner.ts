@@ -61,6 +61,23 @@ type DexScreenerResponse = {
   };
 };
 
+type JupiterQuoteResponse = {
+  inAmount?: string;
+  outAmount?: string;
+  priceImpactPct?: string;
+  routePlan?: Array<{ swapInfo?: { label?: string } }>;
+};
+
+type PriceDriftContext = {
+  dexScreenerPriceUsd: number;
+  jupiterQuoteImpliedPriceUsd?: number;
+  driftBps?: number;
+  quoteLegCount?: number;
+  priceImpactPct?: number;
+  inputAmountRaw?: number;
+  reason?: string;
+};
+
 type AlertPredictionPayload = {
   pairAddress: string;
   chain: 'solana';
@@ -498,6 +515,14 @@ export class SolanaScanner {
       const pairQuoteSymbol = pairData.quoteSymbol?.toUpperCase() ?? 'UNKNOWN';
       const pairBaseMeta = TOKEN_REGISTRY[pairBaseSymbol];
       const pairQuoteMeta = TOKEN_REGISTRY[pairQuoteSymbol];
+      const driftContext = await this.getJupiterPriceDriftContext(pairData);
+
+      logger.info('[SOLANA] price_drift', {
+        poolAddress,
+        baseSymbol: pairBaseSymbol,
+        quoteSymbol: pairQuoteSymbol,
+        ...driftContext,
+      });
 
       // Score with AI
       const score = await this.aiScoringService.scoreOpportunity(
@@ -609,6 +634,84 @@ export class SolanaScanner {
         error: error instanceof Error ? error.message : error,
       });
       return null;
+    }
+  }
+
+  private resolveTokenDecimals(symbol: string | undefined, mint: string | undefined, fallback: number): number {
+    const normalizedSymbol = symbol?.toUpperCase();
+    if (normalizedSymbol && TOKEN_REGISTRY[normalizedSymbol]) {
+      return TOKEN_REGISTRY[normalizedSymbol].decimals;
+    }
+
+    if (mint) {
+      const token = Object.values(TOKEN_REGISTRY).find((t) => t.mint === mint);
+      if (token) return token.decimals;
+    }
+
+    return fallback;
+  }
+
+  private async getJupiterPriceDriftContext(pairData: DexPairData): Promise<PriceDriftContext> {
+    const dexScreenerPriceUsd = Number(pairData.priceUsd ?? 0);
+    if (!Number.isFinite(dexScreenerPriceUsd) || dexScreenerPriceUsd <= 0) {
+      return { dexScreenerPriceUsd: 0, reason: 'invalid_dexscreener_price' };
+    }
+
+    const baseMint = pairData.baseMint;
+    const quoteMint = pairData.quoteMint;
+    if (!baseMint || !quoteMint) {
+      return { dexScreenerPriceUsd, reason: 'missing_token_mints' };
+    }
+
+    const quoteSymbol = pairData.quoteSymbol?.toUpperCase();
+    if (!quoteSymbol || !STABLE_SYMBOLS.has(quoteSymbol)) {
+      return { dexScreenerPriceUsd, reason: 'non_stable_quote_pair' };
+    }
+
+    const baseDecimals = this.resolveTokenDecimals(pairData.baseSymbol, baseMint, 9);
+    const quoteDecimals = this.resolveTokenDecimals(pairData.quoteSymbol, quoteMint, 6);
+    const inputAmountRaw = Math.max(1, Math.round(10 ** Math.max(0, baseDecimals - 1))); // 0.1 base token
+    const quoteBaseUrl = solanaExecutorConfig.jupiterBaseUrl.replace(/\/$/, '');
+    const quoteUrl = `${quoteBaseUrl}/quote?inputMint=${encodeURIComponent(baseMint)}&outputMint=${encodeURIComponent(quoteMint)}&amount=${inputAmountRaw}&slippageBps=15`;
+
+    try {
+      const response = await fetch(quoteUrl, { headers: { 'User-Agent': 'ArbiMind-Bot/1.0' } });
+      if (!response.ok) {
+        return { dexScreenerPriceUsd, inputAmountRaw, reason: `quote_http_${response.status}` };
+      }
+
+      const quote = (await response.json()) as JupiterQuoteResponse;
+      const inRaw = Number(quote.inAmount ?? 0);
+      const outRaw = Number(quote.outAmount ?? 0);
+      if (!Number.isFinite(inRaw) || !Number.isFinite(outRaw) || inRaw <= 0 || outRaw <= 0) {
+        return { dexScreenerPriceUsd, inputAmountRaw, reason: 'invalid_quote_amounts' };
+      }
+
+      const inBase = inRaw / (10 ** baseDecimals);
+      const outQuote = outRaw / (10 ** quoteDecimals);
+      if (!Number.isFinite(inBase) || !Number.isFinite(outQuote) || inBase <= 0 || outQuote <= 0) {
+        return { dexScreenerPriceUsd, inputAmountRaw, reason: 'invalid_quote_units' };
+      }
+
+      const jupiterQuoteImpliedPriceUsd = outQuote / inBase;
+      const driftBps = ((jupiterQuoteImpliedPriceUsd - dexScreenerPriceUsd) / dexScreenerPriceUsd) * 10_000;
+      const quoteLegCount = Array.isArray(quote.routePlan) ? quote.routePlan.length : 0;
+      const priceImpactPct = quote.priceImpactPct ? Number.parseFloat(quote.priceImpactPct) : undefined;
+
+      return {
+        dexScreenerPriceUsd,
+        jupiterQuoteImpliedPriceUsd,
+        driftBps,
+        quoteLegCount,
+        priceImpactPct,
+        inputAmountRaw,
+      };
+    } catch (error) {
+      return {
+        dexScreenerPriceUsd,
+        inputAmountRaw,
+        reason: error instanceof Error ? `quote_fetch_error:${error.message}` : 'quote_fetch_error',
+      };
     }
   }
 
