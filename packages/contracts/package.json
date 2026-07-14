@@ -4,7 +4,7 @@
   "description": "Smart contracts for ArbiMind arbitrage execution",
   "scripts": {
     "build": "forge build",
-    "test": "if command -v forge >/dev/null 2>&1; then forge test; else echo \"forge not found; skipping contract tests\"; fi",
+    "test": "forge test",
     "deploy": "forge script Deploy --rpc-url $ETHEREUM_RPC_URL --private-key $PRIVATE_KEY --broadcast --verify",
     "deploy:local": "forge script Deploy --rpc-url http://localhost:8545 --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --broadcast",
     "clean": "forge clean",
