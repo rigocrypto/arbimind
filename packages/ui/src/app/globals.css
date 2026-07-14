@@ -1,4 +1,4 @@
-/* Fonts loaded via next/font in layout.tsx to avoid @import order issues */
+/* Use system font fallbacks so CI builds do not depend on fetching Google Fonts. */
 @import "tailwindcss";
 
 @theme {
@@ -122,8 +122,11 @@
   --color-emerald-900: #064e3b;
 
   /* Font families */
-  --font-sans: var(--font-inter), Inter, system-ui, sans-serif;
-  --font-mono: var(--font-space-grotesk), 'Space Grotesk', monospace;
+  --font-inter: Inter, system-ui, sans-serif;
+  --font-space-grotesk: 'Space Grotesk', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-dm-sans: 'DM Sans', system-ui, sans-serif;
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-space-grotesk);
 
   /* Animations */
   --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;

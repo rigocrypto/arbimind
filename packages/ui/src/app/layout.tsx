@@ -1,6 +1,5 @@
 export const dynamic = 'force-dynamic';
 import type { Metadata, Viewport } from 'next'
-import { DM_Sans, Inter, Space_Grotesk } from 'next/font/google'
 import { Suspense } from 'react'
 import './globals.css'
 import { Providers } from '@/components/Providers'
@@ -9,9 +8,6 @@ import { Header } from '@/components/Header'
 import { PromotionBanner } from '@/components/PromotionBanner'
 import ClientOnly from '@/components/ClientOnly';
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
-const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-space-grotesk' })
-const dmSans = DM_Sans({ subsets: ['latin'], weight: ['400', '500', '700'], variable: '--font-dm-sans' })
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -43,8 +39,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={`dark ${inter.variable} ${spaceGrotesk.variable} ${dmSans.variable}`}>
-      <body className={`${inter.className} bg-dark-900 text-white min-h-screen w-full overflow-x-hidden flex flex-col`}>
+    <html lang="en" className="dark">
+      <body className="bg-dark-900 text-white min-h-screen w-full overflow-x-hidden flex flex-col">
         {/* Global Video Background + Overlay */}
         <div className="fixed inset-0 w-full h-full z-[-2] pointer-events-none">
           <video

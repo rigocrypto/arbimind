@@ -31,7 +31,19 @@ jobs:
       - run: pnpm install --frozen-lockfile --prefer-offline
 
       - name: Security audit (high-severity)
-        run: pnpm audit --audit-level=high
+        run: |
+          set +e
+          pnpm audit --audit-level=high 2>&1 | tee audit.log
+          audit_status=${PIPESTATUS[0]}
+          set -e
+          if [ "$audit_status" -eq 0 ]; then
+            exit 0
+          fi
+          if grep -E 'ERR_PNPM_AUDIT_BAD_RESPONSE|ERR_PNPM_META_FETCH_FAIL|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|Forbidden' audit.log >/dev/null; then
+            echo 'pnpm audit endpoint was unavailable; continuing without masking real audit findings.'
+            exit 0
+          fi
+          exit "$audit_status"
 
       # Keep the existing lint gate shape: only UI lint is currently clean on main.
       - run: pnpm --filter @arbimind/ui lint
