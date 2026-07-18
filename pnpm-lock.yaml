@@ -108,8 +108,8 @@ importers:
         specifier: ^9.0.2
         version: 9.0.3
       mongoose:
-        specifier: ^9.4.1
-        version: 9.4.1(socks@2.8.7)
+        specifier: ^9.7.4
+        version: 9.7.4(socks@2.8.7)
       node-cron:
         specifier: ^3.0.3
         version: 3.0.3
@@ -6488,8 +6488,8 @@ packages:
     resolution: {integrity: sha512-C3iHfuGUXK2u8/ipq9LfjFfXFxAZMQJJq7vLS45r3D9Y2xQ/m4S8zaR4zMLFWh9AsNPXmcFfUDhTEO8UIC/V6Q==}
     engines: {node: '>=12.0.0'}
 
-  kareem@3.2.0:
-    resolution: {integrity: sha512-VS8MWZz/cT+SqBCpVfNN4zoVz5VskR3N4+sTmUXme55e9avQHntpwpNq0yjnosISXqwJ3AQVjlbI4Dyzv//JtA==}
+  kareem@3.3.0:
+    resolution: {integrity: sha512-kpSuLD3/7RenBnjnJdOHXCKC8dTd1JzeOiJhN0necWWci6cC+qX+VuwPnMVgb+a4+KNJSfgqahpnfWaeDXCimw==}
     engines: {node: '>=18.0.0'}
 
   keyv@4.5.4:
@@ -7012,8 +7012,8 @@ packages:
       socks:
         optional: true
 
-  mongodb@7.1.1:
-    resolution: {integrity: sha512-067DXiMjcpYQl6bGjWQoTUEE9UoRViTtKFcoqX7z08I+iDZv/emH1g8XEFiO3qiDfXAheT5ozl1VffDTKhIW/w==}
+  mongodb@7.2.0:
+    resolution: {integrity: sha512-F/2+BMZtLVhY30ioZp0dAmZ+IRZMBqI+nrv6t5+9/1AIwCa8sMRC3jBf81lpxMhnZgqq8CoUD503Z1oZWq1/sw==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       '@aws-sdk/credential-providers': ^3.806.0
@@ -7043,8 +7043,8 @@ packages:
     resolution: {integrity: sha512-Bul4Ha6J8IqzFrb0B1xpVzkC3S0sk43dmLSnhFOn8eJlZiLwL5WO6cRymmjaADdCMjUcCpj2ce8hZI6O4ZFSug==}
     engines: {node: '>=16.20.1'}
 
-  mongoose@9.4.1:
-    resolution: {integrity: sha512-4rFBWa+/wdBQSfvnOPJBpiSG6UCEbhSQh865dEdaH9Y8WfHBUC+I2XT28dp0IBIGrEwmh+gzrgZgea5PbmrHWA==}
+  mongoose@9.7.4:
+    resolution: {integrity: sha512-nuSYGUWWzNd4EAbGYxE469wPTL+kmxb5+91YvCvMkJ08rvNRht/usZUU3LuFuk7rDutF2QWBZHPHuzM8TxXApA==}
     engines: {node: '>=20.19.0'}
 
   motion-dom@12.38.0:
@@ -18027,7 +18027,7 @@ snapshots:
 
   kareem@2.6.3: {}
 
-  kareem@3.2.0: {}
+  kareem@3.3.0: {}
 
   keyv@4.5.4:
     dependencies:
@@ -18625,7 +18625,7 @@ snapshots:
     optionalDependencies:
       socks: 2.8.7
 
-  mongodb@7.1.1(socks@2.8.7):
+  mongodb@7.2.0(socks@2.8.7):
     dependencies:
       '@mongodb-js/saslprep': 1.4.6
       bson: 7.2.0
@@ -18652,10 +18652,11 @@ snapshots:
       - socks
       - supports-color
 
-  mongoose@9.4.1(socks@2.8.7):
+  mongoose@9.7.4(socks@2.8.7):
     dependencies:
-      kareem: 3.2.0
-      mongodb: 7.1.1(socks@2.8.7)
+      '@standard-schema/spec': 1.1.0
+      kareem: 3.3.0
+      mongodb: 7.2.0(socks@2.8.7)
       mpath: 0.9.0
       mquery: 6.0.0
       ms: 2.1.3
