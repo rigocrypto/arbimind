@@ -50,7 +50,7 @@ jobs:
 
       - uses: foundry-rs/foundry-toolchain@v1
         with:
-          version: nightly
+          version: stable
 
       - name: Install Foundry libs
         working-directory: packages/contracts
