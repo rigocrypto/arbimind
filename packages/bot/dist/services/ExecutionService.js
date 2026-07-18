@@ -131,7 +131,7 @@ class ExecutionService {
     /**
      * Execute an arbitrage opportunity (executor contract or direct router on Sepolia)
      */
-    async executeArbitrage(opportunity) {
+    async executeArbitrage(opportunity, overrides) {
         try {
             this.logger.info('Preparing arbitrage execution', {
                 tokenA: opportunity.tokenA,
@@ -144,10 +144,10 @@ class ExecutionService {
                 process.env['SEPOLIA_UNISWAP_V2_ROUTER']?.trim() &&
                 process.env['SEPOLIA_UNISWAP_V3_ROUTER']?.trim();
             if (useDirectSwap) {
-                return await this.executeSwapDirect(opportunity);
+                return await this.executeSwapDirect(opportunity, overrides);
             }
             // Build transaction data (executor contract)
-            const txData = await this.buildArbitrageTransaction(opportunity);
+            const txData = await this.buildArbitrageTransaction(opportunity, overrides);
             // Estimate gas
             const gasEstimate = await this.wallet.provider?.estimateGas?.(txData);
             if (!gasEstimate)
@@ -156,12 +156,18 @@ class ExecutionService {
             const gasPrice = await this.wallet.provider?.getFeeData?.();
             if (!gasPrice)
                 throw new Error('Failed to fetch gas price data');
-            // Execute transaction
+            // Cap priority fee to limit MEV exposure (2 gwei ceiling)
+            const MAX_PRIORITY_FEE = ethers_1.ethers.parseUnits('2', 'gwei');
+            const cappedPriorityFee = gasPrice?.maxPriorityFeePerGas
+                ? (gasPrice.maxPriorityFeePerGas > MAX_PRIORITY_FEE ? MAX_PRIORITY_FEE : gasPrice.maxPriorityFeePerGas)
+                : MAX_PRIORITY_FEE;
+            // Execute transaction (EIP-1559 type 2)
             const tx = await this.wallet.sendTransaction({
                 ...txData,
+                type: 2,
                 gasLimit: gasEstimate,
                 maxFeePerGas: gasPrice?.maxFeePerGas,
-                maxPriorityFeePerGas: gasPrice?.maxPriorityFeePerGas
+                maxPriorityFeePerGas: cappedPriorityFee
             });
             this.logger.info('Arbitrage transaction sent', {
                 hash: tx.hash,
@@ -169,7 +175,7 @@ class ExecutionService {
                 gasPrice: gasPrice.maxFeePerGas?.toString() || ''
             });
             // Wait for confirmation
-            const receipt = await tx.wait();
+            const receipt = await tx.wait(overrides?.requiredConfirmations);
             if (receipt?.status === 1) {
                 this.logger.info('Arbitrage executed successfully', {
                     hash: tx.hash,
@@ -219,13 +225,14 @@ class ExecutionService {
     /**
      * Execute a single swap on the DEX with better price (Sepolia direct router path).
      */
-    async executeSwapDirect(opportunity) {
+    async executeSwapDirect(opportunity, overrides) {
         const tokenInAddr = (0, tokens_1.getTokenAddress)(opportunity.tokenA);
         const tokenOutAddr = (0, tokens_1.getTokenAddress)(opportunity.tokenB);
         const amountIn = ethers_1.ethers.getBigInt(opportunity.amountIn);
         const amountOut1 = ethers_1.ethers.getBigInt(opportunity.amountOut1);
         const amountOut2 = ethers_1.ethers.getBigInt(opportunity.amountOut2);
-        const slippageBps = 50; // 0.5%
+        const slippagePct = overrides?.slippagePct ?? 0.5;
+        const slippageBps = Math.round(slippagePct * 100); // e.g. 0.5% → 50 bps
         const expectedOut = amountOut1 >= amountOut2 ? amountOut1 : amountOut2;
         const amountOutMin = (expectedOut * BigInt(10000 - slippageBps)) / BigInt(10000);
         const deadline = Math.floor(Date.now() / 1000) + 60;
@@ -264,7 +271,7 @@ class ExecutionService {
                     sqrtPriceLimitX96: 0n,
                 });
             }
-            const receipt = await tx.wait();
+            const receipt = await tx.wait(overrides?.requiredConfirmations);
             if (!receipt) {
                 throw new Error('Swap transaction receipt was null');
             }
@@ -296,7 +303,7 @@ class ExecutionService {
     /**
      * Build arbitrage transaction data
      */
-    async buildArbitrageTransaction(opportunity) {
+    async buildArbitrageTransaction(opportunity, overrides) {
         const executorContract = new ethers_1.ethers.Contract(this.executorAddress, [
             'function executeArbV2V3(address tokenA, address tokenB, uint256 amountIn, address v2Router, address v3Router, uint24 v3Fee, uint256 minOutV2, uint256 minOutV3, uint256 deadline) external'
         ], this.wallet);
@@ -324,8 +331,9 @@ class ExecutionService {
             throw new Error('Unsupported DEX combination - need one V2 and one V3');
         }
         // Calculate minimum outputs with slippage protection
-        const minOutV2 = this.calculateMinOutput(opportunity.amountOut1, 0.5); // 0.5% slippage
-        const minOutV3 = this.calculateMinOutput(opportunity.amountOut2, 0.5); // 0.5% slippage
+        const slippage = overrides?.slippagePct ?? 0.5;
+        const minOutV2 = this.calculateMinOutput(opportunity.amountOut1, slippage);
+        const minOutV3 = this.calculateMinOutput(opportunity.amountOut2, slippage);
         // Set deadline (5 minutes from now)
         const deadline = Math.floor(Date.now() / 1000) + 300;
         const txData = await executorContract['executeArbV2V3']?.populateTransaction(opportunity.tokenA, opportunity.tokenB, opportunity.amountIn, v2Router, v3Router, v3Fee, minOutV2, minOutV3, deadline);

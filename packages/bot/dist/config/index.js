@@ -171,10 +171,12 @@ function createConfig() {
         network: isTestnet ? 'testnet' : 'mainnet',
         evmChain: evmChain === 'polygon' || evmChain === 'ethereum' ? evmChain : 'arbitrum',
         evmChainId: chainConfig.chainId,
+        evmTradingEnabled: !isEnvFalse(process.env['EVM_TRADING_ENABLED']),
         logOnly: forcedLogOnlyForSafety || explicitLogOnly || (isTestnet && !allowTestnetTrades),
         allowTestnetTrades,
         // Bot Configuration
-        minProfitEth: parseFloat(process.env['MIN_PROFIT_ETH'] || '0.01'),
+        // Loose sanity filter — the real profit floor is MIN_PROFIT_USD in passesTradeGuards()
+        minProfitEth: parseFloat(process.env['MIN_PROFIT_ETH'] || '0.0001'),
         maxGasGwei: parseFloat(process.env['MAX_GAS_GWEI'] || '50'),
         minProfitThreshold: parseFloat(process.env['MIN_PROFIT_THRESHOLD'] || '0.005'),
         scanIntervalMs: parseInt(process.env['SCAN_INTERVAL_MS'] || (isTestnet ? '5000' : '200'), 10),
@@ -190,6 +192,11 @@ function createConfig() {
         maxGasPriceGwei: parseFloat(process.env['MAX_GAS_PRICE_GWEI'] || '100'),
         minLiquidityEth: parseFloat(process.env['MIN_LIQUIDITY_ETH'] || '10'),
         minProfitUsd: parseFloat(process.env['MIN_PROFIT_USD'] || '1.0'),
+        // Trading Guards
+        maxTradeSizeEth: parseFloat(process.env['MAX_TRADE_SIZE_ETH'] || '0.10'),
+        maxGasUsd: parseFloat(process.env['MAX_GAS_USD'] || '2.00'),
+        // Alerting
+        alertDiscordWebhook: process.env['ALERT_DISCORD_WEBHOOK'] || undefined,
         // AI Scoring (optional)
         aiPredictUrl: process.env['AI_PREDICT_URL'],
         aiLogUrl: process.env['AI_LOG_URL'],
@@ -206,8 +213,8 @@ function createConfig() {
         sanityTxIntervalSec,
         sanityTxWei,
         sanityTxTo,
-        minEdgeBps: parseInt(process.env['MIN_EDGE_BPS'] || '10', 10),
-        swapAmountEth: parseFloat(process.env['SWAP_AMOUNT_ETH'] || '0.001'),
+        minEdgeBps: parseInt(process.env['MIN_EDGE_BPS'] || '8', 10),
+        swapAmountEth: parseFloat(process.env['SWAP_AMOUNT_ETH'] || '0.1'),
     };
 }
 exports.config = createConfig();
@@ -230,6 +237,7 @@ function validateConfig() {
         isEnvTrue(process.env['BOT_LOG_ONLY']) ||
         (normalizeEnvValue(process.env['NETWORK'] || 'mainnet').toLowerCase() === 'testnet' && !isEnvTrue(process.env['ALLOW_TESTNET_TRADES'])) ||
         (isEthereumSepoliaProfile() && !hasValidSepoliaProfile());
+    const evmTradingEnabled = !isEnvFalse(process.env['EVM_TRADING_ENABLED']);
     // Always require RPC URL
     if (!ethereumRpcUrl) {
         throw new Error('Missing required configuration: ethereumRpcUrl (set ETHEREUM_RPC_URL or chain-specific RPC_URL)');
@@ -290,8 +298,28 @@ function validateConfig() {
             throw new Error('Invalid SANITY_TX_TO format (must be 42 chars starting with 0x)');
         }
     }
-    // If trading, require private key and treasury
-    if (!logOnly) {
+    // ── Startup env audit: warn about vars that cause silent runtime failures ──
+    const envWarnings = [];
+    if (!process.env['BACKEND_URL'] && !process.env['SETTINGS_API_URL']) {
+        envWarnings.push('BACKEND_URL / SETTINGS_API_URL — settings polling will fall back to localhost');
+    }
+    if (!ethereumRpcUrl) {
+        envWarnings.push('ETHEREUM_RPC_URL (or chain-specific *_RPC_URL) — no RPC provider configured');
+    }
+    if (!privateKey && !walletAddress) {
+        envWarnings.push('PRIVATE_KEY / WALLET_ADDRESS — no wallet identity available');
+    }
+    if (!treasuryAddress && !logOnly && evmTradingEnabled) {
+        envWarnings.push('TREASURY_ADDRESS — required for live trading');
+    }
+    if (envWarnings.length > 0) {
+        logger.warn(`[CONFIG] Missing env vars that may cause runtime issues:\n  • ${envWarnings.join('\n  • ')}`);
+    }
+    if (evmTradingEnabled && logOnly) {
+        logger.warn('⚠️ EVM_TRADING_ENABLED=true while LOG_ONLY=true; EVM execution remains disabled by LOG_ONLY.');
+    }
+    // If EVM trading is enabled and not in LOG_ONLY, require key and treasury
+    if (evmTradingEnabled && !logOnly) {
         if (!privateKey) {
             throw new Error('Missing required configuration: privateKey (set PRIVATE_KEY or LOG_ONLY=true for logging-only mode)');
         }
@@ -318,4 +346,8 @@ function validateConfig() {
             }
         }
     }
+}
+function isEnvFalse(value) {
+    const normalized = normalizeEnvValue(value).toLowerCase();
+    return normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off';
 }

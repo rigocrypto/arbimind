@@ -200,7 +200,10 @@ const DEFAULT_DEX_CONFIG: Record<string, DexConfig> = {
 
 /** Validate all non-empty DEX addresses are valid EIP-55 checksummed. */
 function validateDexAddresses(dexConfig: Record<string, DexConfig>, label: string): Record<string, DexConfig> {
+  const normalized: Record<string, DexConfig> = {};
+
   for (const [name, dex] of Object.entries(dexConfig)) {
+    const nextDex: DexConfig = { ...dex };
     for (const field of ['router', 'factory', 'quoter'] as const) {
       const addr = dex[field];
       if (!addr) continue;
@@ -208,14 +211,15 @@ function validateDexAddresses(dexConfig: Record<string, DexConfig>, label: strin
         const checksummed = getAddress(addr);
         if (checksummed !== addr) {
           console.warn(`[CONFIG_WARN] ${label} DEX ${name}.${field} auto-corrected to checksummed form`);
-          (dex as unknown as Record<string, string>)[field] = checksummed;
+          (nextDex as unknown as Record<string, string>)[field] = checksummed;
         }
       } catch {
         throw new Error(`[CONFIG_FATAL] ${label} DEX ${name}.${field} has invalid address: ${addr}`);
       }
     }
+    normalized[name] = nextDex;
   }
-  return dexConfig;
+  return normalized;
 }
 
 function resolveDexConfig(): Record<string, DexConfig> {
