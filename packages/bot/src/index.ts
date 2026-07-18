@@ -45,6 +45,18 @@ function shouldGracefulExitFromEnv(): boolean {
   return isTestnet && !allowTestnetTrades;
 }
 
+function waitForShutdownSignal(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const onSignal = () => {
+      process.off('SIGINT', onSignal);
+      process.off('SIGTERM', onSignal);
+      resolve();
+    };
+    process.on('SIGINT', onSignal);
+    process.on('SIGTERM', onSignal);
+  });
+}
+
 async function main(): Promise<void> {
   try {
     console.error('[BOOT] importing ethers');
@@ -202,9 +214,7 @@ async function main(): Promise<void> {
       await bot.start();
     } else {
       logger.info('EVM scanner start skipped (EVM_SCANNER_ENABLED=false); process kept alive by Solana scanner loop');
-      await new Promise<void>(() => {
-        // Intentionally never resolves while process is running.
-      });
+      await waitForShutdownSignal();
     }
 
   } catch (error) {

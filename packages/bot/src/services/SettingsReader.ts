@@ -38,12 +38,14 @@ export class SettingsReader {
   private readonly backendBaseUrl: string;
   private readonly refreshMs: number;
   private readonly authRefreshMs: number;
+  private readonly allowRemoteExecutionOverrides: boolean;
 
   private cached: RuntimeSettings | null = null;
   private lastFetchMs = 0;
   private botAuthorized = true;
   private lastAuthFetchMs = 0;
   private walletAddress: string | null;
+  private warnedUntrustedSettingsOrigin = false;
 
   /** Env-var fallback when backend is unreachable. */
   private readonly envDefaults: RuntimeSettings;
@@ -64,6 +66,7 @@ export class SettingsReader {
     this.authRefreshMs = (opts.authRefreshSec ?? 15) * 1000;
     this.envDefaults = opts.envDefaults;
     this.walletAddress = process.env['WALLET_ADDRESS']?.trim() || null;
+    this.allowRemoteExecutionOverrides = this.isTrustedOrigin(this.apiUrl);
   }
 
   /**
@@ -104,13 +107,14 @@ export class SettingsReader {
       }
 
       const s = json.settings;
-      this.cached = {
+      const remote = {
         autoTrade: typeof s.autoTrade === 'boolean' ? s.autoTrade : this.envDefaults.autoTrade,
         minProfitEth: typeof s.minProfitEth === 'number' ? s.minProfitEth : this.envDefaults.minProfitEth,
         maxGasGwei: typeof s.maxGasGwei === 'number' ? s.maxGasGwei : this.envDefaults.maxGasGwei,
         slippagePct: typeof s.slippagePct === 'number' ? s.slippagePct : this.envDefaults.slippagePct,
         requiredConfirmations: typeof s.requiredConfirmations === 'number' ? s.requiredConfirmations : this.envDefaults.requiredConfirmations,
       };
+      this.cached = this.sanitizeRuntimeSettings(remote);
       this.lastFetchMs = now;
 
       this.logger.debug('Settings refreshed from backend', this.cached);
@@ -126,6 +130,68 @@ export class SettingsReader {
   private fallback(): RuntimeSettings {
     if (this.cached) return this.cached;   // stale cache > nothing
     return this.envDefaults;
+  }
+
+  private sanitizeRuntimeSettings(remote: RuntimeSettings): RuntimeSettings {
+    const boundedMinProfitEth = this.clampFinite(remote.minProfitEth, 0, 10, this.envDefaults.minProfitEth);
+    const boundedMaxGasGwei = this.clampFinite(remote.maxGasGwei, 1, 2000, this.envDefaults.maxGasGwei);
+
+    if (!this.allowRemoteExecutionOverrides) {
+      if (!this.warnedUntrustedSettingsOrigin) {
+        this.warnedUntrustedSettingsOrigin = true;
+        this.logger.warn('Settings API origin is not trusted; execution-critical overrides are ignored', {
+          apiUrl: this.apiUrl,
+        });
+      }
+
+      return {
+        autoTrade: this.envDefaults.autoTrade,
+        minProfitEth: boundedMinProfitEth,
+        maxGasGwei: boundedMaxGasGwei,
+        slippagePct: this.envDefaults.slippagePct,
+        requiredConfirmations: this.envDefaults.requiredConfirmations,
+      };
+    }
+
+    return {
+      autoTrade: remote.autoTrade,
+      minProfitEth: boundedMinProfitEth,
+      maxGasGwei: boundedMaxGasGwei,
+      slippagePct: this.clampFinite(remote.slippagePct, 0.05, 2, this.envDefaults.slippagePct),
+      requiredConfirmations: Math.floor(this.clampFinite(remote.requiredConfirmations, 1, 25, this.envDefaults.requiredConfirmations)),
+    };
+  }
+
+  private clampFinite(value: number, min: number, max: number, fallback: number): number {
+    if (!Number.isFinite(value)) return fallback;
+    return Math.min(max, Math.max(min, value));
+  }
+
+  private isTrustedOrigin(url: string): boolean {
+    const parsed = this.safeParseUrl(url);
+    if (!parsed) return false;
+
+    const origin = parsed.origin;
+    const host = parsed.hostname.toLowerCase();
+    const isLocal = host === 'localhost' || host === '127.0.0.1';
+    if (isLocal) return true;
+
+    const allowlistRaw = process.env['SETTINGS_ALLOWED_ORIGINS'] || process.env['TRUSTED_BACKEND_ORIGINS'] || process.env['BACKEND_URL'] || '';
+    const allowedOrigins = allowlistRaw
+      .split(',')
+      .map((entry) => this.safeParseUrl(entry.trim()))
+      .filter((entry): entry is URL => Boolean(entry))
+      .map((entry) => entry.origin);
+
+    return allowedOrigins.includes(origin);
+  }
+
+  private safeParseUrl(value: string): URL | null {
+    try {
+      return new URL(value);
+    } catch {
+      return null;
+    }
   }
 
   async refreshBotAuthorization(): Promise<void> {

@@ -227,19 +227,24 @@ function buildTokenPairs(tokens: Record<string, TokenConfig>): Array<{ tokenA: s
 
 /** Validate all token addresses are valid EIP-55 checksummed addresses. Fail fast on bad config. */
 function validateTokenAddresses(tokens: Record<string, TokenConfig>, label: string): Record<string, TokenConfig> {
+  const normalized: Record<string, TokenConfig> = {};
+
   for (const [symbol, token] of Object.entries(tokens)) {
-    if (!token.address) continue; // Skip empty (e.g. Sepolia tokens not set)
-    try {
-      const checksummed = getAddress(token.address);
-      if (checksummed !== token.address) {
-        console.warn(`[CONFIG_WARN] ${label} token ${symbol} address auto-corrected to checksummed form`);
-        token.address = checksummed;
+    const nextToken: TokenConfig = { ...token };
+    if (token.address) {
+      try {
+        const checksummed = getAddress(token.address);
+        if (checksummed !== token.address) {
+          console.warn(`[CONFIG_WARN] ${label} token ${symbol} address auto-corrected to checksummed form`);
+          nextToken.address = checksummed;
+        }
+      } catch {
+        throw new Error(`[CONFIG_FATAL] ${label} token ${symbol} has invalid address: ${token.address}`);
       }
-    } catch {
-      throw new Error(`[CONFIG_FATAL] ${label} token ${symbol} has invalid address: ${token.address}`);
     }
+    normalized[symbol] = nextToken;
   }
-  return tokens;
+  return normalized;
 }
 
 function resolveTokens(): Record<string, TokenConfig> {

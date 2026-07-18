@@ -27,6 +27,10 @@ function isEnvTrue(value) {
     const normalized = normalizeEnvValue(value).toLowerCase();
     return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
 }
+function isEnvFalse(value) {
+    const normalized = normalizeEnvValue(value).toLowerCase();
+    return normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off';
+}
 function shouldGracefulExitFromEnv() {
     if (isEnvTrue(process.env['LOG_ONLY']) || isEnvTrue(process.env['BOT_LOG_ONLY'])) {
         return true;
@@ -34,6 +38,17 @@ function shouldGracefulExitFromEnv() {
     const isTestnet = normalizeEnvValue(process.env['NETWORK'] || 'mainnet').toLowerCase() === 'testnet';
     const allowTestnetTrades = isEnvTrue(process.env['ALLOW_TESTNET_TRADES']);
     return isTestnet && !allowTestnetTrades;
+}
+function waitForShutdownSignal() {
+    return new Promise((resolve) => {
+        const onSignal = () => {
+            process.off('SIGINT', onSignal);
+            process.off('SIGTERM', onSignal);
+            resolve();
+        };
+        process.on('SIGINT', onSignal);
+        process.on('SIGTERM', onSignal);
+    });
 }
 async function main() {
     try {
@@ -55,11 +70,19 @@ async function main() {
         console.error('[BOOT] importing solana/Scanner');
         const solanaModule = await import('./solana/Scanner.js');
         console.error('[BOOT] imported solana/Scanner');
+        console.error('[BOOT] importing solana/config');
+        const solanaConfigModule = await import('./solana/config.js');
+        console.error('[BOOT] imported solana/config');
+        console.error('[BOOT] importing solana/solanaRpcGuard');
+        const solanaRpcGuardModule = await import('./solana/solanaRpcGuard.js');
+        console.error('[BOOT] imported solana/solanaRpcGuard');
         const { refreshConfig, validateConfig, config } = configModule;
         const { getIdentitySource, shortAddress } = identityModule;
         const { Logger } = loggerModule;
         const { ArbitrageBot } = botModule;
         const { SolanaScanner } = solanaModule;
+        const { solanaExecutorConfig } = solanaConfigModule;
+        const { checkSolanaRpcHealth } = solanaRpcGuardModule;
         const logger = new Logger('Main');
         // Refresh config with loaded env vars
         refreshConfig();
@@ -72,6 +95,10 @@ async function main() {
         logger.info(`🌐 RPC: ${config.ethereumRpcUrl.split('/').slice(0, 3).join('/')}/...`);
         if (config.logOnly) {
             logger.info('📊 Running in LOG_ONLY mode (no trades will be executed)');
+        }
+        const evmScannerEnabled = !isEnvFalse(process.env['EVM_SCANNER_ENABLED']);
+        if (!evmScannerEnabled) {
+            logger.warn('⏸️ EVM scanner disabled by EVM_SCANNER_ENABLED=false; Solana scanner remains active');
         }
         const privateKey = config.privateKey?.trim() || '';
         const walletAddressEnv = config.walletAddress?.trim() || '';
@@ -90,12 +117,26 @@ async function main() {
                 canaryMaxDailyLossEth: config.canaryMaxDailyLossEth
             });
         }
+        const effectiveSolanaNotionalUsd = solanaExecutorConfig.canaryMode
+            ? Math.min(solanaExecutorConfig.maxNotionalUsd, 5)
+            : solanaExecutorConfig.maxNotionalUsd;
+        logger.info('🧮 Solana notional gate', {
+            configuredMaxNotionalUsd: solanaExecutorConfig.maxNotionalUsd,
+            effectiveMaxNotionalUsd: effectiveSolanaNotionalUsd,
+            canaryMode: solanaExecutorConfig.canaryMode,
+        });
+        const solanaRpcGuard = await checkSolanaRpcHealth(solanaExecutorConfig);
+        Object.assign(solanaExecutorConfig, solanaRpcGuard.config);
+        if (solanaRpcGuard.forced) {
+            logger.error('⚠️ Solana trading was enabled but RPC is unhealthy; forcing LOG_ONLY mode');
+        }
         // Structured boot summary for observability
         console.log('[BOOT_SUMMARY]', JSON.stringify({
             ts: new Date().toISOString(),
             network: config.network,
             evmChain: config.evmChain,
             chainId: config.evmChainId,
+            evmScannerEnabled,
             mode: config.logOnly ? 'LOG_ONLY' : 'LIVE',
             canary: config.canaryEnabled,
             v3Enabled: !isEnvTrue(process.env['ENABLE_V3_QUOTES'] === 'false' ? 'false' : undefined),
@@ -107,8 +148,16 @@ async function main() {
             minEdgeBps: config.minEdgeBps,
             swapAmountEth: config.swapAmountEth,
             solanaEnabled: Boolean(process.env['SOLANA_SCANNER_ENABLED'] === 'true'),
+            solanaTradingEnabled: solanaExecutorConfig.tradingEnabled,
+            solanaLogOnly: solanaExecutorConfig.logOnly,
+            solanaCanaryMode: solanaExecutorConfig.canaryMode,
+            solanaConfiguredMaxNotionalUsd: solanaExecutorConfig.maxNotionalUsd,
+            solanaEffectiveMaxNotionalUsd: effectiveSolanaNotionalUsd,
+            solanaRpcHealthyAtBoot: solanaRpcGuard.healthy,
+            solanaRpcGuardForcedLogOnly: solanaRpcGuard.forced,
+            solanaRpcSlotAtCheck: solanaRpcGuard.slotAtCheck,
         }));
-        // Create and start the arbitrage bot
+        // Create the arbitrage bot (EVM scanner can be disabled via env)
         const bot = new ArbitrageBot();
         // Create and start the Solana scanner
         const solanaScanner = new SolanaScanner();
@@ -126,8 +175,14 @@ async function main() {
             solanaScanner.stop();
             process.exit(0);
         });
-        // Start the bot
-        await bot.start();
+        // Start scanners based on runtime toggles
+        if (evmScannerEnabled) {
+            await bot.start();
+        }
+        else {
+            logger.info('EVM scanner start skipped (EVM_SCANNER_ENABLED=false); process kept alive by Solana scanner loop');
+            await waitForShutdownSignal();
+        }
     }
     catch (error) {
         const shouldGracefulExit = shouldGracefulExitFromEnv();

@@ -61,13 +61,15 @@ export class ArbitrageBot {
   private canaryDailyPnlEth: number = 0;
   private canaryDay: string = new Date().toISOString().slice(0, 10);
   private lastSanityTxAtMs: number = 0;
-  private cachedGasPriceWei: number = 20e9; // fallback 20 gwei, refreshed from provider
+  private cachedGasPriceWei: bigint = 20_000_000_000n; // fallback 20 gwei, refreshed from provider
   private lastGasPriceRefreshMs: number = 0;
   /** Cached ETH/USD price derived from WETH/USDC quotes. Used to convert gas
    *  costs when the input token is not ETH (e.g. USDC/USDT stable pairs). */
   private cachedEthPriceUsd: number = 2000; // conservative fallback
   // last scan timestamp removed (not currently read anywhere)
   private heartbeatUrl: string | null = null;
+  private heartbeatServiceKey: string | null = null;
+  private canSendHeartbeatAuth: boolean = false;
 
   constructor(deps: ArbitrageBotDependencies = {}) {
     this.logger = deps.logger ?? new Logger('ArbitrageBot');
@@ -178,6 +180,14 @@ export class ArbitrageBot {
       ''
     ).replace(/\/+$/, '');
     this.heartbeatUrl = backendBase ? `${backendBase}/api/bot/heartbeat` : null;
+    this.heartbeatServiceKey = process.env['HEARTBEAT_SERVICE_KEY']?.trim() || null;
+    this.canSendHeartbeatAuth = this.isTrustedHeartbeatUrl(this.heartbeatUrl);
+
+    if (!this.canSendHeartbeatAuth && this.heartbeatServiceKey) {
+      this.logger.warn('Heartbeat auth header disabled: heartbeat origin is not trusted', {
+        heartbeatUrl: this.heartbeatUrl,
+      });
+    }
   }
 
   /**
@@ -290,12 +300,49 @@ export class ArbitrageBot {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(this.botConfig.aiServiceKey ? { 'X-SERVICE-KEY': this.botConfig.aiServiceKey } : {}),
+        ...(this.canSendHeartbeatAuth && this.heartbeatServiceKey
+          ? { 'X-SERVICE-KEY': this.heartbeatServiceKey }
+          : {}),
       },
       body: JSON.stringify(payload),
     }).catch((err) => {
       console.debug('[HEARTBEAT_FAIL]', err instanceof Error ? err.message : err);
     });
+  }
+
+  private isTrustedHeartbeatUrl(heartbeatUrl: string | null): boolean {
+    if (!heartbeatUrl) return false;
+    let targetUrl: URL;
+    try {
+      targetUrl = new URL(heartbeatUrl);
+    } catch {
+      return false;
+    }
+
+    const host = targetUrl.hostname.toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return true;
+    }
+
+    const allowlistRaw =
+      process.env['HEARTBEAT_ALLOWED_ORIGINS'] ||
+      process.env['TRUSTED_BACKEND_ORIGINS'] ||
+      process.env['BACKEND_URL'] ||
+      '';
+    const allowedOrigins = allowlistRaw
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .map((entry) => {
+        try {
+          return new URL(entry).origin;
+        } catch {
+          return null;
+        }
+      })
+      .filter((origin): origin is string => Boolean(origin));
+
+    return allowedOrigins.includes(targetUrl.origin);
   }
 
   private async maybeRunSanityTransfer(): Promise<void> {
@@ -387,29 +434,6 @@ export class ArbitrageBot {
         opportunitiesFound += opportunities.length;
 
         for (const opportunity of opportunities) {
-          // TEMP DEBUG — remove after sizing verification
-          const _inputIsEth = opportunity.decimalsIn === 18 && opportunity.tokenA === 'WETH';
-          const _netProfitFormatted = parseFloat(ethers.formatUnits(opportunity.netProfit, opportunity.decimalsIn));
-          const _netProfitUsd = _inputIsEth
-            ? _netProfitFormatted * this.cachedEthPriceUsd
-            : _netProfitFormatted; // stablecoin ≈ $1
-          console.log('[TRADE_SIZING_SANITY]', {
-            swapAmountEth: this.botConfig.swapAmountEth,
-            amountInRaw: opportunity.amountIn,
-            amountInFormatted: ethers.formatUnits(opportunity.amountIn, opportunity.decimalsIn),
-            decimalsIn: opportunity.decimalsIn,
-            tokenA: opportunity.tokenA,
-            tokenB: opportunity.tokenB,
-            route: opportunity.route,
-            grossProfitOutput: ethers.formatUnits(opportunity.profit, opportunity.decimalsOut),
-            netProfitInput: ethers.formatUnits(opportunity.netProfit, opportunity.decimalsIn),
-            netProfitUsd: _netProfitUsd.toFixed(4),
-            gasEstimateWei: opportunity.gasEstimate,
-            gasEstimateEth: ethers.formatEther(opportunity.gasEstimate),
-            cachedEthPriceUsd: this.cachedEthPriceUsd,
-            profitPercent: opportunity.profitPercent.toFixed(4),
-          });
-
           const { approved, scored } = await this.isAiApproved(opportunity);
           if (scored) scoredOpps++;
 
@@ -561,7 +585,7 @@ export class ArbitrageBot {
   ): Promise<{ opportunities: ArbitrageOpportunity[]; quotesOk: number; quotesFailed: number }> {
     const opportunities: ArbitrageOpportunity[] = [];
     const enabledDexes = getEligibleDexesForPair(tokenA, tokenB);
-    this.logger.info(`[DEX_ELIGIBILITY] ${tokenA}/${tokenB} → ${enabledDexes.map(([n]) => n).join(', ')}`);
+    this.logger.debug(`[DEX_ELIGIBILITY] ${tokenA}/${tokenB} -> ${enabledDexes.map(([n]) => n).join(', ')}`);
     let quotesOk = 0;
     let quotesFailed = 0;
 
@@ -572,6 +596,7 @@ export class ArbitrageBot {
       String(this.botConfig.swapAmountEth ?? 0.001),
       decimalsIn
     );
+    const amountInFormatted = this.safeFormatUnitsToNumber(amountIn, decimalsIn);
 
     for (const [dexName] of enabledDexes) {
       try {
@@ -583,9 +608,12 @@ export class ArbitrageBot {
         );
         if (quote) {
           // Sanity-check the normalized price before accepting the quote
-          const normalizedPrice =
-            (Number(quote.amountOut) / 10 ** decimalsOut) /
-            (Number(amountIn) / 10 ** decimalsIn);
+          const normalizedPrice = this.normalizedPriceFromRaw(
+            quote.amountOut,
+            amountIn.toString(),
+            decimalsOut,
+            decimalsIn
+          );
 
           if (this.isQuoteSane(tokenA, tokenB, normalizedPrice, quote.dex)) {
             quotes.push(quote);
@@ -612,11 +640,14 @@ export class ArbitrageBot {
       }
     }
 
-    const amountInNum = Number(amountIn.toString());
     const quotesByDex: Record<string, number | 'null'> = {};
     for (const q of quotes) {
-      quotesByDex[q.dex] =
-        (Number(q.amountOut) / 10 ** decimalsOut) / (amountInNum / 10 ** decimalsIn);
+      quotesByDex[q.dex] = this.normalizedPriceFromRaw(
+        q.amountOut,
+        amountIn.toString(),
+        decimalsOut,
+        decimalsIn
+      );
     }
     console.log('[QUOTE_RESULT]', {
       pair: `${tokenA}/${tokenB}`,
@@ -625,9 +656,17 @@ export class ArbitrageBot {
 
     // Update cached ETH/USD price from WETH→stablecoin quotes
     if (tokenA === 'WETH' && STABLE_TOKENS.has(tokenB) && quotes.length > 0) {
-      const bestQuote = quotes[0]!;
-      const ethPrice = (Number(bestQuote.amountOut) / 10 ** decimalsOut) /
-                        (amountInNum / 10 ** decimalsIn);
+      const bestQuote = quotes.reduce((best, current) => {
+        const bestOut = ethers.getBigInt(best.amountOut);
+        const currentOut = ethers.getBigInt(current.amountOut);
+        return currentOut > bestOut ? current : best;
+      });
+      const ethPrice = this.normalizedPriceFromRaw(
+        bestQuote.amountOut,
+        amountIn.toString(),
+        decimalsOut,
+        decimalsIn
+      );
       if (ethPrice > 0 && isFinite(ethPrice)) {
         this.cachedEthPriceUsd = ethPrice;
       }
@@ -637,12 +676,20 @@ export class ArbitrageBot {
     // Dynamic threshold: floor is gas cost in bps diluted by trade size, plus a safety buffer.
     // gasGasUnits * gasPrice / (swapAmountEth * ETH_PRICE_USD) * 10000, rounded up to configured floor.
     const configMinEdgeBps = this.botConfig.minEdgeBps ?? 8;
-    const swapAmountEthNum = this.botConfig.swapAmountEth ?? 0.1;
     const ARB_GAS_UNITS = 350_000; // conservative estimate for a two-leg arb on Arbitrum
+    const tradeNotionalEth = this.estimateInputNotionalEth(
+      tokenA,
+      tokenB,
+      amountIn.toString(),
+      decimalsIn,
+      decimalsOut,
+      quotes
+    );
     const ethPriceUsd = this.cachedEthPriceUsd > 0 ? this.cachedEthPriceUsd : 2200;
-    const gasCostEth = (ARB_GAS_UNITS * this.cachedGasPriceWei) / 1e18;
-    const gasCostBps = swapAmountEthNum > 0
-      ? Math.ceil((gasCostEth / swapAmountEthNum) * 10_000)
+    const gasCostWei = BigInt(ARB_GAS_UNITS) * this.cachedGasPriceWei;
+    const gasCostEth = this.safeFormatUnitsToNumber(gasCostWei, 18);
+    const gasCostBps = tradeNotionalEth > 0
+      ? Math.ceil((gasCostEth / tradeNotionalEth) * 10_000)
       : configMinEdgeBps;
     // Floor: at least configMinEdgeBps; add 2 bps safety margin above pure gas cost
     const minEdgeBps = Math.max(configMinEdgeBps, gasCostBps + 2);
@@ -653,9 +700,11 @@ export class ArbitrageBot {
         const quote2 = quotes[j] as PriceQuote;
         if (!quote1 || !quote2) continue;
 
-        const amountInNum = Number(amountIn.toString());
-        const price1 = (Number(quote1.amountOut) / 10 ** decimalsOut) / (amountInNum / 10 ** decimalsIn);
-        const price2 = (Number(quote2.amountOut) / 10 ** decimalsOut) / (amountInNum / 10 ** decimalsIn);
+        const price1 = this.normalizedPriceFromRaw(quote1.amountOut, amountIn.toString(), decimalsOut, decimalsIn);
+        const price2 = this.normalizedPriceFromRaw(quote2.amountOut, amountIn.toString(), decimalsOut, decimalsIn);
+        if (!isFinite(price1) || !isFinite(price2) || price1 <= 0 || price2 <= 0) {
+          continue;
+        }
         const spread = Math.abs(price1 - price2) / Math.min(price1, price2);
         const spreadBps = spread * 10000;
         const v3Quote = quote1.dex === 'UNISWAP_V3' ? quote1 : quote2;
@@ -670,8 +719,9 @@ export class ArbitrageBot {
           spreadBps: spreadBps.toFixed(2),
           threshold: minEdgeBps,
           gasCostBps,
-          gasPriceGwei: (this.cachedGasPriceWei / 1e9).toFixed(4),
-          swapAmountEth: swapAmountEthNum,
+          gasPriceGwei: this.safeFormatUnitsToNumber(this.cachedGasPriceWei, 9).toFixed(4),
+          swapAmountEth: amountInFormatted,
+          tradeNotionalEth: tradeNotionalEth.toFixed(6),
           ethPriceUsd: ethPriceUsd.toFixed(2),
         });
 
@@ -792,12 +842,16 @@ export class ArbitrageBot {
     const inputIsEth = decimalsIn === 18 && buyQuote.tokenIn === 'WETH';
     if (inputIsEth) {
       gasCostInInputUnits = gasCostWei;
-    } else {
-      // Convert gas (wei) → ETH → USD → input-token raw units
-      const gasCostEth = Number(gasCostWei) / 1e18;
+    } else if (this.isStableToken(buyQuote.tokenIn)) {
+      const gasCostEth = this.safeFormatUnitsToNumber(gasCostWei, 18);
       const gasCostUsd = gasCostEth * this.cachedEthPriceUsd;
-      // For stablecoins 1 USD ≈ 1 token unit; scale to raw units
       gasCostInInputUnits = BigInt(Math.ceil(gasCostUsd * 10 ** decimalsIn));
+    } else {
+      this.logger.debug('[PAIR_SKIP_UNPRICED_INPUT]', {
+        pair: `${buyQuote.tokenIn}/${buyQuote.tokenOut}`,
+        reason: 'input_token_not_eth_or_stable',
+      });
+      return null;
     }
     const netProfit = profitInInputUnits - gasCostInInputUnits;
 
@@ -806,7 +860,7 @@ export class ArbitrageBot {
         pair: `${buyQuote.tokenIn}/${buyQuote.tokenOut}`,
         route: `${buyQuote.dex} -> ${sellQuote.dex}`,
         grossProfitOutputUnits: profit.toString(),
-        grossProfitOutput: Number(profit) / 10 ** decimalsOut,
+        grossProfitOutput: this.safeFormatUnitsToNumber(profit, decimalsOut),
         profitInInputUnits: profitInInputUnits.toString(),
         profitInInputFormatted: ethers.formatUnits(profitInInputUnits, decimalsIn),
         gasCostWei: gasEstimate.totalCost,
@@ -817,14 +871,17 @@ export class ArbitrageBot {
         netProfitInputUnits: netProfit.toString(),
         amountIn,
         swapAmountEth: this.botConfig.swapAmountEth,
-        cachedGasPriceGwei: (this.cachedGasPriceWei / 1e9).toFixed(4),
+        cachedGasPriceGwei: this.safeFormatUnitsToNumber(this.cachedGasPriceWei, 9).toFixed(4),
         decimalsIn,
         decimalsOut,
       });
       return null;
     }
 
-    const profitPercent = (Number(profitInInputUnits) / Number(amountInBig)) * 100;
+    const profitPercent = amountInBig > 0n
+      ? (this.safeFormatUnitsToNumber(profitInInputUnits, decimalsIn) /
+        this.safeFormatUnitsToNumber(amountInBig, decimalsIn)) * 100
+      : 0;
 
     return {
       tokenA: buyQuote.tokenIn,
@@ -854,16 +911,21 @@ export class ArbitrageBot {
    */
   private isProfitable(opportunity: ArbitrageOpportunity, rs?: RuntimeSettings): boolean {
     const decimals = opportunity.decimalsIn;
-    const inputIsEth = decimals === 18 && opportunity.tokenA === 'WETH';
+    const inputIsEth = this.isEthInputToken(opportunity.tokenA, decimals);
 
-    let netProfitEth: number;
-    if (inputIsEth) {
-      netProfitEth = parseFloat(ethers.formatEther(opportunity.netProfit));
-    } else {
-      // Convert input-token profit → ETH via cached ETH/USD price
-      const profitInTokenUnits = parseFloat(ethers.formatUnits(opportunity.netProfit, decimals));
-      // For stablecoins, 1 token ≈ $1
-      netProfitEth = profitInTokenUnits / this.cachedEthPriceUsd;
+    const netProfitEth = this.convertTokenAmountToEth(
+      opportunity.tokenA,
+      opportunity.netProfit,
+      decimals
+    );
+
+    if (!isFinite(netProfitEth) || netProfitEth <= 0) {
+      console.log('[OPP_REJECTED_UNPRICED_INPUT]', {
+        pair: `${opportunity.tokenA}/${opportunity.tokenB}`,
+        route: opportunity.route,
+        tokenA: opportunity.tokenA,
+      });
+      return false;
     }
 
     // Use runtime settings from backend if available, otherwise env-var default
@@ -887,7 +949,7 @@ export class ArbitrageBot {
     // Check gas price — use runtime maxGasGwei if available
     const maxGasGwei = rs?.maxGasGwei ?? this.botConfig.maxGasGwei;
     const currentGasPrice = this.getCurrentGasPrice();
-    const currentGasGwei = currentGasPrice / 1e9;
+    const currentGasGwei = this.safeFormatUnitsToNumber(currentGasPrice, 9);
     if (currentGasGwei > maxGasGwei) {
       console.log('[OPP_REJECTED_GAS_PRICE]', {
         pair: `${opportunity.tokenA}/${opportunity.tokenB}`,
@@ -937,12 +999,19 @@ export class ArbitrageBot {
    */
   private passesTradeGuards(opportunity: ArbitrageOpportunity): boolean {
     const decimals = opportunity.decimalsIn;
-    const inputIsEth = decimals === 18 && opportunity.tokenA === 'WETH';
+    const inputIsEth = this.isEthInputToken(opportunity.tokenA, decimals);
     const pair = `${opportunity.tokenA}/${opportunity.tokenB}`;
 
     // --- Position size cap ---
-    const amountInFormatted = parseFloat(ethers.formatUnits(opportunity.amountIn, decimals));
-    const amountInEth = inputIsEth ? amountInFormatted : amountInFormatted / this.cachedEthPriceUsd;
+    const amountInEth = this.convertTokenAmountToEth(opportunity.tokenA, opportunity.amountIn, decimals);
+    if (!isFinite(amountInEth) || amountInEth <= 0) {
+      console.log('[GUARD_BLOCK_UNPRICED_INPUT]', {
+        pair,
+        route: opportunity.route,
+        tokenA: opportunity.tokenA,
+      });
+      return false;
+    }
     if (amountInEth > this.botConfig.maxTradeSizeEth) {
       console.log('[GUARD_BLOCK_POSITION_SIZE]', {
         pair,
@@ -984,9 +1053,11 @@ export class ArbitrageBot {
     if (inputIsEth) {
       const netProfitEth = parseFloat(ethers.formatEther(opportunity.netProfit));
       netProfitUsd = netProfitEth * this.cachedEthPriceUsd;
-    } else {
-      // Stablecoin input: 1 token ≈ $1
+    } else if (this.isStableToken(opportunity.tokenA)) {
       netProfitUsd = parseFloat(ethers.formatUnits(opportunity.netProfit, decimals));
+    } else {
+      const netProfitEth = this.convertTokenAmountToEth(opportunity.tokenA, opportunity.netProfit, decimals);
+      netProfitUsd = netProfitEth * this.cachedEthPriceUsd;
     }
     if (netProfitUsd < this.botConfig.minProfitUsd) {
       console.log('[GUARD_BLOCK_MIN_PROFIT_USD]', {
@@ -1021,9 +1092,18 @@ export class ArbitrageBot {
         return false;
       }
 
-      const amountInFormatted = parseFloat(ethers.formatUnits(opportunity.amountIn, opportunity.decimalsIn));
-      // For non-ETH input, convert to ETH-equivalent for canary comparison
-      const amountInEth = opportunity.tokenA === 'WETH' ? amountInFormatted : amountInFormatted / this.cachedEthPriceUsd;
+      const amountInEth = this.convertTokenAmountToEth(
+        opportunity.tokenA,
+        opportunity.amountIn,
+        opportunity.decimalsIn
+      );
+      if (!isFinite(amountInEth) || amountInEth <= 0) {
+        this.logger.warn('Canary skip: cannot derive ETH notional for input token', {
+          tokenA: opportunity.tokenA,
+          route: opportunity.route,
+        });
+        return false;
+      }
       if (amountInEth > this.botConfig.canaryNotionalEth) {
         this.logger.info('🧪 Canary skip: opportunity exceeds max notional', {
           amountInEth,
@@ -1201,7 +1281,7 @@ export class ArbitrageBot {
    * Estimate gas costs for arbitrage execution
    */
   private estimateGasCost(): { totalCost: string } {
-    const gasLimit = 300000; // Conservative estimate
+    const gasLimit = 300000n; // Conservative estimate
     const gasPrice = this.cachedGasPriceWei;
     const totalCost = gasLimit * gasPrice;
 
@@ -1213,7 +1293,7 @@ export class ArbitrageBot {
   /**
    * Get current gas price in wei (cached, refreshed from provider)
    */
-  private getCurrentGasPrice(): number {
+  private getCurrentGasPrice(): bigint {
     return this.cachedGasPriceWei;
   }
 
@@ -1230,7 +1310,7 @@ export class ArbitrageBot {
         if (typeof gasPriceHex === 'string') {
           const parsed = BigInt(gasPriceHex);
           if (parsed > 0n) {
-            this.cachedGasPriceWei = Number(parsed);
+            this.cachedGasPriceWei = parsed;
             this.lastGasPriceRefreshMs = now;
             return;
           }
@@ -1242,13 +1322,92 @@ export class ArbitrageBot {
         const feeData = await this.provider.getFeeData();
         const price = feeData.maxFeePerGas ?? feeData.gasPrice;
         if (price && price > 0n) {
-          this.cachedGasPriceWei = Number(price);
+          this.cachedGasPriceWei = price;
           this.lastGasPriceRefreshMs = now;
         }
       } catch {
         // keep cached value on failure
       }
     }
+  }
+
+  private isStableToken(symbol: string): boolean {
+    return STABLE_TOKENS.has(symbol);
+  }
+
+  private isEthInputToken(symbol: string, decimals: number): boolean {
+    return symbol === 'WETH' && decimals === 18;
+  }
+
+  private safeFormatUnitsToNumber(value: bigint | string, decimals: number): number {
+    try {
+      const normalized = typeof value === 'bigint' ? value : ethers.getBigInt(value);
+      const asNumber = parseFloat(ethers.formatUnits(normalized, decimals));
+      return Number.isFinite(asNumber) ? asNumber : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private normalizedPriceFromRaw(
+    amountOutRaw: string,
+    amountInRaw: string,
+    decimalsOut: number,
+    decimalsIn: number
+  ): number {
+    const out = this.safeFormatUnitsToNumber(amountOutRaw, decimalsOut);
+    const input = this.safeFormatUnitsToNumber(amountInRaw, decimalsIn);
+    if (input <= 0 || !isFinite(out) || !isFinite(input)) return 0;
+    return out / input;
+  }
+
+  private convertTokenAmountToEth(tokenSymbol: string, amountRaw: string, decimals: number): number {
+    const amount = this.safeFormatUnitsToNumber(amountRaw, decimals);
+    if (amount <= 0 || !isFinite(amount)) return 0;
+
+    if (this.isEthInputToken(tokenSymbol, decimals)) {
+      return amount;
+    }
+
+    if (this.isStableToken(tokenSymbol)) {
+      return this.cachedEthPriceUsd > 0 ? amount / this.cachedEthPriceUsd : 0;
+    }
+
+    return 0;
+  }
+
+  private estimateInputNotionalEth(
+    tokenA: string,
+    tokenB: string,
+    amountInRaw: string,
+    decimalsIn: number,
+    decimalsOut: number,
+    quotes: PriceQuote[]
+  ): number {
+    if (this.isEthInputToken(tokenA, decimalsIn)) {
+      return this.safeFormatUnitsToNumber(amountInRaw, decimalsIn);
+    }
+
+    if (this.isStableToken(tokenA)) {
+      const amountIn = this.safeFormatUnitsToNumber(amountInRaw, decimalsIn);
+      return this.cachedEthPriceUsd > 0 ? amountIn / this.cachedEthPriceUsd : 0;
+    }
+
+    // Fallback path for tokenA/stable pairs: derive tokenA USD from best quote.
+    if (this.isStableToken(tokenB) && quotes.length > 0) {
+      const bestQuote = quotes.reduce((best, current) => {
+        const bestOut = ethers.getBigInt(best.amountOut);
+        const currentOut = ethers.getBigInt(current.amountOut);
+        return currentOut > bestOut ? current : best;
+      });
+      const tokenPriceUsd = this.normalizedPriceFromRaw(bestQuote.amountOut, amountInRaw, decimalsOut, decimalsIn);
+      const amountIn = this.safeFormatUnitsToNumber(amountInRaw, decimalsIn);
+      if (tokenPriceUsd > 0 && this.cachedEthPriceUsd > 0) {
+        return (amountIn * tokenPriceUsd) / this.cachedEthPriceUsd;
+      }
+    }
+
+    return 0;
   }
 
   /**
