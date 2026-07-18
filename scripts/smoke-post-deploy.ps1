@@ -30,6 +30,99 @@ param(
 $ErrorActionPreference = 'Stop'
 $api = "$($BackendBase.TrimEnd('/'))/api"
 $results = New-Object System.Collections.Generic.List[object]
+$HttpTimeoutSeconds = 20
+$HttpMaxRetries = 2
+$TransientHttpStatusCodes = @(408, 429, 500, 502, 503, 504)
+
+function Get-HttpStatusCode {
+  param([object]$ErrorRecord)
+
+  if ($null -eq $ErrorRecord -or $null -eq $ErrorRecord.Exception) {
+    return $null
+  }
+
+  $response = $ErrorRecord.Exception.Response
+  if ($null -eq $response) {
+    return $null
+  }
+
+  if ($response.StatusCode) {
+    return [int]$response.StatusCode.value__
+  }
+
+  return $null
+}
+
+function Invoke-SmokeHttpJson {
+  param(
+    [string]$CheckName,
+    [string]$Uri,
+    [string]$Method = 'Get',
+    [hashtable]$Headers,
+    [string]$Body,
+    [string]$ContentType,
+    [int]$TimeoutSeconds = $HttpTimeoutSeconds,
+    [int]$MaxRetries = $HttpMaxRetries
+  )
+
+  $attempt = 0
+  while ($attempt -le $MaxRetries) {
+    $attempt++
+    try {
+      $params = @{
+        Uri         = $Uri
+        Method      = $Method
+        ErrorAction = 'Stop'
+        TimeoutSec  = $TimeoutSeconds
+      }
+
+      if ($Headers) {
+        $params.Headers = $Headers
+      }
+      if ($Body) {
+        $params.Body = $Body
+      }
+      if ($ContentType) {
+        $params.ContentType = $ContentType
+      }
+
+      return Invoke-RestMethod @params
+    } catch {
+      $statusCode = Get-HttpStatusCode $_
+      $retryable = ($attempt -le $MaxRetries) -and (($null -eq $statusCode) -or ($TransientHttpStatusCodes -contains $statusCode))
+      if ($retryable) {
+        Write-Warning ("[{0}] transient request failure (attempt {1}/{2}) status={3} uri={4}" -f $CheckName, $attempt, ($MaxRetries + 1), (Coalesce $statusCode), $Uri)
+        continue
+      }
+      throw
+    }
+  }
+}
+
+function Invoke-SmokeHttpHead {
+  param(
+    [string]$CheckName,
+    [string]$Uri,
+    [int]$TimeoutSeconds = $HttpTimeoutSeconds,
+    [int]$MaxRetries = $HttpMaxRetries
+  )
+
+  $attempt = 0
+  while ($attempt -le $MaxRetries) {
+    $attempt++
+    try {
+      return Invoke-WebRequest -Uri $Uri -Method Head -ErrorAction Stop -TimeoutSec $TimeoutSeconds
+    } catch {
+      $statusCode = Get-HttpStatusCode $_
+      $retryable = ($attempt -le $MaxRetries) -and (($null -eq $statusCode) -or ($TransientHttpStatusCodes -contains $statusCode))
+      if ($retryable) {
+        Write-Warning ("[{0}] transient HEAD failure (attempt {1}/{2}) status={3} uri={4}" -f $CheckName, $attempt, ($MaxRetries + 1), (Coalesce $statusCode), $Uri)
+        continue
+      }
+      throw
+    }
+  }
+}
 
 function Coalesce {
   param(
@@ -86,12 +179,12 @@ function Invoke-AnalyticsSmoke {
         source     = 'smoke-script'
       } | ConvertTo-Json -Depth 6
 
-      $post = Invoke-RestMethod -Uri ("{0}/analytics/events" -f $api) -Method Post -ContentType 'application/json' -Body $payload
+      $post = Invoke-SmokeHttpJson -CheckName 'Analytics ingest + query' -Uri ("{0}/analytics/events" -f $api) -Method 'Post' -ContentType 'application/json' -Body $payload
       if (-not $post.ok -or [string]::IsNullOrWhiteSpace([string]$post.id)) {
         throw 'Analytics POST response missing ok/id'
       }
 
-      $list = Invoke-RestMethod -Uri ("{0}/analytics/events?limit=50" -f $api) -Method Get
+      $list = Invoke-SmokeHttpJson -CheckName 'Analytics ingest + query' -Uri ("{0}/analytics/events?limit=50" -f $api)
       if (-not $list.ok -or $null -eq $list.events) {
         throw 'Analytics GET response missing ok/events'
       }
@@ -130,7 +223,7 @@ function Invoke-AnalyticsSmoke {
 
   Invoke-Check -Name 'Analytics CTA A/B report' -Block {
     try {
-      $report = Invoke-RestMethod -Uri ("{0}/analytics/ab-cta?window=7d" -f $api) -Method Get
+      $report = Invoke-SmokeHttpJson -CheckName 'Analytics CTA A/B report' -Uri ("{0}/analytics/ab-cta?window=7d" -f $api)
       if (-not $report.ok) {
         throw 'A/B report response missing ok=true'
       }
@@ -202,14 +295,14 @@ if ($OnlyBotCanarySanity) {
 }
 
 Invoke-Check -Name 'API health' -Block {
-  $res = Invoke-RestMethod -Uri ("{0}/health" -f $api) -Method Get
+  $res = Invoke-SmokeHttpJson -CheckName 'API health' -Uri ("{0}/health" -f $api)
   $ok = ($res.status -eq 'healthy' -or $res.success -eq $true -or $res.ok -eq $true)
   Add-Result -Name 'API health' -Ok $ok -Detail ("status=" + (Coalesce $res.status))
 }
 
 Invoke-Check -Name 'RPC health' -Block {
   try {
-    $res = Invoke-RestMethod -Uri ("{0}/rpc/health?chain={1}" -f $api, $RpcChains) -Method Get
+    $res = Invoke-SmokeHttpJson -CheckName 'RPC health' -Uri ("{0}/rpc/health?chain={1}" -f $api, $RpcChains)
     $ok = $res.ok -eq $true
     $detail = if ($res.health) { ($res.health | ConvertTo-Json -Compress) } else { 'no-health-object' }
     Add-Result -Name 'RPC health' -Ok $ok -Detail $detail
@@ -227,7 +320,7 @@ Invoke-AnalyticsSmoke
 
 Invoke-Check -Name 'Snapshots health (EVM)' -Block {
   try {
-    $res = Invoke-RestMethod -Uri ("{0}/snapshots/health?chain=evm" -f $api) -Method Get
+    $res = Invoke-SmokeHttpJson -CheckName 'Snapshots health (EVM)' -Uri ("{0}/snapshots/health?chain=evm" -f $api)
     $ok = $res.ok -eq $true
     Add-Result -Name 'Snapshots health (EVM)' -Ok $ok -Detail ("stale=" + (Coalesce $res.stale))
   } catch {
@@ -246,7 +339,7 @@ Invoke-Check -Name 'Snapshots health (EVM)' -Block {
 
 Invoke-Check -Name 'Snapshots health (Solana)' -Block {
   try {
-    $res = Invoke-RestMethod -Uri ("{0}/snapshots/health?chain=solana" -f $api) -Method Get
+    $res = Invoke-SmokeHttpJson -CheckName 'Snapshots health (Solana)' -Uri ("{0}/snapshots/health?chain=solana" -f $api)
     $ok = $res.ok -eq $true
     Add-Result -Name 'Snapshots health (Solana)' -Ok $ok -Detail ("stale=" + (Coalesce $res.stale))
   } catch {
@@ -267,7 +360,7 @@ if ($AdminKey) {
   Invoke-Check -Name 'Admin snapshots last-run (EVM)' -Block {
     try {
       $headers = @{ 'X-ADMIN-KEY' = $AdminKey }
-      $res = Invoke-RestMethod -Uri ("{0}/admin/snapshots/last-run?chain=evm" -f $api) -Method Get -Headers $headers
+      $res = Invoke-SmokeHttpJson -CheckName 'Admin snapshots last-run (EVM)' -Uri ("{0}/admin/snapshots/last-run?chain=evm" -f $api) -Headers $headers
       Add-Result -Name 'Admin snapshots last-run (EVM)' -Ok $true -Detail ("ok=" + (Coalesce $res.ok))
     } catch {
       if ($_.Exception.Response -and $_.Exception.Response.StatusCode.value__ -eq 503) {
@@ -281,7 +374,7 @@ if ($AdminKey) {
   Invoke-Check -Name 'Admin snapshots last-run (Solana)' -Block {
     try {
       $headers = @{ 'X-ADMIN-KEY' = $AdminKey }
-      $res = Invoke-RestMethod -Uri ("{0}/admin/snapshots/last-run?chain=solana" -f $api) -Method Get -Headers $headers
+      $res = Invoke-SmokeHttpJson -CheckName 'Admin snapshots last-run (Solana)' -Uri ("{0}/admin/snapshots/last-run?chain=solana" -f $api) -Headers $headers
       Add-Result -Name 'Admin snapshots last-run (Solana)' -Ok $true -Detail ("ok=" + (Coalesce $res.ok))
     } catch {
       if ($_.Exception.Response -and $_.Exception.Response.StatusCode.value__ -eq 503) {
@@ -295,10 +388,14 @@ if ($AdminKey) {
 
 if ($UiBase) {
   Invoke-Check -Name 'UI reachable + CSP present' -Block {
-    $headers = & curl.exe -sSI $UiBase
-    $text = ($headers | Out-String)
-    $statusOk = $text -match 'HTTP/[0-9.]+\s+2[0-9]{2}'
-    $cspOk = $text -match 'Content-Security-Policy' -or $text -match 'Content-Security-Policy-Report-Only'
+    $headResponse = Invoke-SmokeHttpHead -CheckName 'UI reachable + CSP present' -Uri $UiBase
+    $statusOk = ([int]$headResponse.StatusCode -ge 200) -and ([int]$headResponse.StatusCode -lt 300)
+    $responseHeaders = $headResponse.Headers
+    $cspHeader = $responseHeaders['Content-Security-Policy']
+    if (-not $cspHeader) {
+      $cspHeader = $responseHeaders['Content-Security-Policy-Report-Only']
+    }
+    $cspOk = -not [string]::IsNullOrWhiteSpace([string]$cspHeader)
     $ok = $statusOk -and $cspOk
     $detail = if ($ok) { 'UI 2xx + CSP ok' } elseif (-not $statusOk) { 'UI non-2xx' } else { 'CSP missing' }
     Add-Result -Name 'UI reachable + CSP present' -Ok $ok -Detail $detail
@@ -384,7 +481,7 @@ if ($UiBase) {
 if ($EvmAddress -and $EvmAddress -match '^0x[a-fA-F0-9]{40}$') {
   Invoke-Check -Name 'Portfolio EVM summary' -Block {
     try {
-      $res = Invoke-RestMethod -Uri ("{0}/portfolio/evm?address={1}" -f $api, $EvmAddress) -Method Get
+      $res = Invoke-SmokeHttpJson -CheckName 'Portfolio EVM summary' -Uri ("{0}/portfolio/evm?address={1}" -f $api, $EvmAddress)
       $ok = $res.chain -eq 'evm'
       Add-Result -Name 'Portfolio EVM summary' -Ok $ok -Detail ("chain=" + (Coalesce $res.chain))
     } catch {
@@ -397,7 +494,7 @@ if ($EvmAddress -and $EvmAddress -match '^0x[a-fA-F0-9]{40}$') {
   }
 
   Invoke-Check -Name 'Portfolio EVM timeseries' -Block {
-    $res = Invoke-RestMethod -Uri ("{0}/portfolio/evm/timeseries?address={1}&range=30d" -f $api, $EvmAddress) -Method Get
+    $res = Invoke-SmokeHttpJson -CheckName 'Portfolio EVM timeseries' -Uri ("{0}/portfolio/evm/timeseries?address={1}&range=30d" -f $api, $EvmAddress)
     $ok = ($null -ne $res.points)
     Add-Result -Name 'Portfolio EVM timeseries' -Ok $ok -Detail ("method=" + (Coalesce $res.method))
   }
@@ -407,7 +504,7 @@ $base58Regex = '^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]{32
 if ($SolanaAddress -and $SolanaAddress -match $base58Regex) {
   Invoke-Check -Name 'Portfolio Solana summary' -Block {
     try {
-      $res = Invoke-RestMethod -Uri ("{0}/portfolio/solana?address={1}" -f $api, $SolanaAddress) -Method Get
+      $res = Invoke-SmokeHttpJson -CheckName 'Portfolio Solana summary' -Uri ("{0}/portfolio/solana?address={1}" -f $api, $SolanaAddress)
       $ok = $res.chain -eq 'solana'
       Add-Result -Name 'Portfolio Solana summary' -Ok $ok -Detail ("chain=" + (Coalesce $res.chain))
     } catch {
@@ -420,7 +517,7 @@ if ($SolanaAddress -and $SolanaAddress -match $base58Regex) {
   }
 
   Invoke-Check -Name 'Portfolio Solana timeseries' -Block {
-    $res = Invoke-RestMethod -Uri ("{0}/portfolio/solana/timeseries?address={1}&range=30d" -f $api, $SolanaAddress) -Method Get
+    $res = Invoke-SmokeHttpJson -CheckName 'Portfolio Solana timeseries' -Uri ("{0}/portfolio/solana/timeseries?address={1}&range=30d" -f $api, $SolanaAddress)
     $ok = ($null -ne $res.points)
     Add-Result -Name 'Portfolio Solana timeseries' -Ok $ok -Detail ("method=" + (Coalesce $res.method))
   }

@@ -12,6 +12,7 @@ concurrency:
 jobs:
   nightly-smoke:
     runs-on: windows-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       issues: write
@@ -41,6 +42,7 @@ jobs:
       - name: Run nightly smoke
         id: smoke
         continue-on-error: true
+        timeout-minutes: 15
         shell: pwsh
         env:
           BACKEND_BASE: ${{ secrets.BACKEND_BASE }}
@@ -49,16 +51,16 @@ jobs:
         run: |
           [void][scriptblock]::Create((Get-Content ./scripts/smoke-post-deploy.ps1 -Raw))
 
-          $args = @(
+          $smokeArgs = @(
             '-BackendBase', $env:BACKEND_BASE,
             '-UiBase', $env:UI_BASE
           )
 
           if (-not [string]::IsNullOrWhiteSpace($env:ADMIN_API_KEY)) {
-            $args += @('-AdminKey', $env:ADMIN_API_KEY)
+            $smokeArgs += @('-AdminKey', $env:ADMIN_API_KEY)
           }
 
-          & ./scripts/smoke-post-deploy.ps1 @args *>&1 | Tee-Object -FilePath smoke.log
+          & ./scripts/smoke-post-deploy.ps1 @smokeArgs *>&1 | Tee-Object -FilePath smoke.log
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
