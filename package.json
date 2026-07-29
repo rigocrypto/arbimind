@@ -20,7 +20,7 @@
     "lint:ui": "pnpm --filter @arbimind/ui lint",
     "lint:contracts": "pnpm --filter @arbimind/contracts lint",
     "lint:ts": "pnpm --filter @arbimind/backend lint && pnpm --filter @arbimind/bot lint",
-    "typecheck": "pnpm run typecheck --workspace=@arbimind/backend && pnpm run typecheck --workspace=@arbimind/bot && pnpm run type-check --workspace=@arbimind/ui",
+    "typecheck": "pnpm --filter @arbimind/backend typecheck && pnpm --filter @arbimind/bot typecheck && pnpm --filter @arbimind/ui type-check",
     "clean": "npm run clean --workspaces",
     "setup": "pnpm install",
     "smoke:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/smoke-post-deploy.ps1",
