@@ -53,6 +53,51 @@ jobs:
           "backend=$backend" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "ui=$ui" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
+      # The Railway backend redeploys on the same push that triggers the Vercel
+      # deploy, so smoke used to start while it was still booting. Railway's edge
+      # answers 404 until an instance is live, which is indistinguishable from a
+      # broken route once smoke is running -- so wait here rather than widening
+      # the retry list inside the checks. See #294.
+      - name: Wait for backend readiness
+        timeout-minutes: 5
+        shell: pwsh
+        env:
+          BACKEND_BASE: ${{ steps.resolve.outputs.backend }}
+        run: |
+          $backend = $env:BACKEND_BASE.TrimEnd('/')
+          $healthUrl = "$backend/api/health"
+          $deadline = (Get-Date).AddMinutes(3)
+          $delaySeconds = 5
+          $attempt = 0
+
+          Write-Host "Waiting for backend readiness: $healthUrl"
+
+          while ((Get-Date) -lt $deadline) {
+            $attempt++
+
+            try {
+              $res = Invoke-RestMethod -Uri $healthUrl -Method Get -TimeoutSec 10
+
+              if ($res.success -eq $true -or $res.status -eq 'healthy') {
+                Write-Host "Backend ready after attempt $attempt."
+                exit 0
+              }
+
+              Write-Host "Backend responded but is not healthy yet: $($res | ConvertTo-Json -Compress)"
+            }
+            catch {
+              $status = $null
+              if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {
+                $status = [int]$_.Exception.Response.StatusCode.value__
+              }
+              Write-Host "Backend not ready yet. Attempt=$attempt Status=$status Error=$($_.Exception.Message)"
+            }
+
+            Start-Sleep -Seconds $delaySeconds
+          }
+
+          throw "Backend did not become ready within 3 minutes: $healthUrl"
+
       - name: Run smoke script
         timeout-minutes: 15
         shell: pwsh

@@ -68,6 +68,75 @@ function Get-HttpStatusCode {
   return $null
 }
 
+function Read-ErrorResponseBody {
+  <#
+    Reads the body off a failed response in a way that works on both editions.
+    Windows PowerShell 5.1 surfaces System.Net.HttpWebResponse (GetResponseStream),
+    while pwsh 7 surfaces System.Net.Http.HttpResponseMessage (Content.ReadAsStringAsync).
+    Calling GetResponseStream() under pwsh throws "does not contain a method named",
+    which masks the real status code and body. See #294.
+  #>
+  param([object]$Response)
+
+  if ($null -eq $Response) {
+    return $null
+  }
+
+  # pwsh 7 / HttpResponseMessage
+  if ($Response.PSObject.Properties['Content'] -and $Response.Content -and $Response.Content.PSObject.Methods['ReadAsStringAsync']) {
+    try {
+      return $Response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+    }
+    catch {
+      return $null
+    }
+  }
+
+  # Windows PowerShell 5.1 / HttpWebResponse
+  if ($Response.PSObject.Methods['GetResponseStream']) {
+    try {
+      $stream = $Response.GetResponseStream()
+      if ($null -eq $stream) { return $null }
+      $reader = New-Object IO.StreamReader($stream)
+      try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+    }
+    catch {
+      return $null
+    }
+  }
+
+  return $null
+}
+
+function Get-HttpErrorDetail {
+  <#
+    Builds a diagnosable one-line detail for a failed request: the original
+    message plus the real status code and a trimmed response body when available.
+  #>
+  param([object]$ErrorRecord)
+
+  $message = ''
+  if ($ErrorRecord -and $ErrorRecord.Exception) {
+    $message = $ErrorRecord.Exception.Message
+  }
+
+  $statusCode = Get-HttpStatusCode $ErrorRecord
+  if ($null -ne $statusCode) {
+    $message = "{0} (status={1})" -f $message, $statusCode
+  }
+
+  if ($ErrorRecord -and $ErrorRecord.Exception) {
+    $body = Read-ErrorResponseBody $ErrorRecord.Exception.Response
+    if (-not [string]::IsNullOrWhiteSpace($body)) {
+      $trimmed = $body.Trim()
+      if ($trimmed.Length -gt 300) { $trimmed = $trimmed.Substring(0, 300) + '...' }
+      $message = "{0} body={1}" -f $message, $trimmed
+    }
+  }
+
+  return ($message -replace "`r|`n", ' ')
+}
+
 function Invoke-SmokeHttpJson {
   param(
     [string]$CheckName,
@@ -175,7 +244,7 @@ function Invoke-Check {
   try {
     & $Block
   } catch {
-    Add-Result -Name $Name -Ok $false -Detail ($_.Exception.Message -replace "`r|`n", ' ')
+    Add-Result -Name $Name -Ok $false -Detail (Get-HttpErrorDetail $_)
   }
 }
 
@@ -223,14 +292,9 @@ function Invoke-AnalyticsSmoke {
 
       Add-Result -Name 'Analytics ingest + query' -Ok $true -Detail ("eventId=" + $post.id)
     } catch {
-      if ($_.Exception.Response) {
-        $resp = $_.Exception.Response
-        $sr = New-Object IO.StreamReader($resp.GetResponseStream())
-        $null = $sr.ReadToEnd()
-        if ($resp.StatusCode.value__ -eq 503) {
-          Add-Result -Name 'Analytics ingest + query' -Ok $true -Detail 'skipped (DATABASE_URL not set)'
-          return
-        }
+      if ((Get-HttpStatusCode $_) -eq 503) {
+        Add-Result -Name 'Analytics ingest + query' -Ok $true -Detail 'skipped (DATABASE_URL not set)'
+        return
       }
       throw
     }
@@ -247,14 +311,9 @@ function Invoke-AnalyticsSmoke {
       }
       Add-Result -Name 'Analytics CTA A/B report' -Ok $true -Detail ("winner=" + (Coalesce $report.winner 'tie'))
     } catch {
-      if ($_.Exception.Response) {
-        $resp = $_.Exception.Response
-        $sr = New-Object IO.StreamReader($resp.GetResponseStream())
-        $null = $sr.ReadToEnd()
-        if ($resp.StatusCode.value__ -eq 503) {
-          Add-Result -Name 'Analytics CTA A/B report' -Ok $true -Detail 'skipped (DATABASE_URL not set)'
-          return
-        }
+      if ((Get-HttpStatusCode $_) -eq 503) {
+        Add-Result -Name 'Analytics CTA A/B report' -Ok $true -Detail 'skipped (DATABASE_URL not set)'
+        return
       }
       throw
     }
@@ -339,14 +398,9 @@ Invoke-Check -Name 'Snapshots health (EVM)' -Block {
     $ok = $res.ok -eq $true
     Add-Result -Name 'Snapshots health (EVM)' -Ok $ok -Detail ("stale=" + (Coalesce $res.stale))
   } catch {
-    if ($_.Exception.Response) {
-      $resp = $_.Exception.Response
-      $sr = New-Object IO.StreamReader($resp.GetResponseStream())
-      $null = $sr.ReadToEnd()
-      if ($resp.StatusCode.value__ -eq 503) {
-        Add-Result -Name 'Snapshots health (EVM)' -Ok $true -Detail 'skipped (DATABASE_URL not set)'
-        return
-      }
+    if ((Get-HttpStatusCode $_) -eq 503) {
+      Add-Result -Name 'Snapshots health (EVM)' -Ok $true -Detail 'skipped (DATABASE_URL not set)'
+      return
     }
     throw
   }
@@ -358,14 +412,9 @@ Invoke-Check -Name 'Snapshots health (Solana)' -Block {
     $ok = $res.ok -eq $true
     Add-Result -Name 'Snapshots health (Solana)' -Ok $ok -Detail ("stale=" + (Coalesce $res.stale))
   } catch {
-    if ($_.Exception.Response) {
-      $resp = $_.Exception.Response
-      $sr = New-Object IO.StreamReader($resp.GetResponseStream())
-      $null = $sr.ReadToEnd()
-      if ($resp.StatusCode.value__ -eq 503) {
-        Add-Result -Name 'Snapshots health (Solana)' -Ok $true -Detail 'skipped (DATABASE_URL not set)'
-        return
-      }
+    if ((Get-HttpStatusCode $_) -eq 503) {
+      Add-Result -Name 'Snapshots health (Solana)' -Ok $true -Detail 'skipped (DATABASE_URL not set)'
+      return
     }
     throw
   }
