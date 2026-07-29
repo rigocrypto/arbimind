@@ -20,7 +20,7 @@
     "lint:ui": "pnpm --filter @arbimind/ui lint",
     "lint:contracts": "pnpm --filter @arbimind/contracts lint",
     "lint:ts": "pnpm --filter @arbimind/backend lint && pnpm --filter @arbimind/bot lint",
-    "typecheck": "pnpm run typecheck --workspace=@arbimind/backend && pnpm run typecheck --workspace=@arbimind/bot && pnpm run type-check --workspace=@arbimind/ui",
+    "typecheck": "pnpm --filter @arbimind/backend typecheck && pnpm --filter @arbimind/bot typecheck && pnpm --filter @arbimind/ui type-check",
     "clean": "npm run clean --workspaces",
     "setup": "pnpm install",
     "smoke:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/smoke-post-deploy.ps1",
@@ -29,7 +29,7 @@
     "smoke:ui:runtime": "pnpm --filter @arbimind/ui smoke:runtime:live"
   },
   "devDependencies": {
-    "next": "16.2.10",
+    "next": "16.2.12",
     "typescript": "5.9.3"
   },
   "engines": {
@@ -46,6 +46,21 @@
   ],
   "author": "ArbiMind Team",
   "license": "MIT",
+  "pnpm": {
+    "auditConfig": {
+      "//": "Accepted high/critical advisories with no parent-scoped fix. See docs/security/AUDIT_EXCEPTIONS.md for the rationale and review date for each ID. Do NOT add an ID here when a dependency bump can fix it -- bump instead.",
+      "ignoreGhsas": [
+        "GHSA-23hp-3jrh-7fpw",
+        "GHSA-8x88-c5mf-7j5w",
+        "GHSA-3jxr-9vmj-r5cp",
+        "GHSA-mh99-v99m-4gvg",
+        "GHSA-52cp-r559-cp3m",
+        "GHSA-6g55-p6wh-862q",
+        "GHSA-r28c-9q8g-f849",
+        "GHSA-f88m-g3jw-g9cj"
+      ]
+    }
+  },
   "//overrideNotes": {
     "elliptic": "Low-severity, no upstream fix (patched: <0.0.0). Pulled by @toruslabs/eccrypto + @walletconnect/utils. Replace when upstream patches.",
     "defu": "GHSA-737v-mqg7-c878 prototype pollution. Override from 6.1.4 via h3 > unstorage chain."

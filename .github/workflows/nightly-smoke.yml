@@ -51,13 +51,16 @@ jobs:
         run: |
           [void][scriptblock]::Create((Get-Content ./scripts/smoke-post-deploy.ps1 -Raw))
 
-          $smokeArgs = @(
-            '-BackendBase', $env:BACKEND_BASE,
-            '-UiBase', $env:UI_BASE
-          )
+          # Must be a hashtable: splatting an ARRAY binds positionally, so the
+          # '-BackendBase' string itself lands in $BackendBase and the real URL
+          # lands in $AdminKey. See #294.
+          $smokeArgs = @{
+            BackendBase = $env:BACKEND_BASE
+            UiBase      = $env:UI_BASE
+          }
 
           if (-not [string]::IsNullOrWhiteSpace($env:ADMIN_API_KEY)) {
-            $smokeArgs += @('-AdminKey', $env:ADMIN_API_KEY)
+            $smokeArgs['AdminKey'] = $env:ADMIN_API_KEY
           }
 
           & ./scripts/smoke-post-deploy.ps1 @smokeArgs *>&1 | Tee-Object -FilePath smoke.log
@@ -91,15 +94,25 @@ jobs:
           script: |
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const title = 'CI: recurring nightly smoke failures';
+            const logTail = process.env.LOG_TAIL || '';
 
-            const { data: issues } = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              per_page: 100
-            });
+            // Known backend defect tracked separately from smoke plumbing. See #370.
+            const ANALYTICS_ISSUE = 370;
+            const ANALYTICS_SIGNATURE = /Analytics ingest|Analytics CTA A\/B report|\/api\/analytics|Failed to build CTA A\/B report/i;
 
-            const tracker = issues.find(i => i.title === title);
+            // Summary rows render as "<check name>   FAIL   <detail>". Match the
+            // uppercase word only, so "N check(s) failed." is not counted.
+            const failLines = logTail.split('\n').filter(l => /\bFAIL\b/.test(l));
+            const analyticsFails = failLines.filter(l => ANALYTICS_SIGNATURE.test(l));
+            const otherFails = failLines.filter(l => !ANALYTICS_SIGNATURE.test(l));
+
+            // Route to the analytics issue only when analytics is the sole cause.
+            // A mixed run (e.g. analytics + RPC) must not be filed as an analytics bug.
+            const analyticsOnly = analyticsFails.length > 0 && otherFails.length === 0;
+
+            const failingChecks = failLines.length
+              ? failLines.map(l => `- \`${l.trim()}\``).join('\n')
+              : '- (no per-check FAIL lines captured)';
 
             const failureNote = [
               `❌ Nightly smoke failed. @ops`,
@@ -108,11 +121,54 @@ jobs:
               `- UI: ${process.env.UI_BASE}`,
               `- Workflow run: ${runUrl}`,
               '',
+              '### Failing checks',
+              failingChecks,
+              '',
               '### Log excerpt',
               '```',
-              process.env.LOG_TAIL || 'No logs captured.',
+              logTail || 'No logs captured.',
               '```'
             ].join('\n');
+
+            const comment = (issue_number, body) => github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              body
+            });
+
+            if (analyticsOnly) {
+              let analyticsIssue = null;
+              try {
+                const { data } = await github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: ANALYTICS_ISSUE
+                });
+                analyticsIssue = data;
+              } catch (err) {
+                core.info(`Could not fetch #${ANALYTICS_ISSUE}: ${err.message}`);
+              }
+
+              if (analyticsIssue && analyticsIssue.state === 'open' && /analytics/i.test(analyticsIssue.title)) {
+                core.info(`Analytics-only failure; commenting on #${ANALYTICS_ISSUE}.`);
+                await comment(ANALYTICS_ISSUE, failureNote);
+                return;
+              }
+
+              core.info(`#${ANALYTICS_ISSUE} is not an open analytics issue; falling back to the generic tracker.`);
+            }
+
+            // Search every state. Looking only at open issues meant a closed
+            // tracker silently produced a duplicate with the same title.
+            const allIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'all',
+              per_page: 100
+            });
+
+            const tracker = allIssues.find(i => i.title === title && !i.pull_request);
 
             if (!tracker) {
               const body = [
@@ -133,12 +189,13 @@ jobs:
               return;
             }
 
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: tracker.number,
-              body: failureNote
-            });
+            // Comment on a closed tracker rather than reopening it or creating a
+            // duplicate. Reopening would blur the resolved plumbing history (#294).
+            if (tracker.state !== 'open') {
+              core.warning(`Nightly smoke failed but tracker #${tracker.number} is closed. Commenting without reopening.`);
+            }
+
+            await comment(tracker.number, failureNote);
 
       - name: Notify failure webhook
         if: steps.smoke.outcome == 'failure'

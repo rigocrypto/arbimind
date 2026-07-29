@@ -27,3 +27,12 @@ Guardrails for follow-up:
 - Do not apply leaf overrides for qs, uuid, brace-expansion, tar, socks, or ip-address.
 - Keep #294 open until the next scheduled nightly smoke run confirms #347 resolved timeout/cancellation behavior.
 - Keep #88 open as low-priority UI lint backlog.
+
+---
+
+Update 2026-07-28: the 0 high / 0 critical baseline above no longer holds. Newly
+published advisories moved this tree to 13 high / 1 critical without any
+dependency change on our side, which turned the CI audit gate red for every open
+PR. The leaf-override guardrail is unchanged and was not broken; the unfixable
+advisories are instead tracked as documented, expiring exceptions in
+[AUDIT_EXCEPTIONS.md](./AUDIT_EXCEPTIONS.md).
