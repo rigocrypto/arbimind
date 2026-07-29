@@ -51,13 +51,16 @@ jobs:
         run: |
           [void][scriptblock]::Create((Get-Content ./scripts/smoke-post-deploy.ps1 -Raw))
 
-          $smokeArgs = @(
-            '-BackendBase', $env:BACKEND_BASE,
-            '-UiBase', $env:UI_BASE
-          )
+          # Must be a hashtable: splatting an ARRAY binds positionally, so the
+          # '-BackendBase' string itself lands in $BackendBase and the real URL
+          # lands in $AdminKey. See #294.
+          $smokeArgs = @{
+            BackendBase = $env:BACKEND_BASE
+            UiBase      = $env:UI_BASE
+          }
 
           if (-not [string]::IsNullOrWhiteSpace($env:ADMIN_API_KEY)) {
-            $smokeArgs += @('-AdminKey', $env:ADMIN_API_KEY)
+            $smokeArgs['AdminKey'] = $env:ADMIN_API_KEY
           }
 
           & ./scripts/smoke-post-deploy.ps1 @smokeArgs *>&1 | Tee-Object -FilePath smoke.log

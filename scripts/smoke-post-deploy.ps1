@@ -28,6 +28,21 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Fail fast on malformed endpoints. Callers that splat an ARRAY instead of a
+# hashtable bind positionally, which silently sets $BackendBase to the literal
+# string '-BackendBase' and surfaces later as a pile of DNS errors (#294).
+foreach ($endpoint in @(
+    @{ Name = 'BackendBase'; Value = $BackendBase }
+    @{ Name = 'UiBase'; Value = $UiBase }
+  )) {
+  $value = $endpoint.Value
+  if ([string]::IsNullOrWhiteSpace($value)) { continue }
+  if ($value -notmatch '^https?://') {
+    throw "-$($endpoint.Name) must be an absolute http(s) URL, got '$value'. If you are calling this script with splatting, use a hashtable (@{ BackendBase = '...' }) rather than an array."
+  }
+}
+
 $api = "$($BackendBase.TrimEnd('/'))/api"
 $results = New-Object System.Collections.Generic.List[object]
 $HttpTimeoutSeconds = 20
