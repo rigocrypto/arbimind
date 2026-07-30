@@ -21,6 +21,11 @@ param(
   [switch]$BotCanary,
   [switch]$OnlyAnalytics,
   [switch]$OnlyBotCanarySanity,
+  # Production smoke must not treat an unconfigured/unreachable database as a
+  # pass. Without this, a backend with no DATABASE_URL scores a full green run
+  # because every DB-backed check reports "skipped". Local/dev runs omit the
+  # switch and keep the intentional-skip behaviour.
+  [switch]$RequireDatabase,
   [double]$CanaryNotionalEth = 0.01,
   [double]$CanaryMaxDailyLossEth = 0.005,
   [ValidateSet('evm,worldchain_sepolia,solana', 'evm,solana', 'worldchain_sepolia', 'evm', 'solana')]
@@ -235,6 +240,25 @@ function Add-Result {
   }) | Out-Null
 }
 
+# Records a DB-backed check whose endpoint answered 503.
+#
+# In production (-RequireDatabase) that is a genuine failure: the backend cannot
+# serve the route. Locally it stays an intentional skip so contributors without a
+# database can still run the suite.
+function Add-DbUnavailableResult {
+  param(
+    [string]$Name,
+    [string]$Reason = 'DATABASE_URL not set'
+  )
+
+  if ($RequireDatabase) {
+    Add-Result -Name $Name -Ok $false -Detail ("database unavailable ({0}) - required by -RequireDatabase" -f $Reason)
+  }
+  else {
+    Add-Result -Name $Name -Ok $true -Detail ("skipped ({0})" -f $Reason)
+  }
+}
+
 function Invoke-Check {
   param(
     [string]$Name,
@@ -293,7 +317,7 @@ function Invoke-AnalyticsSmoke {
       Add-Result -Name 'Analytics ingest + query' -Ok $true -Detail ("eventId=" + $post.id)
     } catch {
       if ((Get-HttpStatusCode $_) -eq 503) {
-        Add-Result -Name 'Analytics ingest + query' -Ok $true -Detail 'skipped (DATABASE_URL not set)'
+        Add-DbUnavailableResult -Name 'Analytics ingest + query'
         return
       }
       throw
@@ -312,7 +336,7 @@ function Invoke-AnalyticsSmoke {
       Add-Result -Name 'Analytics CTA A/B report' -Ok $true -Detail ("winner=" + (Coalesce $report.winner 'tie'))
     } catch {
       if ((Get-HttpStatusCode $_) -eq 503) {
-        Add-Result -Name 'Analytics CTA A/B report' -Ok $true -Detail 'skipped (DATABASE_URL not set)'
+        Add-DbUnavailableResult -Name 'Analytics CTA A/B report'
         return
       }
       throw
@@ -399,7 +423,7 @@ Invoke-Check -Name 'Snapshots health (EVM)' -Block {
     Add-Result -Name 'Snapshots health (EVM)' -Ok $ok -Detail ("stale=" + (Coalesce $res.stale))
   } catch {
     if ((Get-HttpStatusCode $_) -eq 503) {
-      Add-Result -Name 'Snapshots health (EVM)' -Ok $true -Detail 'skipped (DATABASE_URL not set)'
+      Add-DbUnavailableResult -Name 'Snapshots health (EVM)'
       return
     }
     throw
@@ -413,7 +437,7 @@ Invoke-Check -Name 'Snapshots health (Solana)' -Block {
     Add-Result -Name 'Snapshots health (Solana)' -Ok $ok -Detail ("stale=" + (Coalesce $res.stale))
   } catch {
     if ((Get-HttpStatusCode $_) -eq 503) {
-      Add-Result -Name 'Snapshots health (Solana)' -Ok $true -Detail 'skipped (DATABASE_URL not set)'
+      Add-DbUnavailableResult -Name 'Snapshots health (Solana)'
       return
     }
     throw

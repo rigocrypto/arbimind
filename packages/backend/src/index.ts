@@ -12,6 +12,8 @@ import solanaRoutes from './routes/solana';
 import solanaBotRoutes from './routes/solanaBot';
 import solanaDevnetRoutes from './routes/solanaDevnet';
 import { parseTreasuryDiagnostics } from './routes/solanaTx';
+import { getDbBootDiagnostics } from './db/portfolioDb';
+import versionRoutes from './routes/version';
 import portfolioRoutes from './routes/portfolio';
 import snapshotsRoutes from './routes/snapshots';
 import rpcRoutes from './routes/rpc';
@@ -41,6 +43,17 @@ if (!process.env.ADMIN_KEY?.trim() && !process.env.ADMIN_API_KEY?.trim()) {
     };
   });
   console.log('[BACKEND_RPC_BOOT]', JSON.stringify(rpcStatus));
+}
+
+// Database boot diagnostics — safe to log (configured flag + host/database only,
+// never the connection string or credentials). Without this, a misconfigured
+// DATABASE_URL is invisible until the first DB-backed request fails.
+{
+  const db = getDbBootDiagnostics();
+  console.log('[DB_BOOT]', JSON.stringify(db));
+  if (!db.configured) {
+    console.warn('[DB_BOOT] DATABASE_URL is not set — all DB-backed routes will return 503.');
+  }
 }
 
 // Solana treasury key boot diagnostics — safe to log (no secrets, only status + pubkey)
@@ -106,15 +119,9 @@ app.use(express.json());
 // Minimal test route – verify deploy is using latest code
 app.get('/api/test', (_req, res) => res.json({ ok: true, v: 'ace7bce' }));
 
-// Version/deploy verification – shows commit SHA from Railway
-app.get('/api/version', (_req, res) =>
-  res.json({
-    ok: true,
-    sha: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || 'unknown',
-    node: process.version,
-    startedAt: new Date().toISOString(),
-  })
-);
+// Version/deploy verification – shows commit SHA from Railway.
+// Extracted to routes/version.ts so the startedAt fix is testable.
+app.use('/api/version', versionRoutes);
 
 if (process.env.NODE_ENV !== 'production') {
   app.get('/api/dev/sentry-test', (_req, res) => {

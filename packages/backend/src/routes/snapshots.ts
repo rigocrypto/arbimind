@@ -1,5 +1,6 @@
 import express, { Request, Response, Router } from 'express';
-import { getLastSnapshotRun, isDbAvailable } from '../db/portfolioDb';
+import { getLastSnapshotRunResult } from '../db/portfolioDb';
+import { sendDbFailure } from '../utils/dbResponse';
 
 const router: Router = express.Router();
 const STALE_THRESHOLD_MS = 36 * 60 * 60 * 1000; // 36 hours
@@ -18,22 +19,26 @@ router.get('/health', async (req: Request, res: Response) => {
     });
   }
 
-  if (!isDbAvailable()) {
-    return res.status(503).json({
-      ok: false,
-      error: 'DATABASE_URL not set – snapshots unavailable',
-    });
+  // A database failure must never be reported as a healthy snapshot state.
+  // Previously any error here collapsed into `null` and was rendered as
+  // `{ok: true, stale: true}`, so this endpoint passed smoke throughout a total
+  // database outage.
+  const runResult = await getLastSnapshotRunResult(chain);
+  if (!runResult.ok) {
+    return sendDbFailure(res, runResult, 'snapshots');
   }
 
-  const run = await getLastSnapshotRun(chain);
+  const run = runResult.value;
   const now = Date.now();
 
+  // Reached the database and it genuinely holds no run for this chain.
   if (!run) {
     return res.json({
       ok: true,
       lastRunAt: null,
       lastOkAt: null,
       stale: true,
+      dbStatus: 'reachable',
     });
   }
 

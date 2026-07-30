@@ -111,9 +111,13 @@ jobs:
           # Must be a hashtable: splatting an ARRAY binds positionally, so the
           # '-BackendBase' string itself lands in $BackendBase and the real URL
           # lands in $AdminKey. See #294.
+          # RequireDatabase: production must not score a green run when the
+          # backend has no database. Without it every DB-backed check reports
+          # "skipped (DATABASE_URL not set)" and passes. See #370.
           $smokeArgs = @{
-            BackendBase = '${{ steps.resolve.outputs.backend }}'
-            UiBase      = '${{ steps.resolve.outputs.ui }}'
+            BackendBase     = '${{ steps.resolve.outputs.backend }}'
+            UiBase          = '${{ steps.resolve.outputs.ui }}'
+            RequireDatabase = $true
           }
 
           if (-not [string]::IsNullOrWhiteSpace($env:ADMIN_API_KEY)) {
