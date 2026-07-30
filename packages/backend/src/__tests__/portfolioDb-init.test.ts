@@ -6,8 +6,14 @@
 
 const mockQuery = jest.fn();
 
+// pg.Pool extends EventEmitter and is disposable; the real client always exposes
+// on()/end(), and portfolioDb relies on both (idle-error handling and pool reset).
 jest.mock('pg', () => ({
-  Pool: jest.fn().mockImplementation(() => ({ query: mockQuery })),
+  Pool: jest.fn().mockImplementation(() => ({
+    query: mockQuery,
+    on: jest.fn(),
+    end: jest.fn().mockResolvedValue(undefined),
+  })),
 }));
 
 import { initSchema, _resetSchemaState } from '../db/portfolioDb';

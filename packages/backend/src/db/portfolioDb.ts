@@ -8,19 +8,225 @@ import type { TimeseriesPoint } from '../services/portfolioService';
 
 let pool: Pool | null = null;
 let schemaInitialized = false;
-let schemaInitPromise: Promise<void> | null = null;
+let schemaInitPromise: Promise<DbResult<void>> | null = null;
 
 const SCHEMA_INIT_MAX_RETRIES = 3;
 const SCHEMA_INIT_RETRY_DELAY_MS = 2000;
 const TRANSIENT_SCHEMA_INIT_CODES = new Set(['40P01', '55P03', '40001']);
+
+const DB_OPERATION_MAX_ATTEMPTS = 3;
+const DB_OPERATION_RETRY_DELAY_MS = 250;
+
+/**
+ * Connection-class failures. These mean the database is unreachable rather than
+ * the query being wrong, so the cached pool is discarded and the operation
+ * retried — a pool whose sockets were killed by a Postgres restart or failover
+ * will otherwise keep handing out dead clients.
+ */
+const CONNECTION_ERROR_CODES = new Set([
+  // Node socket-level
+  'ENOTFOUND',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'EPIPE',
+  // Postgres class 08 — connection exception
+  '08000',
+  '08001',
+  '08003',
+  '08004',
+  '08006',
+  '08007',
+  '08P01',
+  // Operator intervention — admin shutdown, crash shutdown, cannot connect now
+  '57P01',
+  '57P02',
+  '57P03',
+  // Resource exhaustion that a fresh pool can recover from
+  '53300',
+]);
+
+const CONNECTION_ERROR_PATTERNS = [
+  /connection terminated/i,
+  /connection ended/i,
+  /connection closed/i,
+  /client has encountered a connection error/i,
+  /server closed the connection/i,
+  /terminating connection/i,
+  /timeout exceeded when trying to connect/i,
+];
+
+/** Why a database operation could not be completed. */
+export type DbFailureKind =
+  /** DATABASE_URL is unset or empty — the database was never configured. */
+  | 'unconfigured'
+  /** Configured, but the server could not be reached (DNS, refused, restarted). */
+  | 'unreachable'
+  /** Reached the server, but the statement itself failed. */
+  | 'query_failed';
+
+export interface DbFailure {
+  ok: false;
+  kind: DbFailureKind;
+  message: string;
+  code?: string | undefined;
+}
+
+/**
+ * Structured outcome of a database operation.
+ *
+ * Callers must be able to tell "unconfigured" from "unreachable" from
+ * "reachable but empty". Collapsing these into `null` is what allowed a total
+ * outage to be reported as a healthy empty result.
+ */
+export type DbResult<T> = { ok: true; value: T } | DbFailure;
+
+function errCode(err: unknown): string {
+  return typeof err === 'object' && err !== null && 'code' in err
+    ? String((err as { code?: unknown }).code ?? '')
+    : '';
+}
+
+function errMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function isConnectionError(err: unknown): boolean {
+  const code = errCode(err);
+  if (code && CONNECTION_ERROR_CODES.has(code)) return true;
+  const message = errMessage(err);
+  return CONNECTION_ERROR_PATTERNS.some((pattern) => pattern.test(message));
+}
+
+function isTransientError(err: unknown): boolean {
+  return TRANSIENT_SCHEMA_INIT_CODES.has(errCode(err));
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function getPool(): Pool | null {
   const url = process.env.DATABASE_URL?.trim();
   if (!url) return null;
   if (!pool) {
     pool = new Pool({ connectionString: url, max: 5 });
+    // A pool-level 'error' event on an idle client is fatal if unhandled.
+    pool.on('error', (err) => {
+      console.warn('[portfolioDb] idle client error:', errMessage(err));
+    });
   }
   return pool;
+}
+
+/**
+ * Discard the cached pool so the next call builds fresh connections.
+ * Called on connection-class failures; `end()` is fire-and-forget because the
+ * sockets are already gone and we must not block the retry on cleanup.
+ */
+function resetPool(): void {
+  const previous = pool;
+  pool = null;
+  schemaInitialized = false;
+  schemaInitPromise = null;
+  if (!previous) return;
+  try {
+    const ended = (previous as { end?: () => Promise<void> }).end?.();
+    if (ended && typeof ended.catch === 'function') {
+      ended.catch((err: unknown) =>
+        console.warn('[portfolioDb] pool end during reset failed:', errMessage(err))
+      );
+    }
+  } catch (err) {
+    console.warn('[portfolioDb] pool end during reset threw:', errMessage(err));
+  }
+}
+
+/**
+ * Run a database operation with structured failure reporting.
+ *
+ * Retries transient SQL states (deadlock, lock timeout, serialization failure)
+ * and connection-class failures. Connection failures additionally reset the
+ * pool first, so the retry is not handed the same dead socket. Permanent query
+ * failures are returned immediately and never silently swallowed.
+ */
+async function runDbOperation<T>(
+  label: string,
+  fn: (client: Pool) => Promise<T>,
+  options: { ensureSchema?: boolean } = {}
+): Promise<DbResult<T>> {
+  let lastFailure: DbFailure | null = null;
+
+  for (let attempt = 1; attempt <= DB_OPERATION_MAX_ATTEMPTS; attempt++) {
+    const p = getPool();
+    if (!p) {
+      return {
+        ok: false,
+        kind: 'unconfigured',
+        message: 'DATABASE_URL is not set',
+      };
+    }
+
+    try {
+      if (options.ensureSchema !== false) {
+        const schema = await ensureSchema();
+        if (!schema.ok) throw Object.assign(new Error(schema.message), { code: schema.code });
+      }
+      const value = await fn(p);
+      return { ok: true, value };
+    } catch (err) {
+      const connection = isConnectionError(err);
+      const transient = isTransientError(err);
+      const failure: DbFailure = {
+        ok: false,
+        kind: connection ? 'unreachable' : 'query_failed',
+        message: errMessage(err),
+        code: errCode(err) || undefined,
+      };
+      lastFailure = failure;
+
+      console.warn(
+        `[portfolioDb] ${label} failed (attempt ${attempt}/${DB_OPERATION_MAX_ATTEMPTS}) ` +
+          `kind=${failure.kind} code=${failure.code ?? 'none'}: ${failure.message}`
+      );
+
+      if (connection) resetPool();
+
+      if ((connection || transient) && attempt < DB_OPERATION_MAX_ATTEMPTS) {
+        await delay(DB_OPERATION_RETRY_DELAY_MS);
+        continue;
+      }
+      return failure;
+    }
+  }
+
+  return lastFailure ?? { ok: false, kind: 'query_failed', message: `${label} failed` };
+}
+
+/**
+ * Boot-time database diagnostic. Reports whether DATABASE_URL is configured and
+ * the hostname only — never credentials.
+ */
+export function getDbBootDiagnostics(): {
+  configured: boolean;
+  host: string;
+  database: string;
+} {
+  const url = process.env.DATABASE_URL?.trim();
+  if (!url) return { configured: false, host: 'NONE', database: 'NONE' };
+  try {
+    const parsed = new URL(url);
+    return {
+      configured: true,
+      host: parsed.port ? `${parsed.hostname}:${parsed.port}` : parsed.hostname,
+      database: parsed.pathname.replace(/^\//, '') || 'NONE',
+    };
+  } catch {
+    // Malformed URL is itself worth surfacing, but must not leak the value.
+    return { configured: true, host: 'UNPARSEABLE', database: 'UNPARSEABLE' };
+  }
 }
 
 const SCHEMA_SQL = `
@@ -111,23 +317,28 @@ create index if not exists idx_funnel_events_ts
 on funnel_events (event_ts desc);
 `;
 
-export async function initSchema(): Promise<void> {
+/**
+ * Ensure the schema exists, reporting the outcome so callers can distinguish a
+ * failed initialization from a successful one. On failure the cached promise is
+ * cleared so a later call can retry once the database recovers.
+ */
+async function ensureSchema(): Promise<DbResult<void>> {
   const p = getPool();
-  if (!p || schemaInitialized) return;
+  if (!p) {
+    return { ok: false, kind: 'unconfigured', message: 'DATABASE_URL is not set' };
+  }
+  if (schemaInitialized) return { ok: true, value: undefined };
   if (schemaInitPromise) return schemaInitPromise;
 
-  schemaInitPromise = (async () => {
+  schemaInitPromise = (async (): Promise<DbResult<void>> => {
     for (let attempt = 1; attempt <= SCHEMA_INIT_MAX_RETRIES; attempt++) {
       try {
         await p.query(SCHEMA_SQL);
         schemaInitialized = true;
         console.log('[portfolioDb] Schema initialized');
-        return;
+        return { ok: true, value: undefined };
       } catch (err) {
-        const code =
-          typeof err === 'object' && err !== null && 'code' in err
-            ? String((err as { code?: string }).code ?? '')
-            : '';
+        const code = errCode(err);
         const shouldRetry =
           TRANSIENT_SCHEMA_INIT_CODES.has(code) && attempt < SCHEMA_INIT_MAX_RETRIES;
 
@@ -135,17 +346,30 @@ export async function initSchema(): Promise<void> {
           console.warn(
             `[portfolioDb] Schema init transient failure (code=${code}), retry ${attempt}/${SCHEMA_INIT_MAX_RETRIES} in ${SCHEMA_INIT_RETRY_DELAY_MS}ms`
           );
-          await new Promise((resolve) => setTimeout(resolve, SCHEMA_INIT_RETRY_DELAY_MS));
+          await delay(SCHEMA_INIT_RETRY_DELAY_MS);
           continue;
         }
 
         console.error('[portfolioDb] Schema init failed:', err);
-        return;
+        // Allow a later call to retry rather than caching the failure forever.
+        schemaInitPromise = null;
+        return {
+          ok: false,
+          kind: isConnectionError(err) ? 'unreachable' : 'query_failed',
+          message: errMessage(err),
+          code: code || undefined,
+        };
       }
     }
+    schemaInitPromise = null;
+    return { ok: false, kind: 'query_failed', message: 'schema init exhausted retries' };
   })();
 
   return schemaInitPromise;
+}
+
+export async function initSchema(): Promise<void> {
+  await ensureSchema();
 }
 
 /** Touch user (upsert portfolio_users). Fire-and-forget. */
@@ -603,11 +827,10 @@ export async function getPredictionAccuracy(
   }
 }
 
-export async function insertFunnelEvent(row: FunnelEventInput): Promise<string | null> {
-  const p = getPool();
-  if (!p) return null;
-  try {
-    await initSchema();
+export async function insertFunnelEventResult(
+  row: FunnelEventInput
+): Promise<DbResult<string | null>> {
+  return runDbOperation('insertFunnelEvent', async (p) => {
     const res = await p.query<{ id: string }>(
       `insert into funnel_events
        (event_name, event_ts, path, session_id, user_address, cta_variant, properties, source)
@@ -625,17 +848,22 @@ export async function insertFunnelEvent(row: FunnelEventInput): Promise<string |
       ]
     );
     return res.rows[0]?.id ?? null;
-  } catch (err) {
-    console.warn('[portfolioDb] insertFunnelEvent failed:', err);
-    return null;
-  }
+  });
 }
 
-export async function listFunnelEvents(limit = 100): Promise<FunnelEventRow[]> {
-  const p = getPool();
-  if (!p) return [];
-  try {
-    await initSchema();
+/**
+ * @deprecated Use {@link insertFunnelEventResult}; this cannot distinguish a
+ * failed write from a write that returned no id.
+ */
+export async function insertFunnelEvent(row: FunnelEventInput): Promise<string | null> {
+  const result = await insertFunnelEventResult(row);
+  return result.ok ? result.value : null;
+}
+
+export async function listFunnelEventsResult(
+  limit = 100
+): Promise<DbResult<FunnelEventRow[]>> {
+  return runDbOperation('listFunnelEvents', async (p) => {
     const limitSafe = Math.min(Math.max(limit, 1), 1000);
     const res = await p.query<{
       id: string;
@@ -664,17 +892,22 @@ export async function listFunnelEvents(limit = 100): Promise<FunnelEventRow[]> {
       properties: r.properties ?? {},
       source: r.source,
     }));
-  } catch (err) {
-    console.warn('[portfolioDb] listFunnelEvents failed:', err);
-    return [];
-  }
+  });
 }
 
-export async function getCtaAbReport(window: CtaWindow = '7d'): Promise<CtaAbReport | null> {
-  const p = getPool();
-  if (!p) return null;
-  try {
-    await initSchema();
+/**
+ * @deprecated Returns `[]` for both "no events" and "database unreachable".
+ * Use {@link listFunnelEventsResult}.
+ */
+export async function listFunnelEvents(limit = 100): Promise<FunnelEventRow[]> {
+  const result = await listFunnelEventsResult(limit);
+  return result.ok ? result.value : [];
+}
+
+export async function getCtaAbReportResult(
+  window: CtaWindow = '7d'
+): Promise<DbResult<CtaAbReport>> {
+  return runDbOperation('getCtaAbReport', async (p) => {
     const interval = windowToInterval(window);
     const res = await p.query<{
       variant: 'A' | 'B';
@@ -760,10 +993,16 @@ export async function getCtaAbReport(window: CtaWindow = '7d'): Promise<CtaAbRep
       winner,
       deltaConnectRatePct,
     };
-  } catch (err) {
-    console.warn('[portfolioDb] getCtaAbReport failed:', err);
-    return null;
-  }
+  });
+}
+
+/**
+ * @deprecated Collapses every failure into `null`, so callers cannot tell an
+ * unreachable database from an empty result. Use {@link getCtaAbReportResult}.
+ */
+export async function getCtaAbReport(window: CtaWindow = '7d'): Promise<CtaAbReport | null> {
+  const result = await getCtaAbReportResult(window);
+  return result.ok ? result.value : null;
 }
 
 function windowToInterval(window: string): string {
@@ -841,11 +1080,10 @@ export async function cleanupSnapshotRuns(retentionDays = 90): Promise<number> {
 }
 
 /** Get the last run for a chain. Returns null if DB unavailable or no runs. */
-export async function getLastSnapshotRun(chain: 'evm' | 'solana'): Promise<SnapshotRunRow | null> {
-  const p = getPool();
-  if (!p) return null;
-  try {
-    await initSchema();
+export async function getLastSnapshotRunResult(
+  chain: 'evm' | 'solana'
+): Promise<DbResult<SnapshotRunRow | null>> {
+  return runDbOperation('getLastSnapshotRun', async (p) => {
     const res = await p.query<{
       id: string;
       chain: string;
@@ -876,14 +1114,22 @@ export async function getLastSnapshotRun(chain: 'evm' | 'solana'): Promise<Snaps
       durationMs: r.duration_ms != null ? parseInt(r.duration_ms, 10) : null,
       error: r.error,
     };
-  } catch (err) {
-    console.warn('[portfolioDb] getLastSnapshotRun failed:', err);
-    return null;
-  }
+  });
+}
+
+/**
+ * @deprecated Returns `null` for both "no run recorded" and "database
+ * unreachable", which caused `/api/snapshots/health` to report healthy during a
+ * total outage. Use {@link getLastSnapshotRunResult}.
+ */
+export async function getLastSnapshotRun(chain: 'evm' | 'solana'): Promise<SnapshotRunRow | null> {
+  const result = await getLastSnapshotRunResult(chain);
+  return result.ok ? result.value : null;
 }
 
 /** @internal Reset singleton state for tests. */
 export function _resetSchemaState(): void {
   schemaInitialized = false;
   schemaInitPromise = null;
+  pool = null;
 }

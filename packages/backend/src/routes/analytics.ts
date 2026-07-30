@@ -1,7 +1,13 @@
 import express, { Request, Response, Router } from 'express';
 import { validateRequest } from '../middleware/validation';
 import { funnelEventSchema } from '../schemas/analyticsSchemas';
-import { getCtaAbReport, insertFunnelEvent, isDbAvailable, listFunnelEvents, type CtaWindow } from '../db/portfolioDb';
+import {
+  getCtaAbReportResult,
+  insertFunnelEventResult,
+  listFunnelEventsResult,
+  type CtaWindow,
+} from '../db/portfolioDb';
+import { sendDbFailure } from '../utils/dbResponse';
 
 const router: Router = express.Router();
 
@@ -17,14 +23,7 @@ router.post('/events', validateRequest(funnelEventSchema), async (req: Request, 
     source,
   } = req.body;
 
-  if (!isDbAvailable()) {
-    return res.status(503).json({
-      ok: false,
-      error: 'DATABASE_URL not set – analytics persistence unavailable',
-    });
-  }
-
-  const id = await insertFunnelEvent({
+  const inserted = await insertFunnelEventResult({
     eventName: name,
     eventTs: ts ? new Date(ts) : new Date(),
     path,
@@ -35,36 +34,30 @@ router.post('/events', validateRequest(funnelEventSchema), async (req: Request, 
     source,
   });
 
-  if (!id) {
+  if (!inserted.ok) {
+    return sendDbFailure(res, inserted, 'analytics persistence');
+  }
+
+  if (!inserted.value) {
     return res.status(500).json({ ok: false, error: 'Failed to store event' });
   }
 
-  return res.status(202).json({ ok: true, id });
+  return res.status(202).json({ ok: true, id: inserted.value });
 });
 
 router.get('/events', async (req: Request, res: Response) => {
-  if (!isDbAvailable()) {
-    return res.status(503).json({
-      ok: false,
-      error: 'DATABASE_URL not set – analytics persistence unavailable',
-    });
-  }
-
   const limitRaw = String(req.query.limit ?? '100');
   const limit = Number.parseInt(limitRaw, 10);
-  const events = await listFunnelEvents(Number.isFinite(limit) ? limit : 100);
+  const result = await listFunnelEventsResult(Number.isFinite(limit) ? limit : 100);
 
-  return res.json({ ok: true, count: events.length, events });
+  if (!result.ok) {
+    return sendDbFailure(res, result, 'analytics persistence');
+  }
+
+  return res.json({ ok: true, count: result.value.length, events: result.value });
 });
 
 router.get('/ab-cta', async (req: Request, res: Response) => {
-  if (!isDbAvailable()) {
-    return res.status(503).json({
-      ok: false,
-      error: 'DATABASE_URL not set – analytics persistence unavailable',
-    });
-  }
-
   const windowRaw = String(req.query.window ?? '7d').trim().toLowerCase();
   const window: CtaWindow =
     windowRaw === '24h' || windowRaw === '7d' || windowRaw === '30d'
@@ -76,10 +69,11 @@ router.get('/ab-cta', async (req: Request, res: Response) => {
     ? Math.min(Math.max(bounceGuardrailRaw, 0), 100)
     : 80;
 
-  const report = await getCtaAbReport(window);
-  if (!report) {
-    return res.status(500).json({ ok: false, error: 'Failed to build CTA A/B report' });
+  const reportResult = await getCtaAbReportResult(window);
+  if (!reportResult.ok) {
+    return sendDbFailure(res, reportResult, 'CTA A/B report');
   }
+  const report = reportResult.value;
 
   return res.json({
     ok: true,
