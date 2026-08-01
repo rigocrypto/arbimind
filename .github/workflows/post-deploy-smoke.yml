@@ -33,6 +33,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Full history so the gate can diff the DEPLOYED backend commit
+          # against the expected one. A shallow clone makes that comparison
+          # impossible and forces the gate into its fail-safe exact-match path.
+          fetch-depth: 0
 
       - name: Cache Playwright browsers
         uses: actions/cache@v6
@@ -101,9 +106,11 @@ jobs:
       # Health alone does not prove the deployment happened. The backend deploys
       # on Railway independently of the Vercel deploy that triggers this run, so
       # a lagging or skipped backend deploy leaves the PREVIOUS commit serving --
-      # healthy, and passing every check. The run is attached to the new commit
-      # in the Actions UI, so it reads as "this commit is deployed and working"
-      # when it only means "something is alive". See #377.
+      # healthy, and passing every check. See #377.
+      #
+      # The gate verifies BACKEND freshness, not repo freshness: Railway only
+      # rebuilds when backend-relevant files change, so workflow/docs/UI-only
+      # commits legitimately keep the previous backend SHA and must not fail.
       #
       # Enforced for workflow_run only: workflow_dispatch may target an arbitrary
       # backend, where a SHA match is neither expected nor meaningful.
@@ -115,81 +122,9 @@ jobs:
           BACKEND_BASE: ${{ steps.resolve.outputs.backend }}
           EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          $backend = $env:BACKEND_BASE.TrimEnd('/')
-          $versionUrl = "$backend/api/version"
-          $expected = $env:EXPECTED_SHA
-
-          if ([string]::IsNullOrWhiteSpace($expected)) {
-            throw "EXPECTED_SHA is empty - cannot verify the deployed commit."
-          }
-
-          $deadline = (Get-Date).AddMinutes(10)
-          $delaySeconds = 10
-          $attempt = 0
-          $observed = $null
-
-          Write-Host "Waiting for backend to serve commit ${expected}: $versionUrl"
-
-          while ((Get-Date) -lt $deadline) {
-            $attempt++
-
-            try {
-              $res = Invoke-RestMethod -Uri $versionUrl -Method Get -TimeoutSec 10
-              $observed = $res
-
-              if ($res.sha -ne $expected) {
-                Write-Host "Attempt ${attempt}: backend serving $($res.sha), expected $expected."
-              }
-              elseif ($null -eq $res.uptimeSeconds) {
-                # sha can match while the build predates the /api/version fix, in
-                # which case startedAt is recomputed per request and worthless.
-                Write-Host "Attempt ${attempt}: sha matches but uptimeSeconds is absent - build predates #375."
-              }
-              else {
-                Start-Sleep -Seconds 3
-                $res2 = Invoke-RestMethod -Uri $versionUrl -Method Get -TimeoutSec 10
-
-                if ($res2.startedAt -eq $res.startedAt) {
-                  Write-Host "Backend is serving the expected commit after attempt $attempt."
-                  Write-Host "  sha            = $($res.sha)"
-                  Write-Host "  startedAt      = $($res.startedAt)"
-                  Write-Host "  uptimeSeconds  = $($res2.uptimeSeconds)"
-                  exit 0
-                }
-
-                Write-Host "Attempt ${attempt}: startedAt unstable ($($res.startedAt) vs $($res2.startedAt)) - restarting or pre-#375 build."
-              }
-            }
-            catch {
-              Write-Host "Attempt ${attempt}: /api/version unreachable - $($_.Exception.Message)"
-            }
-
-            Start-Sleep -Seconds $delaySeconds
-          }
-
-          $obsSha = '(unreachable)'
-          $obsStarted = '(unknown)'
-          $obsUptime = '(unknown)'
-          if ($null -ne $observed) {
-            $obsSha = $observed.sha
-            $obsStarted = $observed.startedAt
-            if ($null -ne $observed.uptimeSeconds) { $obsUptime = $observed.uptimeSeconds }
-          }
-
-          $lines = @(
-            'Backend did not reach expected deployment before smoke timeout.'
-            ''
-            "Expected backend sha:   $expected"
-            "Observed backend sha:   $obsSha"
-            "Observed startedAt:     $obsStarted"
-            "Observed uptimeSeconds: $obsUptime"
-            "Backend URL:            $backend"
-            ''
-            'Smoke was NOT run. Passing it against a stale backend would report the'
-            'previous commit as verified. Check whether the Railway backend deploy'
-            'was skipped, is still queued, or failed its check suite. See #377.'
-          )
-          throw ($lines -join "`n")
+          ./scripts/wait-for-backend-version.ps1 `
+            -BackendBase $env:BACKEND_BASE `
+            -ExpectedSha $env:EXPECTED_SHA
 
       - name: Run smoke script
         timeout-minutes: 15
