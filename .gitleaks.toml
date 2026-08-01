@@ -1,5 +1,17 @@
 title = "ArbiMind gitleaks config"
 
+# Defining [[rules]] REPLACES the default ruleset unless the defaults are
+# extended explicitly. Without this block the scan matched only the handful of
+# custom rules below -- no AWS keys, no Stripe tokens, no GitHub PATs, nothing
+# from the upstream catalogue. Restoring the defaults is the single largest
+# coverage improvement in this file.
+[extend]
+useDefault = true
+
+# ---------------------------------------------------------------------------
+# Chain / wallet material
+# ---------------------------------------------------------------------------
+
 [[rules]]
 id = "evm-private-key"
 description = "EVM private key (0x + 64 hex)"
@@ -13,10 +25,81 @@ regex = '''(?i)\bPRIVATE_KEY\b\s*[:=]\s*"?(0x)?[a-fA-F0-9]{64}"?'''
 tags = ["env", "key"]
 
 [[rules]]
+id = "solana-secret-key-assignment"
+description = "Solana secret key / treasury key assignment"
+regex = '''(?i)\b(SOLANA_PRIVATE_KEY_BASE58|SOLANA_TREASURY_SECRET_KEY|TREASURY_SECRET_KEY)\b\s*[:=]\s*["']?(\[[\s0-9,]{40,}\]|[1-9A-HJ-NP-Za-km-z]{40,100})'''
+tags = ["env", "key", "solana"]
+
+[[rules]]
+id = "mnemonic-assignment"
+description = "Mnemonic or seed phrase assignment"
+regex = '''(?i)\b(MNEMONIC|SEED_PHRASE|RECOVERY_PHRASE)\b\s*[:=]\s*["']?(\w+\s+){11,}\w+'''
+tags = ["env", "key", "mnemonic"]
+
+# ---------------------------------------------------------------------------
+# Project-specific credentials
+#
+# Generic KEY=value lines match no vendor pattern, which is why an ADMIN_API_KEY
+# sat in a tracked file in this public repository for roughly six months without
+# being flagged.
+#
+# NOTE: gitleaks uses Go's RE2 engine, which has NO lookahead support. Excluding
+# placeholder values must therefore be done with a per-rule allowlist rather than
+# a negative lookahead inside the pattern.
+# ---------------------------------------------------------------------------
+
+[[rules]]
+id = "admin-key-assignment"
+description = "Admin API key assignment with a real-looking value"
+regex = '''(?i)\b(ADMIN_API_KEY|ADMIN_KEY|ADMIN_SECRET)\b\s*[:=]\s*["']?[A-Za-z0-9_\-+/=]{8,}'''
+tags = ["env", "credential"]
+  [rules.allowlist]
+  regexTarget = "line"
+  regexes = ['''(?i)(REPLACE[-_]?ME|CHANGE[-_]?ME|YOUR[-_]?|EXAMPLE|PLACEHOLDER|SECRET[-_]KEY|TODO|x{3,}|\$\{|<[^>]*>)''']
+
+[[rules]]
+id = "session-secret-assignment"
+description = "Session secret assignment with a real-looking value"
+regex = '''(?i)\b(SESSION_SECRET|JWT_SECRET|COOKIE_SECRET)\b\s*[:=]\s*["']?[A-Za-z0-9_\-+/=]{16,}'''
+tags = ["env", "credential"]
+  [rules.allowlist]
+  regexTarget = "line"
+  regexes = ['''(?i)(REPLACE[-_]?ME|CHANGE[-_]?ME|YOUR[-_]?|EXAMPLE|PLACEHOLDER|SECRET[-_]KEY|TODO|x{3,}|\$\{|<[^>]*>)''']
+
+[[rules]]
+id = "database-url-with-credentials"
+description = "Database connection string embedding credentials"
+regex = '''(?i)\b(postgres|postgresql|mysql|mongodb\+srv|mongodb|redis)://[^:\s'"]+:[^@\s'"]{6,}@'''
+tags = ["env", "database"]
+  [rules.allowlist]
+  regexTarget = "line"
+  regexes = ['''(?i)(REPLACE[-_]?ME|CHANGE[-_]?ME|YOUR[-_]?|EXAMPLE|PLACEHOLDER|:password@|<[^>]*>|\$\{)''']
+
+# ---------------------------------------------------------------------------
+# Provider RPC endpoints that embed an API key in the path
+# ---------------------------------------------------------------------------
+
+[[rules]]
 id = "infura-project-id"
 description = "Infura v3 project id in URL"
 regex = '''infura\.io/v3/[a-fA-F0-9]{32}'''
 tags = ["rpc", "infura"]
+
+[[rules]]
+id = "alchemy-api-key-url"
+description = "Alchemy RPC URL with embedded key"
+regex = '''[a-z0-9-]+\.g\.alchemy\.com/v2/[A-Za-z0-9_-]{20,}'''
+tags = ["rpc", "alchemy"]
+
+[[rules]]
+id = "helius-api-key-url"
+description = "Helius RPC URL with embedded key"
+regex = '''helius-rpc\.com/\?api-key=[A-Za-z0-9-]{20,}'''
+tags = ["rpc", "helius"]
+
+# ---------------------------------------------------------------------------
+# Messaging
+# ---------------------------------------------------------------------------
 
 [[rules]]
 id = "discord-webhook"
@@ -31,7 +114,26 @@ regex = '''[0-9]{8,10}:[A-Za-z0-9_-]{35}'''
 tags = ["token", "telegram"]
 
 [allowlist]
-description = "Allowlist common non-secret hex noise"
+description = "Non-secret noise, templates, and documentation"
 regexes = [
-  '''0x[a-fA-F0-9]{40}'''
+  # Bare EVM addresses are public identifiers, not secrets.
+  '''0x[a-fA-F0-9]{40}''',
+]
+paths = [
+  # Templates exist precisely to carry these key names with placeholder values.
+  # Note both spellings: this repo has `env.example` WITHOUT a leading dot at the
+  # root and under packages/backend, alongside dotted `.env.production.example`.
+  # An earlier draft only matched the dotted form and flagged both templates.
+  '''(^|/)env\.example$''',
+  '''(^|/)\.env\.example$''',
+  '''\.env\..*\.example$''',
+  # Test fixtures deliberately contain connection strings shaped like real ones.
+  '''packages/backend/src/__tests__/''',
+  # Documentation naming the variables in prose.
+  '''RAILWAY_DEPLOYMENT_GUIDE\.md$''',
+  '''ONE_CLICK_SETUP\.md$''',
+  '''DEPLOYMENT_CHECKLIST\.md$''',
+  '''docs/security/AUDIT_EXCEPTIONS\.md$''',
+  # Lockfiles carry integrity hashes that look like high-entropy secrets.
+  '''pnpm-lock\.yaml$''',
 ]
