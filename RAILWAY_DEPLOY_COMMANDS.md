@@ -1,4 +1,4 @@
-# Railway + Vercel Testnet Deploy Commands
+﻿# Railway + Vercel Testnet Deploy Commands
 
 Copy-paste commands for deploying ArbiMind testnet to Railway (backend + bot) and Vercel (UI).
 
@@ -28,7 +28,7 @@ railway variables set `
   PORT=8001 `
   NETWORK=testnet `
   ARBITRUM_RPC_URL=https://sepolia.arbitrum.io/rpc `
-  WORLDCHAIN_SEPOLIA_RPC_URL=https://worldchain-sepolia.g.alchemy.com/v2/TZyQGiZt_25CImsRIGAcN `
+  WORLDCHAIN_SEPOLIA_RPC_URL=https://worldchain-sepolia.g.alchemy.com/v2/<YOUR_ALCHEMY_API_KEY> `
   SOLANA_RPC_URL=https://api.devnet.solana.com `
   POLYGON_RPC_URL=https://rpc-amoy.polygon.technology `
   DEXSCREENER_CHAIN_ID=polygon `
@@ -68,7 +68,7 @@ railway variables set `
   LOG_ONLY=true `
   EVM_CHAIN=polygon `
   POLYGON_RPC_URL=https://rpc-amoy.polygon.technology `
-  WORLDCHAIN_SEPOLIA_RPC_URL=https://worldchain-sepolia.g.alchemy.com/v2/TZyQGiZt_25CImsRIGAcN `
+  WORLDCHAIN_SEPOLIA_RPC_URL=https://worldchain-sepolia.g.alchemy.com/v2/<YOUR_ALCHEMY_API_KEY> `
   AI_SERVICE_KEY=<same-as-backend> `
   AI_LOG_URL=https://backend-production-xxxx.up.railway.app/api/admin/ai-dashboard/predictions `
   SOLANA_RPC_URL=https://api.devnet.solana.com `
