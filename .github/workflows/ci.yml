@@ -74,3 +74,34 @@ jobs:
           wait $bot_test_pid
 
       - run: pnpm build
+
+  # scripts/smoke-post-deploy.ps1 gates every production deploy and has been
+  # implicated in four incidents (#366 argument binding, #369 pwsh 7 response
+  # handling, #375 RequireDatabase, #377/#379 the deployed-commit gate) while
+  # having no automated coverage. Runs on windows-latest with pwsh to match the
+  # environment the smoke workflows actually use.
+  powershell-smoke-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Tests diff real commits from history to verify the backend-relevance
+          # rule; a shallow clone makes those assertions unrunnable.
+          fetch-depth: 0
+
+      - name: Install Pester
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name Pester -MinimumVersion 5.5.0 -Scope CurrentUser -Force -SkipPublisherCheck
+          Write-Host "Pester $((Get-Module -ListAvailable Pester | Sort-Object Version -Descending | Select-Object -First 1).Version)"
+
+      - name: Run Pester suite
+        shell: pwsh
+        run: |
+          Import-Module Pester -MinimumVersion 5.0 -Force
+          $cfg = New-PesterConfiguration
+          $cfg.Run.Path = './scripts/tests'
+          $cfg.Run.Exit = $true
+          $cfg.Output.Verbosity = 'Detailed'
+          Invoke-Pester -Configuration $cfg
