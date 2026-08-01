@@ -29,6 +29,16 @@ packages/contracts/lib/v3-periphery
 
 packages/backend/.env
 packages/ui/.env.local
+
+# Keep example templates tracked. These negations must follow every .env
+# ignore rule above: gitignore is last-match-wins, so placing them earlier
+# would leave the templates ignored. Without them `.env.*` also swallows
+# `.env.production.example`.
+!.env.example
+!.env.*.example
+!packages/*/.env.example
+!packages/*/.env.*.example
+
 runtime_probe.txt
 
 # Local working artifacts
