@@ -1,5 +1,5 @@
 # ArbiMind Backend - Deterministic deploy (bypasses Railpack/Nixpacks)
-FROM node:18-alpine
+FROM node:22-alpine
 WORKDIR /app
 
 COPY package.json ./
