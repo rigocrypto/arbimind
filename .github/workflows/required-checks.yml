@@ -1,0 +1,44 @@
+name: Required Checks
+
+# Fails closed when an expected check-run is missing, stale, or unsuccessful.
+#
+# A workflow that fails to START produces no check-run, and both `gh pr checks`
+# and mergeStateStatus then report the pull request as clean -- they can only
+# summarise checks that exist. #383 merged-adjacent proof: the PR that added
+# secret-scanning rules reported CLEAN while its Gitleaks check-run did not
+# exist at all.
+#
+# Kept deliberately dependency-free (checkout + gh + jq, no package install, no
+# build) so that this job is itself unlikely to suffer the startup failure it
+# exists to detect.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  checks: read
+  pull-requests: read
+
+concurrency:
+  group: required-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  assert:
+    name: Assert required check-runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Assert required check-runs on PR head SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          # The PR head SHA specifically. Using the branch would let a run on an
+          # earlier commit satisfy the assertion -- the #377 failure mode applied
+          # to CI metadata rather than deployments.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          TIMEOUT_MINUTES: "20"
+        run: python3 scripts/assert_required_checks.py
