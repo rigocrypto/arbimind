@@ -87,6 +87,6 @@
   "author": "ArbiMind Team",
   "license": "MIT",
   "engines": {
-    "node": ">=18.x"
+    "node": ">=22.22.2"
   }
 }

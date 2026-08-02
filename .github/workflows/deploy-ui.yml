@@ -15,7 +15,7 @@ jobs:
       - uses: pnpm/action-setup@v5
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
       - name: Validate lockfile (frozen)
         run: pnpm -w install --frozen-lockfile
