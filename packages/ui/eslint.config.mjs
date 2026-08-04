@@ -9,7 +9,13 @@ const config = [
     rules: {
       'react-hooks/static-components': 'off',
       'react-hooks/set-state-in-effect': 'warn',
-      'react-hooks/preserve-manual-memoization': 'warn',
+      // Promoted from 'warn' to 'error' by #88. The two violations that
+      // deferred this (in useBalanceGuard) were resolved by #214, which
+      // replaced an `ethBalance?.value` dependency with the whole
+      // `ethBalance` object. They were a stale-closure bug, not the
+      // intentional subproperty tracking the deferral assumed -- so there is
+      // nothing left to exempt, and 'error' prevents the pattern returning.
+      'react-hooks/preserve-manual-memoization': 'error',
       'react-hooks/incompatible-library': 'warn',
       'react-hooks/purity': 'error',
       '@typescript-eslint/no-require-imports': 'off'
