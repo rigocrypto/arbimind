@@ -70,7 +70,7 @@ export function AdminDashboard() {
   const [rpcHealth, setRpcHealth] = useState<{
     ok: boolean;
     health: Record<string, string>;
-    details: Record<string, { status: string; rpcUrl: string | null; latencyMs?: number; error?: string }>;
+    details: Record<string, { status: string; rpcHost: string | null; latencyMs?: number; error?: string }>;
   } | null>(null);
   const [engineBlocked, setEngineBlocked] = useState(false);
 

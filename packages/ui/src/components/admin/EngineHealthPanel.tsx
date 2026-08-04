@@ -16,7 +16,7 @@ interface EngineHealthPanelProps {
   rpcHealth: {
     ok: boolean;
     health: Record<string, string>;
-    details: Record<string, { status: string; rpcUrl: string | null; latencyMs?: number; error?: string }>;
+    details: Record<string, { status: string; rpcHost: string | null; latencyMs?: number; error?: string }>;
   } | null;
   engineBlocked: boolean;
   blockedReason?: string;
