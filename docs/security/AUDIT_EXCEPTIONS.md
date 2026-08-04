@@ -34,6 +34,44 @@ Baseline: 2026-07-28. Review by: **2026-08-27**.
 | [GHSA-6g55-p6wh-862q](https://github.com/advisories/GHSA-6g55-p6wh-862q) | high | postcss | `next > postcss` | `next` pins `postcss` to exactly `8.4.31` through 16.2.12; patch requires `>=8.5.12`. Not reachable by bumping our own postcss. |
 | [GHSA-r28c-9q8g-f849](https://github.com/advisories/GHSA-r28c-9q8g-f849) | high | postcss | `next > postcss` | Same exact pin; patch requires `>=8.5.18`. |
 | [GHSA-f88m-g3jw-g9cj](https://github.com/advisories/GHSA-f88m-g3jw-g9cj) | high | sharp | `next > sharp` | `next` 16.2.12 declares `sharp ^0.34.5`; patch requires `>=0.35.0`. |
+| [GHSA-mwp4-54f8-5fhr](https://github.com/advisories/GHSA-mwp4-54f8-5fhr) | high | ip-address | `packages/bot > natural > mongoose > mongodb > socks > ip-address` | Six levels deep under `natural`. No parent in the chain has released a version pinning the patched `ip-address`. Already tracked in the deferred dependency-maintenance note. |
+| [GHSA-rgw5-rvv9-x895](https://github.com/advisories/GHSA-rgw5-rvv9-x895) | high | brace-expansion | `packages/backend > eslint > @eslint/eslintrc > minimatch`, and via `@typescript-eslint/eslint-plugin` | A **third** advisory on the same `eslint@8` chain as GHSA-3jxr-9vmj-r5cp and GHSA-mh99-v99m-4gvg. Clearing it needs the same eslint 8 -> 10 major upgrade. Dev-only. |
+| [GHSA-2m8v-j782-fhvr](https://github.com/advisories/GHSA-2m8v-j782-fhvr) | high | socket.io-parser | `packages/ui > @solana/wallet-adapter-wallets > @solana/wallet-adapter-torus > @toruslabs/solana-embed > @toruslabs/base-controllers > @toruslabs/broadcast-channel > socket.io-client > socket.io-parser` | **Nominally fixable but not safely** -- see the note below. `socket.io-client@4.8.3` declares `~4.2.4`, which permits the patched `4.2.7`, but reaching it requires a `pnpm.overrides` entry that triggers full lockfile re-resolution. |
+| [GHSA-4cwx-7wf7-3272](https://github.com/advisories/GHSA-4cwx-7wf7-3272) | high | undici | `packages/bot > jsdom > undici` | **Nominally fixable but not safely** -- see the note below. `jsdom@30.0.1` declares `undici ^8.9.0` and undici 8.x is unaffected, but the lockfile is pinned at `7.28.0` and correcting it requires an override that triggers full re-resolution. |
+
+### Why the last two are here despite Rule 1
+
+Rule 1 says an advisory belongs here only when no parent-scoped fix exists.
+`socket.io-parser` and `undici` are the first entries to bend that, so the
+reasoning is recorded in full.
+
+Both parents already permit the patched versions -- `socket.io-client@4.8.3`
+declares `~4.2.4`, and `jsdom@30.0.1` declares `undici ^8.9.0` while the lockfile
+sits at `7.28.0`. In isolation each is a one-line `pnpm.overrides` fix.
+
+The problem is that adding **any** `pnpm.overrides` key to this repository forces
+pnpm to re-resolve the entire tree against the current registry, and this
+lockfile is far enough behind that re-resolution pulls in substantially more than
+it fixes. Measured on 2026-08-04:
+
+| State | Total | High | Critical |
+|---|---|---|---|
+| Frozen lockfile (what CI installs) | 35 | 14 (9 ignored) | 1 (1 ignored) |
+| With either override added | 56 | 28 (9 ignored) | 2 (1 ignored) |
+
+Net **+21 advisories**, including a new critical in `protobufjs` and new high
+findings in `tar`, `adm-zip`, `ws` and `lodash`. The same result occurs with only
+`socket.io-parser` overridden, so it is the re-resolution and not the specific
+override that causes it.
+
+Fixing two advisories by introducing twenty-one is not a fix. The lockfile
+refresh these need is a controlled dependency-maintenance project, not something
+to attach to a hotfix -- these exceptions were added to restore CI so a live
+credential-leak fix could ship.
+
+**Removal trigger for all four:** remove when the dependency-refresh work updates
+the stale lockfile safely, or when a parent package in the chain releases a
+version that clears the advisory without broad re-resolution. Tracked separately.
 
 ## Deliberately not excepted
 
