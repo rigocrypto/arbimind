@@ -372,7 +372,9 @@ export const adminApi = {
     return adminFetch<{
       ok: boolean;
       health: Record<string, string>;
-      details: Record<string, { status: string; rpcUrl: string | null; latencyMs?: number; error?: string }>;
+      // rpcHost, not rpcUrl: provider URLs embed the API key, and this endpoint
+      // is public. The backend returns host only.
+      details: Record<string, { status: string; rpcHost: string | null; latencyMs?: number; error?: string }>;
     }>(`/rpc/health${q}`);
   },
 

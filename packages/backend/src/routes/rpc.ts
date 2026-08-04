@@ -1,5 +1,5 @@
 import express, { Request, Response, Router } from 'express';
-import { checkRpcHealth } from '../utils/rpc';
+import { checkRpcHealth, redactRpcUrl } from '../utils/rpc';
 
 const router: Router = express.Router();
 
@@ -22,13 +22,17 @@ router.get('/health', async (req: Request, res: Response) => {
 
   const checks = await Promise.all(chains.map((chain) => checkRpcHealth(chain)));
   const health: Record<string, string> = {};
-  const details: Record<string, { status: string; rpcUrl: string | null; latencyMs?: number; error?: string }> = {};
+  // rpcHost, never rpcUrl. This endpoint is public and unauthenticated, and
+  // provider URLs embed the API key in the path or query string -- returning
+  // them published every key to any caller. Renamed rather than redacted in
+  // place so a client cannot silently keep depending on a full URL.
+  const details: Record<string, { status: string; rpcHost: string | null; latencyMs?: number; error?: string }> = {};
 
   for (const result of checks) {
     health[result.chain] = result.status;
     details[result.chain] = {
       status: result.status,
-      rpcUrl: result.rpcUrl,
+      rpcHost: redactRpcUrl(result.rpcUrl),
       ...(result.latencyMs !== undefined ? { latencyMs: result.latencyMs } : {}),
       ...(result.error ? { error: result.error } : {}),
     };
