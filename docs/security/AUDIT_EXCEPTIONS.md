@@ -71,6 +71,23 @@ refresh these need is a controlled dependency-maintenance project, not something
 to attach to a hotfix -- these exceptions were added to restore CI so a live
 credential-leak fix could ship.
 
+### When manual lockfile repair is acceptable
+
+The `undici` repair below is deliberately narrow. It is **not** a precedent for
+lockfile surgery in general. All five conditions must hold:
+
+1. The parent's declared range **already permits** the patched version -- you are
+   correcting a wrong resolution, not forcing an unsupported one.
+2. The replacement package **does not expand the dependency tree** (ideally no
+   dependencies of its own). This is the condition that most often fails.
+3. The advisory count **does not regress**, measured before and after.
+4. `pnpm install --frozen-lockfile`, typecheck, tests and builds all pass.
+5. The rationale is documented here, including why it does not generalise.
+
+If any condition fails, document the exception instead. Forcing the issue with
+`pnpm.overrides` triggers full re-resolution, which #394 measured at net +21
+advisories including a new critical.
+
 ### What worked for `undici`, and why it does not generalise
 
 `GHSA-4cwx-7wf7-3272` was removed from this list. The cause was a single
