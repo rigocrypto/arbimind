@@ -8,6 +8,35 @@ export interface RpcHealthResult {
   error?: string;
 }
 
+/**
+ * Reduces an RPC URL to host (and port) only.
+ *
+ * Provider RPC URLs embed the API key in the path or query string:
+ *
+ *   https://<net>.infura.io/v3/<PROJECT_ID>
+ *   https://<net>.g.alchemy.com/v2/<API_KEY>
+ *   https://mainnet.helius-rpc.com/?api-key=<API_KEY>
+ *
+ * `/api/rpc/health` is public and unauthenticated, so returning the full URL
+ * published every provider key to anyone who called it -- and would republish
+ * any replacement the moment it was deployed, making rotation pointless.
+ *
+ * The host alone answers what the endpoint exists to answer (which provider,
+ * is it reachable). This mirrors `[BACKEND_RPC_BOOT]` and
+ * `getDbBootDiagnostics()`, which already log host-only.
+ */
+export function redactRpcUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.port ? `${parsed.hostname}:${parsed.port}` : parsed.hostname;
+  } catch {
+    // Never fall back to the raw value: a URL we cannot parse is exactly the
+    // case where we cannot be sure a key is absent.
+    return 'UNPARSEABLE';
+  }
+}
+
 export const CHAIN_ALIASES: Record<string, string> = {
   evm: 'evm',
   worldchain: 'worldchain_sepolia',
