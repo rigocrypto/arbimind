@@ -184,6 +184,23 @@ export interface AlertConfig {
   minConfidence?: number;
 }
 
+/**
+ * Response shape of GET /api/rpc/health.
+ *
+ * Exported and shared deliberately: this shape was previously re-declared
+ * inline in adminApi, AdminDashboard and EngineHealthPanel. When #393 renamed
+ * `rpcUrl` to `rpcHost`, only one of the three was updated, and the UI had no
+ * working type check to catch the other two. One definition, three consumers.
+ *
+ * `rpcHost`, never `rpcUrl`: provider URLs embed the API key and this endpoint
+ * is public and unauthenticated, so the backend returns host only.
+ */
+export interface RpcHealthResponse {
+  ok: boolean;
+  health: Record<string, string>;
+  details: Record<string, { status: string; rpcHost: string | null; latencyMs?: number; error?: string }>;
+}
+
 export const adminApi = {
   async getMetrics(range: '24h' | '7d' | '30d' = '24h', keyOverride?: string) {
     return adminFetch<AdminMetrics>(`/admin/metrics?range=${range}`, { keyOverride });
@@ -369,13 +386,7 @@ export const adminApi = {
   /** Fetch RPC health from /api/rpc/health. */
   async getRpcHealth(chains?: string) {
     const q = chains ? `?chain=${chains}` : '';
-    return adminFetch<{
-      ok: boolean;
-      health: Record<string, string>;
-      // rpcHost, not rpcUrl: provider URLs embed the API key, and this endpoint
-      // is public. The backend returns host only.
-      details: Record<string, { status: string; rpcHost: string | null; latencyMs?: number; error?: string }>;
-    }>(`/rpc/health${q}`);
+    return adminFetch<RpcHealthResponse>(`/rpc/health${q}`);
   },
 
   /** Emergency stop (force stop engine). */

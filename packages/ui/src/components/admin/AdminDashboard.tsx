@@ -22,6 +22,7 @@ import {
   type AdminWallets,
   type CtaAbReport,
   type EngineSettingsResponse,
+  type RpcHealthResponse,
 } from '@/lib/adminApi';
 import { Pause, Play, Database } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -67,11 +68,7 @@ export function AdminDashboard() {
     uptime: number;
     timestamp: number;
   } | null>(null);
-  const [rpcHealth, setRpcHealth] = useState<{
-    ok: boolean;
-    health: Record<string, string>;
-    details: Record<string, { status: string; rpcHost: string | null; latencyMs?: number; error?: string }>;
-  } | null>(null);
+  const [rpcHealth, setRpcHealth] = useState<RpcHealthResponse | null>(null);
   const [engineBlocked, setEngineBlocked] = useState(false);
 
   const fetchAll = useCallback(async () => {
