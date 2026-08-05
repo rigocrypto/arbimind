@@ -16,6 +16,7 @@ import { PriorityFeeEstimator, type PriorityFeeConfig, type PriorityFeeEstimate 
 import { LandingTracker } from './LandingTracker';
 import { NetEdgeAccumulator } from './NetEdgeAccumulator';
 import { SessionMetrics } from './SessionMetrics';
+import { ShadowSnapshotWriter } from './ShadowReport';
 import type { TierPolicy } from './SpeedTierPolicy';
 import { TOKEN_REGISTRY, MINT_TO_SYMBOL } from './config';
 
@@ -177,6 +178,7 @@ export class SolanaExecutor {
   private readonly netEdgeAccumulator: NetEdgeAccumulator;
   private readonly gateConfig: ExecutionGateConfig;
   private readonly sessionMetrics: SessionMetrics;
+  private readonly shadowWriter: ShadowSnapshotWriter | null = null;
 
   constructor(
     config: SolanaExecutorConfig,
@@ -249,6 +251,28 @@ export class SolanaExecutor {
     if (this.config.tradingEnabled && !this.config.logOnly) {
       this.getWallet();
     }
+
+    // Shadow snapshot persistence is opt-in and observability-only. Absent the
+    // env var nothing is written and behaviour is byte-for-byte unchanged.
+    const shadowPath = process.env['SOLANA_SHADOW_SNAPSHOT_PATH'];
+    if (shadowPath) {
+      const rawInterval = Number(process.env['SOLANA_SHADOW_SNAPSHOT_INTERVAL_MS']);
+      const intervalMs = Number.isFinite(rawInterval) && rawInterval >= 1000 ? rawInterval : 60_000;
+      this.shadowWriter = new ShadowSnapshotWriter(this.sessionMetrics, shadowPath, intervalMs);
+      this.shadowWriter.start();
+      this.logger.info('[SOLANA] shadow snapshot writer enabled', {
+        path: shadowPath,
+        intervalMs,
+        logOnly: this.config.logOnly,
+      });
+    }
+  }
+
+  /** Stop the shadow snapshot writer and flush a final snapshot. */
+  async stopShadowSnapshots(): Promise<void> {
+    if (!this.shadowWriter) return;
+    this.shadowWriter.stop();
+    await this.shadowWriter.writeOnce();
   }
 
   setInventoryManager(manager: SolanaInventoryManager): void {

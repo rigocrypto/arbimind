@@ -23,7 +23,8 @@
     "predictor": "tsx src/run-predictor.ts",
     "lint": "eslint src/**/*.ts",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "shadow-report": "tsx src/shadow-report.ts"
   },
   "dependencies": {
     "@solana/web3.js": "^1.98.4",
