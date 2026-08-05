@@ -140,6 +140,25 @@ function startOfDayUtc(): number {
   return date.getTime();
 }
 
+/**
+ * Bucket a quote-path failure for RPC health reporting.
+ *
+ * A 429 during a shadow run means "scan slower"; a timeout means "the provider
+ * is degraded"; anything else needs reading. Keeping them apart is the whole
+ * point of the counter -- a single lumped "rpcErrors" number cannot distinguish
+ * a rate-limit ceiling from an outage.
+ */
+export function classifyQuoteError(message: string): 'error' | 'rate_limited' | 'latency' {
+  const m = message.toLowerCase();
+  if (m.includes('429') || m.includes('rate limit') || m.includes('too many requests')) {
+    return 'rate_limited';
+  }
+  if (m.includes('timeout') || m.includes('timed out') || m.includes('etimedout') || m.includes('abort')) {
+    return 'latency';
+  }
+  return 'error';
+}
+
 function resetDailyLossIfNeeded(): void {
   if (Date.now() >= dailyLossResetAt + 86_400_000) {
     dailyLossUsd = 0;
@@ -314,6 +333,11 @@ export class SolanaExecutor {
     return this.netEdgeAccumulator;
   }
 
+  /** Expose session metrics for shadow reporting and external wiring. */
+  getSessionMetrics(): SessionMetrics {
+    return this.sessionMetrics;
+  }
+
   async execute(opportunity: SwapOpportunity): Promise<ExecutionResult> {
     resetDailyLossIfNeeded();
 
@@ -428,13 +452,18 @@ export class SolanaExecutor {
 
     let quoteResponse: JupiterQuoteResponse;
     const quoteRequestedAtMs = Date.now();
+    this.sessionMetrics.recordQuoteRequested();
     try {
       quoteResponse = await this.fetchQuote(sizedOpportunity);
       sizedOpportunity.quotedAtMs = quoteRequestedAtMs;
+      this.sessionMetrics.recordQuoteLatency(Date.now() - quoteRequestedAtMs);
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.sessionMetrics.recordQuoteFailed();
+      this.sessionMetrics.recordRpcError(classifyQuoteError(message));
       return {
         success: false,
-        error: `quote failed: ${error instanceof Error ? error.message : String(error)}`,
+        error: `quote failed: ${message}`,
       };
     }
 
@@ -454,17 +483,21 @@ export class SolanaExecutor {
       routePlan,
     });
 
+    // Observe the venue and route shape on every quote, including ones the
+    // filters go on to reject -- "which AMMs did we see" must not be biased to
+    // only the routes that passed.
+    this.sessionMetrics.recordRouteObservation(
+      String(firstLeg.label ?? 'unknown'),
+      routePlan.length,
+    );
+
     const { pass, rejectReason } = this.validateRoute(quoteResponse);
     if (!pass) {
       this.logger.info('[SOLANA] route rejected', {
         label: sizedOpportunity.label,
         rejectReason,
       });
-      return {
-        success: false,
-        skipped: true,
-        skipReason: `route filter: ${rejectReason}`,
-      };
+      return this.filtered(`route filter: ${rejectReason}`);
     }
 
     const ammMeta: AmmMeta = {
@@ -486,11 +519,7 @@ export class SolanaExecutor {
         ammKey: ammCheck.ammKey,
         rejectReason: ammCheck.rejectReason,
       });
-      return {
-        success: false,
-        skipped: true,
-        skipReason: `amm filter: ${ammCheck.rejectReason} label=${ammCheck.label}`,
-      };
+      return this.filtered(`amm filter: ${ammCheck.rejectReason} label=${ammCheck.label}`);
     }
 
     // --- Venue risk gate ---
@@ -516,11 +545,7 @@ export class SolanaExecutor {
         rejectReason: riskDecision.reason,
         incidentId: riskDecision.incidentId ?? null,
       });
-      return {
-        success: false,
-        skipped: true,
-        skipReason: `risk filter: ${riskDecision.reason}`,
-      };
+      return this.filtered(`risk filter: ${riskDecision.reason}`);
     }
     if (riskDecision.action === 'canary' && riskDecision.effectiveMaxNotionalUsd !== undefined) {
       if (sizedOpportunity.estimatedNotionalUsd > riskDecision.effectiveMaxNotionalUsd) {
@@ -584,6 +609,7 @@ export class SolanaExecutor {
         sizedOpportunity.estimatedNotionalUsd,
       );
 
+      this.sessionMetrics.recordSlippageCost(slippageCostUsd);
       this.sessionMetrics.recordGateEvaluated();
       this.sessionMetrics.recordGrossEdge(
         sizedOpportunity.label,
@@ -621,14 +647,19 @@ export class SolanaExecutor {
     }
 
     let transaction: VersionedTransaction;
+    const swapBuildStartedAtMs = Date.now();
+    this.sessionMetrics.recordSwapBuildAttempted();
     try {
       transaction = await this.buildSwapTransaction(quoteResponse, wallet.publicKey.toBase58(), connection);
       this.sessionMetrics.recordSwapBuilt();
+      this.sessionMetrics.recordSwapBuildLatency(Date.now() - swapBuildStartedAtMs);
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.sessionMetrics.recordSwapBuildFailed();
+      this.sessionMetrics.recordRpcError(classifyQuoteError(message));
       return {
         success: false,
-        error: `swap build failed: ${error instanceof Error ? error.message : String(error)}`,
+        error: `swap build failed: ${message}`,
       };
     }
 
@@ -1269,11 +1300,29 @@ export class SolanaExecutor {
   }
 
   private skip(reason: string, opportunity: SwapOpportunity): ExecutionResult {
+    this.sessionMetrics.recordSkipped(reason);
     this.logger.info(`Skipping Solana execution: ${reason}`, {
       label: opportunity.label,
       inputMint: opportunity.inputMint,
       outputMint: opportunity.outputMint,
     });
+    return {
+      success: false,
+      skipped: true,
+      skipReason: reason,
+    };
+  }
+
+  /**
+   * Pre-gate filter rejection (route / AMM / venue-risk).
+   *
+   * Separate from skip() only because these paths already emit their own
+   * structured diagnostic log and must not log twice. Counted as skips, not
+   * as gate rejections — they occur before the execution gate runs, and
+   * conflating them would inflate the gate pass-rate denominator.
+   */
+  private filtered(reason: string): ExecutionResult {
+    this.sessionMetrics.recordSkipped(reason);
     return {
       success: false,
       skipped: true,
