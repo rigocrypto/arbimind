@@ -33,6 +33,17 @@ function healthySnapshot(overrides: Partial<ShadowSnapshot> = {}): ShadowSnapsho
     gateRejected: 400,
     avgNetEdgeUsd: 0.15,
     submitted: 0,
+    // A healthy run must have a working scorer: every opportunity is gated on
+    // a score existing, so an unscored run cannot be "healthy" by definition.
+    aiScoringMode: 'local',
+    ai: {
+      requested: 1_000,
+      returned: 1_000,
+      missing: 0,
+      errored: 0,
+      actionable: 400,
+      belowConfidence: 600,
+    },
     ...overrides,
   };
 }

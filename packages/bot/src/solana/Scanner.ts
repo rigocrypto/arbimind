@@ -111,6 +111,7 @@ export class SolanaScanner {
   constructor() {
     const aiConfig: AiScoringConfig = {
       horizonSec: config.aiPredictionHorizonSec,
+      mode: config.aiScoringMode,
     };
     if (config.aiPredictUrl) aiConfig.predictUrl = config.aiPredictUrl;
     if (config.aiLogUrl) aiConfig.logUrl = config.aiLogUrl;
@@ -153,6 +154,7 @@ export class SolanaScanner {
     // Session metrics — funnel counters, periodic summary
     const summaryIntervalMs = Number(process.env['SESSION_SUMMARY_INTERVAL_MS'] || '600000');
     this.sessionMetrics = new SessionMetrics({ summaryIntervalMs });
+    this.sessionMetrics.setAiScoringMode(config.aiScoringMode);
 
     this.executor = solanaExecutorConfig.tradingEnabled
       ? new SolanaExecutor(solanaExecutorConfig, feeEstimatorConfig, {
@@ -525,7 +527,7 @@ export class SolanaScanner {
       });
 
       // Score with AI
-      const score = await this.aiScoringService.scoreOpportunity(
+      const scoreOutcome = await this.aiScoringService.scoreOpportunityWithOutcome(
         {
           tokenA: pairBaseMeta?.symbol ?? pairBaseSymbol,
           tokenB: pairQuoteMeta?.symbol ?? pairQuoteSymbol,
@@ -545,9 +547,22 @@ export class SolanaScanner {
         },
         { chain: 'solana', pairAddress: poolAddress, volumeUsd: pairData.volumeH24, liquidityUsd: pairData.liquidityUsd }
       );
+      const score = scoreOutcome.score;
+
+      this.sessionMetrics.recordAiScore(
+        scoreOutcome.outcome,
+        scoreOutcome.score?.recommendation === 'EXECUTE',
+      );
 
       if (!score) {
-        logger.debug(`🤖 No AI score for ${poolAddress}`);
+        // Logged at warn, not debug: an unconfigured or failing scorer blocks
+        // every opportunity, and at debug level that produced a run of clean
+        // zeros indistinguishable from a quiet market.
+        logger.warn(`🤖 No AI score for ${poolAddress}`, {
+          outcome: scoreOutcome.outcome,
+          reason: scoreOutcome.reason,
+          mode: this.aiScoringService.mode,
+        });
         return;
       }
 

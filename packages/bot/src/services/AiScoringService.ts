@@ -1,4 +1,5 @@
 import type { ArbitrageOpportunity } from '../types';
+import type { AiScoringMode } from '../config';
 import crypto from 'crypto';
 import { Logger } from '../utils/Logger';
 
@@ -9,6 +10,8 @@ export interface AiScoreResult {
 }
 
 export interface AiScoringConfig {
+  /** How scoring is performed. Defaults to URL-derived behaviour when omitted. */
+  mode?: AiScoringMode;
   predictUrl?: string;
   logUrl?: string;
   serviceKey?: string;
@@ -16,10 +19,106 @@ export interface AiScoringConfig {
   horizonSec?: number;
 }
 
+/**
+ * Why a scoring attempt did not yield a usable score.
+ *
+ * Distinguishing these is the entire point: an unconfigured scorer, a scorer
+ * that erred, and a scorer that answered are three different situations that
+ * previously all produced `null` and therefore identical silent zeros.
+ */
+export type AiScoreOutcome = 'scored' | 'unconfigured' | 'disabled' | 'error';
+
+export interface AiScoreOutcomeResult {
+  outcome: AiScoreOutcome;
+  score: AiScoreResult | null;
+  /** Present when outcome is 'error' or 'unconfigured'; safe to log. */
+  reason?: string;
+}
+
 export class AiScoringService {
   private readonly logger = new Logger('AiScoringService');
 
   constructor(private readonly config: AiScoringConfig) {}
+
+  /** Effective mode, derived from config when not set explicitly. */
+  public get mode(): AiScoringMode {
+    return this.config.mode ?? (this.config.predictUrl ? 'remote' : 'disabled');
+  }
+
+  /**
+   * Score an opportunity, reporting *why* when no score is produced.
+   *
+   * Prefer this over {@link scoreOpportunity}: the boolean-ish `null` returned
+   * by the older method cannot distinguish "not configured" from "the model
+   * declined", which is how an unconfigured scorer previously masqueraded as a
+   * quiet market for an entire run.
+   */
+  public async scoreOpportunityWithOutcome(
+    opportunity: ArbitrageOpportunity,
+    context: { chain: 'evm' | 'solana'; pairAddress: string; volumeUsd?: number; liquidityUsd?: number }
+  ): Promise<AiScoreOutcomeResult> {
+    const mode = this.mode;
+
+    if (mode === 'disabled') {
+      return {
+        outcome: 'disabled',
+        score: null,
+        reason: 'AI_SCORING_MODE=disabled (or AI_PREDICT_URL unset and no mode chosen)',
+      };
+    }
+
+    if (mode === 'remote' && !this.config.predictUrl) {
+      return {
+        outcome: 'unconfigured',
+        score: null,
+        reason: 'AI_SCORING_MODE=remote but AI_PREDICT_URL is not set',
+      };
+    }
+
+    try {
+      const score =
+        mode === 'local'
+          ? await this.scoreLocally(opportunity, context)
+          : await this.scoreOpportunity(opportunity, context);
+      if (!score) {
+        return { outcome: 'error', score: null, reason: 'scorer returned no usable result' };
+      }
+      return { outcome: 'scored', score };
+    } catch (error) {
+      return {
+        outcome: 'error',
+        score: null,
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * In-process scoring via the bundled predictor.
+   *
+   * `predictOpportunity` falls back to rule-based scoring when no TF.js model
+   * file is present, so this path works with no model artefact and no network.
+   */
+  private async scoreLocally(
+    opportunity: ArbitrageOpportunity,
+    context: { chain: 'evm' | 'solana'; pairAddress: string; volumeUsd?: number; liquidityUsd?: number }
+  ): Promise<AiScoreResult | null> {
+    const { predictOpportunity } = await import('../ai/predictor.js');
+
+    // predictOpportunity expects [delta (fraction), liquidity, volatility, sentiment].
+    // profitPercent is a percentage, so convert; volatility and sentiment are not
+    // available at this call site, so use the predictor's own documented defaults
+    // rather than inventing signal that does not exist.
+    const profitPct = opportunity.profitPercent ?? 0;
+    const features = [Math.abs(profitPct) / 100, context.liquidityUsd ?? 0, 0.02, 0];
+
+    const result = await predictOpportunity(features);
+    return {
+      successProb: result.confidence,
+      expectedProfitPct: profitPct,
+      recommendation: result.execute ? 'EXECUTE' : 'WAIT',
+    };
+  }
 
   public async scoreOpportunity(
     opportunity: ArbitrageOpportunity,
