@@ -112,6 +112,26 @@ export function deriveRecommendation(snapshot: ShadowSnapshot): ShadowRecommenda
     };
   }
 
+  // AI scoring blockers. Every opportunity is gated on a score existing, so an
+  // unscored run produces zeros through the whole executor funnel. Reporting
+  // "no opportunities" for that is the exact failure this check prevents.
+  const ai = snapshot.ai;
+  if (ai) {
+    if (snapshot.aiScoringMode === 'disabled' || snapshot.aiScoringMode === 'unknown') {
+      blockers.push(
+        `AI scoring mode is "${snapshot.aiScoringMode}" — no opportunity can reach the executor. ` +
+          'Set AI_SCORING_MODE=local (or configure AI_PREDICT_URL) before drawing conclusions.',
+      );
+    }
+    if (ai.requested > 0 && ai.returned === 0) {
+      const detail = ai.missing > 0 ? `${ai.missing} missing` : `${ai.errored} errored`;
+      blockers.push(
+        `AI scorer answered 0 of ${ai.requested} requests (${detail}) — the funnel never started, ` +
+          'so zero opportunities does not mean a quiet market',
+      );
+    }
+  }
+
   if (snapshot.quotesRequested === 0) {
     blockers.push('no quotes were requested — scanner or executor never reached the quote stage');
   }
@@ -218,6 +238,25 @@ export function renderShadowReport(snapshot: ShadowSnapshot): string {
   push('start', snapshot.startedAtIso);
   push('captured', snapshot.capturedAtIso);
   push('duration', `${windowHours.toFixed(2)}h`);
+  lines.push('');
+
+  lines.push('AI scoring:');
+  push('mode', snapshot.aiScoringMode ?? 'unknown');
+  if (snapshot.ai) {
+    push('requested', String(snapshot.ai.requested));
+    push('returned', String(snapshot.ai.returned));
+    push('actionable', String(snapshot.ai.actionable));
+    push('missing', String(snapshot.ai.missing));
+    push('below confidence', String(snapshot.ai.belowConfidence));
+    push('errored', String(snapshot.ai.errored));
+    if (snapshot.ai.requested > 0 && snapshot.ai.returned === 0) {
+      lines.push('  ^ scorer never answered — the executor funnel below never started');
+    }
+  }
+  // Stated plainly because the numbers invite the opposite reading: the
+  // scanner's execute decision comes from net edge, not from this score.
+  lines.push('  note: scorer verdict is observational — execution is gated on net edge,');
+  lines.push('        and a score is currently required only to be present, not favourable');
   lines.push('');
 
   lines.push('opportunities:');

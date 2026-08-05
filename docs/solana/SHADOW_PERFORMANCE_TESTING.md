@@ -52,6 +52,31 @@ SOLANA_ONLY_DIRECT_ROUTES=true
 SOLANA_ALLOW_MULTIHOP=false
 ```
 
+### AI scoring mode (required for a run to produce data)
+
+The scanner gates every opportunity on a score existing. With no scorer, the
+executor funnel is unreachable and the run produces zeros that look like a quiet
+market. Set the mode explicitly:
+
+```bash
+AI_SCORING_MODE=local
+```
+
+| Mode | Behaviour |
+|---|---|
+| `remote` | POSTs to `AI_PREDICT_URL`. Reports scorer unavailable if the URL is unset. |
+| `local` | In-process `predictOpportunity()`. No HTTP service needed; works with no model file (falls back to rule-based scoring). |
+| `disabled` | Scoring does not run. The report says so explicitly and forces `NOT READY`. |
+
+Default preserves prior behaviour: `remote` when `AI_PREDICT_URL` is set,
+otherwise `disabled`. `local` must be opted into.
+
+> The scorer's verdict is **observational**. The scanner's execute decision is
+> derived from net edge (`effectiveConfidence = clamp(0.5 + |netEdgeBps| / scale)`),
+> not from the score — a score is currently required only to be *present*, not
+> favourable. The report states this next to the counters so the numbers are not
+> misread as the model having driven the outcome.
+
 `SOLANA_TRADING_ENABLED=true` looks alarming next to `SOLANA_LOG_ONLY=true`,
 but both are required. `SOLANA_TRADING_ENABLED=false` short-circuits the whole
 pipeline before it ever requests a quote, so the run would produce no data at
@@ -80,8 +105,10 @@ the run is still in progress without ever reading a half-written file.
 #    Do not proceed unless LOG_ONLY is true.
 echo "$SOLANA_LOG_ONLY"   # must print: true
 
-# 2. Start the bot with snapshot persistence enabled.
-SOLANA_SHADOW_SNAPSHOT_PATH=./shadow-24h.json pnpm --filter @arbimind/bot start
+# 2. Start the bot with snapshot persistence and a working scorer.
+AI_SCORING_MODE=local \
+SOLANA_SHADOW_SNAPSHOT_PATH=./shadow-24h.json \
+pnpm --filter @arbimind/bot start
 
 # 3. Let it run for 24 hours.
 
@@ -237,6 +264,8 @@ The thresholds are in `READINESS` in
 | Criterion | Threshold |
 |---|---|
 | Transactions submitted | **must be 0** — any submission forces `NOT READY` |
+| AI scoring mode | must not be `disabled`/`unknown` — forces `NOT READY` |
+| AI scores returned | must be > 0 when any were requested — forces `NOT READY` |
 | Window | ≥ 24h |
 | Gate evaluations | ≥ 200 |
 | Gate passes | ≥ 10 |
@@ -313,8 +342,29 @@ not set during the run, so nothing was written. The CLI exits non-zero here on
 purpose: a missing run must not be mistaken for an empty one.
 
 **Report shows `0` for everything** — the bot was running but never reached the
-quote stage. Check `SOLANA_TRADING_ENABLED=true` and look at
-`top pre-gate skips`.
+quote stage. Read the `AI scoring:` section first: if `returned` is 0 while
+`requested` is not, the scorer never answered and the funnel never started.
+Set `AI_SCORING_MODE=local`. Otherwise check `SOLANA_TRADING_ENABLED=true` and
+look at `top pre-gate skips`.
+
+**`🤖 No AI score` in the logs** — scoring is unconfigured or failing. The log
+line carries `outcome` and `reason`. `AI_SCORING_MODE=local` needs no external
+service.
+
+**Watched pool returns nothing** — DexScreener answers `HTTP 200` with
+`pairs: null` for an address that does not resolve, which looks identical to a
+quiet market. Verify a pool before a long run:
+
+```bash
+curl -s "https://api.dexscreener.com/latest/dex/pairs/solana/<POOL>" | head -c 200
+```
+
+Known-good SOL/USDC pools:
+
+```
+Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE   orca
+58oQChx4yWmvKdwLLZzBi4ChoCc2fqCUWBkwMihLYQo2   raydium
+```
 
 **`<-- NOT LOG-ONLY` in the report** — `SOLANA_LOG_ONLY` was not `true`.
 Transactions were submitted. Stop, discard the run, and investigate before

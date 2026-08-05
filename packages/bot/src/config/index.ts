@@ -9,6 +9,44 @@ const logger = new Logger('Config');
 const MAINNET_V2_ROUTER = '0x7a250d5630b4cf539739df2c5dacb4c659f2488d';
 const MAINNET_V3_QUOTER = '0xb27308f9f90d607463bb33ea1bebb41c27ce5ab6';
 
+/**
+ * How opportunity scoring is performed.
+ *
+ * - `remote`   — POST to AI_PREDICT_URL. The historical behaviour.
+ * - `local`    — in-process `predictOpportunity()`; no HTTP service required.
+ * - `disabled` — scoring does not run; the scanner reports this explicitly
+ *                rather than emitting zeros that look like a quiet market.
+ */
+export type AiScoringMode = 'remote' | 'local' | 'disabled';
+
+/**
+ * Resolve the scoring mode.
+ *
+ * The default deliberately preserves existing behaviour: `remote` when a
+ * predict URL is configured, otherwise `disabled`. `local` must be opted into,
+ * so no deployment silently changes how opportunities are scored.
+ *
+ * `disabled` is the default rather than `local` because an unconfigured
+ * scorer previously produced silent zeros; making it loud is a reporting
+ * change, but making it *score differently* without being asked would not be.
+ */
+export function resolveAiScoringMode(
+  raw: string | undefined,
+  predictUrl: string | undefined,
+): AiScoringMode {
+  const mode = normalizeEnvValue(raw).toLowerCase();
+  if (mode === 'remote' || mode === 'local' || mode === 'disabled') {
+    return mode;
+  }
+  if (mode !== '') {
+    logger.warn(
+      `[CONFIG] Unrecognised AI_SCORING_MODE "${mode}"; falling back to URL-derived default. ` +
+        'Valid values: remote, local, disabled.',
+    );
+  }
+  return normalizeEnvValue(predictUrl) ? 'remote' : 'disabled';
+}
+
 function normalizeEnvValue(value: string | undefined): string {
   if (!value) return '';
   const trimmed = value.trim();
@@ -95,6 +133,7 @@ export interface BotConfig {
   alertDiscordWebhook?: string | undefined;
 
   // AI Scoring (optional)
+  aiScoringMode: AiScoringMode;
   aiPredictUrl?: string | undefined;
   aiLogUrl?: string | undefined;
   aiServiceKey?: string | undefined;
@@ -302,6 +341,10 @@ function createConfig(): BotConfig {
     alertDiscordWebhook: process.env['ALERT_DISCORD_WEBHOOK'] || undefined,
 
     // AI Scoring (optional)
+    aiScoringMode: resolveAiScoringMode(
+      process.env['AI_SCORING_MODE'],
+      process.env['AI_PREDICT_URL'],
+    ),
     aiPredictUrl: process.env['AI_PREDICT_URL'],
     aiLogUrl: process.env['AI_LOG_URL'],
     aiServiceKey: process.env['AI_SERVICE_KEY'],

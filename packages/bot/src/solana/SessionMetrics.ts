@@ -78,6 +78,31 @@ export interface RpcHealthCounters {
   latencyFailures: number;
 }
 
+/**
+ * AI scoring funnel.
+ *
+ * Every opportunity is gated on a score being produced, so an unscored run
+ * yields zeros across the entire executor funnel. These counters exist so that
+ * "no opportunities" can be told apart from "the scorer never answered" —
+ * previously indistinguishable.
+ *
+ * Note `actionable` and `belowConfidence` describe the *scorer's own verdict*.
+ * The scanner's execution decision is currently derived from net edge, not from
+ * the score, so these are observational rather than gating. See the report's
+ * AI scoring section, which states this explicitly.
+ */
+export interface AiScoringCounters {
+  requested: number;
+  returned: number;
+  /** Scorer not configured, or explicitly disabled. */
+  missing: number;
+  errored: number;
+  /** Scorer recommended EXECUTE. */
+  actionable: number;
+  /** Scorer answered but did not recommend execution. */
+  belowConfidence: number;
+}
+
 export interface FeeNormStats {
   count: number;
   totalFeeBps: number;
@@ -116,6 +141,9 @@ export interface ShadowSnapshot extends SessionSummary {
   quoteLatency: LatencyStats;
   swapBuildLatency: LatencyStats;
   rpc: RpcHealthCounters;
+  /** How scoring was configured for this run. */
+  aiScoringMode: string;
+  ai: AiScoringCounters;
   /** AMM labels seen in quote route plans, by count. */
   ammLabels: Record<string, number>;
   /** Route shapes seen (`direct`, `multihop_2`, ...), by count. */
@@ -290,6 +318,15 @@ export class SessionMetrics {
   private rpcRateLimited = 0;
   private rpcLatencyFailures = 0;
 
+  // AI scoring funnel
+  private aiScoringMode = 'unknown';
+  private aiRequested = 0;
+  private aiReturned = 0;
+  private aiMissing = 0;
+  private aiErrored = 0;
+  private aiActionable = 0;
+  private aiBelowConfidence = 0;
+
   // Venue / route observation
   private ammLabels: Record<string, number> = {};
   private routeTypes: Record<string, number> = {};
@@ -353,6 +390,31 @@ export class SessionMetrics {
     this.ammLabels[label] = (this.ammLabels[label] ?? 0) + 1;
     const shape = routeLegs <= 1 ? 'direct' : `multihop_${routeLegs}`;
     this.routeTypes[shape] = (this.routeTypes[shape] ?? 0) + 1;
+  }
+
+  /** Record how scoring is configured, so the report can name it. */
+  setAiScoringMode(mode: string): void {
+    this.aiScoringMode = mode;
+  }
+
+  /**
+   * Record one scoring attempt and its outcome.
+   *
+   * `actionable` is the scorer's own EXECUTE recommendation. It is recorded for
+   * visibility only — it does not currently gate execution.
+   */
+  recordAiScore(outcome: 'scored' | 'unconfigured' | 'disabled' | 'error', actionable?: boolean): void {
+    this.aiRequested++;
+    if (outcome === 'scored') {
+      this.aiReturned++;
+      if (actionable) this.aiActionable++;
+      else this.aiBelowConfidence++;
+    } else if (outcome === 'error') {
+      this.aiErrored++;
+    } else {
+      // 'unconfigured' and 'disabled' both mean no scorer was available.
+      this.aiMissing++;
+    }
   }
 
   recordSlippageCost(slippageCostUsd: number): void {
@@ -518,6 +580,15 @@ export class SessionMetrics {
         errors: this.rpcErrors,
         rateLimited: this.rpcRateLimited,
         latencyFailures: this.rpcLatencyFailures,
+      },
+      aiScoringMode: this.aiScoringMode,
+      ai: {
+        requested: this.aiRequested,
+        returned: this.aiReturned,
+        missing: this.aiMissing,
+        errored: this.aiErrored,
+        actionable: this.aiActionable,
+        belowConfidence: this.aiBelowConfidence,
       },
       ammLabels: { ...this.ammLabels },
       routeTypes: { ...this.routeTypes },
