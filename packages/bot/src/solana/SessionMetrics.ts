@@ -14,6 +14,16 @@ const logger = new Logger('SessionMetrics');
 export interface FunnelSnapshot {
   /** Opportunities discovered by scanner */
   discovered: number;
+  /** Opportunities skipped before reaching the execution gate */
+  skipped: number;
+  /** Skip reason breakdown (pre-gate: caps, guards, filters) */
+  skipReasons: Record<string, number>;
+  /** Jupiter quote requests issued */
+  quotesRequested: number;
+  /** Jupiter quote requests that threw or returned unusable data */
+  quoteFailures: number;
+  /** Swap build attempts (succeeded + failed) */
+  swapBuildsAttempted: number;
   /** Opportunities that entered the execution gate */
   gateEvaluated: number;
   /** Opportunities that passed the execution gate */
@@ -47,6 +57,27 @@ export interface QuoteAgeStats {
   maxMs: number;
 }
 
+/** Rolling latency accumulator (count/total/min/max) for a single measured stage. */
+export interface LatencyStats {
+  count: number;
+  avgMs: number | null;
+  minMs: number | null;
+  maxMs: number | null;
+}
+
+/**
+ * RPC health counters.
+ *
+ * `rateLimited` is tracked separately from `errors` because a 429 during a
+ * shadow run means "reduce scan rate", while a non-429 error means
+ * "investigate the provider" — conflating them hides which one is happening.
+ */
+export interface RpcHealthCounters {
+  errors: number;
+  rateLimited: number;
+  latencyFailures: number;
+}
+
 export interface FeeNormStats {
   count: number;
   totalFeeBps: number;
@@ -65,6 +96,32 @@ export interface SessionSummary extends FunnelSnapshot {
   avgExpectedGrossUsd: number | null;
   avgExecutionFeeUsd: number | null;
   avgNetEdgeUsd: number | null;
+  avgSlippageCostUsd: number | null;
+}
+
+/**
+ * Full shadow-run snapshot — everything a 24–72h log-only report needs.
+ *
+ * Serializable by design: written to disk periodically so the report script can
+ * read a run that is still in progress, or one whose process has already exited.
+ *
+ * Contains no wallet keys, RPC URLs, provider API keys, or signatures. Only
+ * counters, latencies, USD aggregates and venue labels.
+ */
+export interface ShadowSnapshot extends SessionSummary {
+  /** Schema version, so the report script can refuse snapshots it cannot read. */
+  schemaVersion: 1;
+  startedAtIso: string;
+  capturedAtIso: string;
+  quoteLatency: LatencyStats;
+  swapBuildLatency: LatencyStats;
+  rpc: RpcHealthCounters;
+  /** AMM labels seen in quote route plans, by count. */
+  ammLabels: Record<string, number>;
+  /** Route shapes seen (`direct`, `multihop_2`, ...), by count. */
+  routeTypes: Record<string, number>;
+  bestGrossOverallUsd: number;
+  bestGrossPerPair: Record<string, number>;
 }
 
 // ── Config ─────────────────────────────────────────────────────────
@@ -78,6 +135,102 @@ const DEFAULT_CONFIG: SessionMetricsConfig = {
   summaryIntervalMs: 600_000,
 };
 
+// ── Reason normalisation ───────────────────────────────────────────
+
+/**
+ * Collapse a free-text skip reason into a stable, low-cardinality key.
+ *
+ * Executor skip strings interpolate dollar amounts, mint addresses and
+ * millisecond values (`notional $4.13 exceeds max $5.00`). Counting them raw
+ * would produce thousands of singleton buckets over a 72h run and make
+ * "top reject reasons" useless, so each known family maps to a fixed key.
+ */
+export function normaliseReason(reason: string): string {
+  const r = reason.toLowerCase().trim();
+
+  // Prefixed families emitted by the route/AMM/risk/gate filters.
+  const prefixed: Array<[string, string]> = [
+    ['execution gate:', 'execution_gate'],
+    ['route filter:', 'route_filter'],
+    ['amm filter:', 'amm_filter'],
+    ['risk filter:', 'risk_filter'],
+    ['inventory gate:', 'inventory_gate'],
+    ['funding_cooldown', 'funding_cooldown'],
+    ['below_min_notional', 'below_min_notional'],
+  ];
+  for (const [prefix, key] of prefixed) {
+    if (r.startsWith(prefix)) {
+      // Keep the specific sub-reason for gate rejections: it is the single most
+      // actionable field in the report, and it is already low-cardinality.
+      if (key === 'execution_gate') {
+        const sub = r.slice(prefix.length).trim().split(/\s+/)[0];
+        return sub ? `execution_gate:${sub}` : key;
+      }
+      return key;
+    }
+  }
+
+  const contains: Array<[string, string]> = [
+    ['solana_trading_enabled is false', 'trading_disabled'],
+    ['exceeds max', 'notional_cap'],
+    ['below minimum', 'below_min_profit'],
+    ['daily loss cap', 'daily_loss_cap'],
+    ['solana_private_key', 'missing_wallet_key'],
+    ['missing solana_rpc_url', 'missing_rpc_url'],
+    ['inventory lock held', 'inventory_lock_held'],
+    ['dynamic trade size', 'sizing_failed'],
+    ['zero outamount', 'zero_out_amount'],
+    ['quote stale', 'quote_stale'],
+    ['stop loss', 'stop_loss'],
+    ['take profit', 'take_profit'],
+  ];
+  for (const [needle, key] of contains) {
+    if (r.includes(needle)) return key;
+  }
+
+  // Unknown shape: strip volatile numerics so at least near-duplicates merge,
+  // and cap length so one malformed string cannot dominate the report.
+  return r
+    .replace(/\$?\d[\d,._]*/g, 'N')
+    .replace(/\s+/g, '_')
+    .slice(0, 48);
+}
+
+// ── Latency helpers ────────────────────────────────────────────────
+
+interface LatencyAccumulator {
+  count: number;
+  totalMs: number;
+  minMs: number;
+  maxMs: number;
+}
+
+function newLatencyAccumulator(): LatencyAccumulator {
+  return { count: 0, totalMs: 0, minMs: Infinity, maxMs: -Infinity };
+}
+
+function observeLatency(acc: LatencyAccumulator, ms: number): void {
+  // Negative or non-finite durations mean the caller mis-measured; recording
+  // them would silently skew the average the report is meant to be trusted for.
+  if (!Number.isFinite(ms) || ms < 0) return;
+  acc.count++;
+  acc.totalMs += ms;
+  if (ms < acc.minMs) acc.minMs = ms;
+  if (ms > acc.maxMs) acc.maxMs = ms;
+}
+
+function summariseLatency(acc: LatencyAccumulator): LatencyStats {
+  if (acc.count === 0) {
+    return { count: 0, avgMs: null, minMs: null, maxMs: null };
+  }
+  return {
+    count: acc.count,
+    avgMs: +(acc.totalMs / acc.count).toFixed(1),
+    minMs: +acc.minMs.toFixed(1),
+    maxMs: +acc.maxMs.toFixed(1),
+  };
+}
+
 // ── Class ──────────────────────────────────────────────────────────
 
 export class SessionMetrics {
@@ -87,6 +240,11 @@ export class SessionMetrics {
 
   // Funnel counters
   private discovered = 0;
+  private skipped = 0;
+  private skipReasons: Record<string, number> = {};
+  private quotesRequested = 0;
+  private quoteFailures = 0;
+  private swapBuildsAttempted = 0;
   private gateEvaluated = 0;
   private gatePassed = 0;
   private gateRejected = 0;
@@ -119,6 +277,23 @@ export class SessionMetrics {
   private netEdgeUsdTotal = 0;
   private tradeCount = 0;
 
+  // Slippage cost tracking (separate count: not every gate eval yields an estimate)
+  private slippageCostUsdTotal = 0;
+  private slippageCostCount = 0;
+
+  // Stage latency tracking
+  private quoteLatency = newLatencyAccumulator();
+  private swapBuildLatency = newLatencyAccumulator();
+
+  // RPC health
+  private rpcErrors = 0;
+  private rpcRateLimited = 0;
+  private rpcLatencyFailures = 0;
+
+  // Venue / route observation
+  private ammLabels: Record<string, number> = {};
+  private routeTypes: Record<string, number> = {};
+
   // Best gross edge per pair (reset each summary interval)
   private bestGrossPerPair: Record<string, number> = {};
   private bestGrossOverall = 0;
@@ -131,6 +306,59 @@ export class SessionMetrics {
 
   recordDiscovered(): void {
     this.discovered++;
+  }
+
+  /**
+   * An opportunity was dropped before the execution gate ran.
+   *
+   * `reason` is normalised to a low-cardinality key so the report's
+   * "top reject reasons" stays readable across a 72h run — raw skip strings
+   * embed dollar amounts and mint addresses and would never group.
+   */
+  recordSkipped(reason: string): void {
+    this.skipped++;
+    const key = normaliseReason(reason);
+    this.skipReasons[key] = (this.skipReasons[key] ?? 0) + 1;
+  }
+
+  recordQuoteRequested(): void {
+    this.quotesRequested++;
+  }
+
+  recordQuoteFailed(): void {
+    this.quoteFailures++;
+  }
+
+  recordQuoteLatency(ms: number): void {
+    observeLatency(this.quoteLatency, ms);
+  }
+
+  recordSwapBuildAttempted(): void {
+    this.swapBuildsAttempted++;
+  }
+
+  recordSwapBuildLatency(ms: number): void {
+    observeLatency(this.swapBuildLatency, ms);
+  }
+
+  recordRpcError(kind: 'error' | 'rate_limited' | 'latency' = 'error'): void {
+    if (kind === 'rate_limited') this.rpcRateLimited++;
+    else if (kind === 'latency') this.rpcLatencyFailures++;
+    else this.rpcErrors++;
+  }
+
+  /** Record the venue label and route shape observed on a quote. */
+  recordRouteObservation(ammLabel: string, routeLegs: number): void {
+    const label = ammLabel.trim() || 'unknown';
+    this.ammLabels[label] = (this.ammLabels[label] ?? 0) + 1;
+    const shape = routeLegs <= 1 ? 'direct' : `multihop_${routeLegs}`;
+    this.routeTypes[shape] = (this.routeTypes[shape] ?? 0) + 1;
+  }
+
+  recordSlippageCost(slippageCostUsd: number): void {
+    if (!Number.isFinite(slippageCostUsd)) return;
+    this.slippageCostUsdTotal += slippageCostUsd;
+    this.slippageCostCount++;
   }
 
   recordGateEvaluated(): void {
@@ -219,6 +447,11 @@ export class SessionMetrics {
   getFunnelSnapshot(): FunnelSnapshot {
     return {
       discovered: this.discovered,
+      skipped: this.skipped,
+      skipReasons: { ...this.skipReasons },
+      quotesRequested: this.quotesRequested,
+      quoteFailures: this.quoteFailures,
+      swapBuildsAttempted: this.swapBuildsAttempted,
       gateEvaluated: this.gateEvaluated,
       gatePassed: this.gatePassed,
       gateRejected: this.gateRejected,
@@ -261,6 +494,35 @@ export class SessionMetrics {
       avgNetEdgeUsd: this.tradeCount > 0
         ? +(this.netEdgeUsdTotal / this.tradeCount).toFixed(6)
         : null,
+      avgSlippageCostUsd: this.slippageCostCount > 0
+        ? +(this.slippageCostUsdTotal / this.slippageCostCount).toFixed(6)
+        : null,
+    };
+  }
+
+  /**
+   * Full serializable snapshot for shadow reporting.
+   *
+   * Deliberately carries no signatures, wallet addresses, RPC URLs or API keys
+   * — this object is written to disk and read by the report script.
+   */
+  getShadowSnapshot(): ShadowSnapshot {
+    return {
+      ...this.getSummary(),
+      schemaVersion: 1,
+      startedAtIso: new Date(this.startedAt).toISOString(),
+      capturedAtIso: new Date().toISOString(),
+      quoteLatency: summariseLatency(this.quoteLatency),
+      swapBuildLatency: summariseLatency(this.swapBuildLatency),
+      rpc: {
+        errors: this.rpcErrors,
+        rateLimited: this.rpcRateLimited,
+        latencyFailures: this.rpcLatencyFailures,
+      },
+      ammLabels: { ...this.ammLabels },
+      routeTypes: { ...this.routeTypes },
+      bestGrossOverallUsd: +this.bestGrossOverall.toFixed(6),
+      bestGrossPerPair: { ...this.bestGrossPerPair },
     };
   }
 
