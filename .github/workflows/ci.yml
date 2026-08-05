@@ -48,6 +48,12 @@ jobs:
       # Keep the existing lint gate shape: only UI lint is currently clean on main.
       - run: pnpm --filter @arbimind/ui lint
 
+      # UI type errors were previously invisible: `ui type-check` ran `next build`,
+      # and next.config sets ignoreBuildErrors: true, so nothing validated types.
+      # CI ran no typecheck step at all.
+      - name: Typecheck all workspaces
+        run: pnpm run typecheck
+
       - uses: foundry-rs/foundry-toolchain@v1
         with:
           version: stable

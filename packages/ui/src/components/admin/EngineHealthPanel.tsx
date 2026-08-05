@@ -1,6 +1,7 @@
 'use client';
 
 import { Activity, Wifi, Clock, Search } from 'lucide-react';
+import type { RpcHealthResponse } from '@/lib/adminApi';
 
 interface EngineHealthPanelProps {
   engineDetail: {
@@ -13,11 +14,7 @@ interface EngineHealthPanelProps {
     uptime: number;
     timestamp: number;
   } | null;
-  rpcHealth: {
-    ok: boolean;
-    health: Record<string, string>;
-    details: Record<string, { status: string; rpcUrl: string | null; latencyMs?: number; error?: string }>;
-  } | null;
+  rpcHealth: RpcHealthResponse | null;
   engineBlocked: boolean;
   blockedReason?: string;
   engineMode?: 'simulation' | 'live' | 'unknown';
