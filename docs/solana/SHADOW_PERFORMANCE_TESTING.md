@@ -213,7 +213,12 @@ these as an optimistic ceiling: real execution adds drag that quotes do not
 capture.
 
 **`risk notes`** — `transactions submitted` must be `0`. If it is not, the
-report prints `<-- NOT LOG-ONLY` and the run was misconfigured; discard it.
+report prints `<-- NOT LOG-ONLY` **and the recommendation is forced to
+`NOT READY`**. A run that submitted anything was not a shadow run, so none of
+its numbers describe log-only behaviour and no readiness conclusion may be
+drawn from it. Discard it. This disqualification outranks every other signal —
+a contaminated run cannot reach a canary verdict no matter how good the rest of
+its metrics look.
 
 **`recommendation`** — derived conservatively and fails closed. See below.
 
@@ -221,7 +226,7 @@ report prints `<-- NOT LOG-ONLY` and the run was misconfigured; discard it.
 
 | Verdict | Meaning |
 |---|---|
-| `NOT READY` | The pipeline itself is unhealthy — no quotes, high quote failures, unreliable swap builds, or significant RPC rate limiting. Fix before drawing any economic conclusion. |
+| `NOT READY` | Either the run was **contaminated by live submissions** (checked first, outranks everything), or the pipeline is unhealthy — no quotes, high quote failures, unreliable swap builds, or significant RPC rate limiting. Fix before drawing any economic conclusion. |
 | `CONTINUE SHADOW` | Nothing is wrong; there is just not enough evidence yet. Window under 24h or fewer than 200 gate evaluations. |
 | `TUNE THRESHOLDS` | Enough evidence, unfavourable result. The gate rejects nearly everything, or passing trades are too marginal to survive execution drag. |
 | `READY FOR $1 CANARY` | Every criterion met. **This is a recommendation, not an authorisation.** |
@@ -231,6 +236,7 @@ The thresholds are in `READINESS` in
 
 | Criterion | Threshold |
 |---|---|
+| Transactions submitted | **must be 0** — any submission forces `NOT READY` |
 | Window | ≥ 24h |
 | Gate evaluations | ≥ 200 |
 | Gate passes | ≥ 10 |

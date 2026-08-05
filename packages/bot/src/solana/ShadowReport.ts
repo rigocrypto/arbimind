@@ -96,6 +96,22 @@ export function deriveRecommendation(snapshot: ShadowSnapshot): ShadowRecommenda
   // --- Hard blockers: something is wrong with the pipeline itself. ---
   const blockers: string[] = [];
 
+  // Contamination check first. A shadow run that submitted anything was not a
+  // shadow run, so none of its numbers describe log-only behaviour and no
+  // readiness conclusion may be drawn from it. Flagging this in the report body
+  // is not enough -- an advisory marker beside a "READY" verdict is exactly the
+  // kind of signal that gets read as success.
+  if (snapshot.submitted > 0) {
+    return {
+      verdict: 'not ready',
+      reasons: [
+        `shadow run was contaminated by ${snapshot.submitted} live submission(s) — SOLANA_LOG_ONLY was not true`,
+        'discard this run: its metrics do not describe log-only behaviour',
+        'no canary readiness conclusion can be drawn from a contaminated run',
+      ],
+    };
+  }
+
   if (snapshot.quotesRequested === 0) {
     blockers.push('no quotes were requested — scanner or executor never reached the quote stage');
   }

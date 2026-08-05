@@ -38,6 +38,46 @@ function healthySnapshot(overrides: Partial<ShadowSnapshot> = {}): ShadowSnapsho
 }
 
 describe('deriveRecommendation', () => {
+  describe('contaminated run disqualification', () => {
+    it('returns "not ready" when any transaction was submitted', () => {
+      // An otherwise perfect run: every readiness criterion met.
+      const rec = deriveRecommendation(healthySnapshot({ submitted: 1 }));
+      expect(rec.verdict).toBe('not ready');
+      expect(rec.reasons.join(' ')).toContain('contaminated');
+      expect(rec.reasons.join(' ')).toContain('SOLANA_LOG_ONLY was not true');
+    });
+
+    it('contamination outranks every other signal', () => {
+      // Even a snapshot that would otherwise be the strongest possible case
+      // must not reach a canary verdict once submissions are present.
+      const perfect = healthySnapshot({
+        sessionDurationSec: 72 * 3600,
+        gateEvaluated: 5_000,
+        gatePassed: 1_000,
+        quoteFailures: 0,
+        avgNetEdgeUsd: 5,
+        submitted: 1,
+      });
+      expect(deriveRecommendation(perfect).verdict).toBe('not ready');
+    });
+
+    it('a single submission is enough to disqualify', () => {
+      expect(deriveRecommendation(healthySnapshot({ submitted: 1 })).verdict).toBe('not ready');
+      // ...and the clean control still passes, so the check is not vacuous.
+      expect(deriveRecommendation(healthySnapshot({ submitted: 0 })).verdict).toBe(
+        'ready for $1 canary',
+      );
+    });
+
+    it('the rendered report both flags and disqualifies', () => {
+      const report = renderShadowReport(healthySnapshot({ submitted: 4 }));
+      expect(report).toContain('NOT LOG-ONLY');
+      expect(report).toContain('NOT READY');
+      // The two must never disagree: a flagged run cannot show a canary verdict.
+      expect(report).not.toContain('READY FOR $1 CANARY');
+    });
+  });
+
   it('returns "not ready" when no quotes were requested', () => {
     const rec = deriveRecommendation(healthySnapshot({ quotesRequested: 0 }));
     expect(rec.verdict).toBe('not ready');
