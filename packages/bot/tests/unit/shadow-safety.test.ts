@@ -42,6 +42,25 @@ const { sendTransaction, confirmTransaction, getLatestBlockhash, signedTransacti
   }),
 );
 
+/**
+ * Silence the winston logger for this file.
+ *
+ * The readiness-reachability test below drives the executor through 200+ gate
+ * evaluations, each emitting several structured log lines. Left unsilenced that
+ * floods vitest's console-log RPC (observed: `EnvironmentTeardownError: Closing
+ * rpc while "onUserConsoleLog" was pending`) and loads the run enough to trip
+ * unrelated env-sensitive tests in other files. A test must not destabilise the
+ * suite it runs in.
+ */
+vi.mock('../../src/utils/Logger', () => ({
+  Logger: class {
+    info(): void {}
+    warn(): void {}
+    error(): void {}
+    debug(): void {}
+  },
+}));
+
 vi.mock('@solana/web3.js', async () => {
   const actual = await vi.importActual<typeof import('@solana/web3.js')>('@solana/web3.js');
   // Declared inside the factory: the executor calls `new Connection(...)`, so
@@ -69,6 +88,7 @@ import bs58 from 'bs58';
 import { SolanaExecutor, classifyQuoteError } from '../../src/solana/Executor';
 import type { SolanaExecutorConfig, SwapOpportunity } from '../../src/solana/Executor';
 import { SessionMetrics } from '../../src/solana/SessionMetrics';
+import { deriveRecommendation, READINESS } from '../../src/solana/ShadowReport';
 
 // ── Fixtures ───────────────────────────────────────────────────────
 
@@ -460,6 +480,70 @@ describe('shadow mode safety', () => {
       const snap = metrics.getShadowSnapshot();
       expect(snap.routeTypes['multihop_2']).toBe(1);
       expect(snap.skipped).toBeGreaterThan(0);
+    });
+  });
+
+  describe('log-only economics recording (#411)', () => {
+    it('populates expected economics and quote age, leaving realized economics empty', async () => {
+      installFetchMock();
+      const metrics = new SessionMetrics();
+      const executor = new SolanaExecutor(makeConfig({ logOnly: true }), undefined, {
+        gateConfig: PERMISSIVE_GATE,
+        sessionMetrics: metrics,
+      });
+
+      await executor.execute(makeOpportunity());
+
+      const snap = metrics.getShadowSnapshot();
+      // Unreachable before #411: only ever recorded on the sign-and-send path,
+      // which a log-only run never reaches.
+      expect(snap.avgExpectedGrossUsd).not.toBeNull();
+      expect(snap.avgExecutionFeeUsd).not.toBeNull();
+      expect(snap.avgNetEdgeUsd).not.toBeNull();
+      expect(snap.avgNetEdgeBpsOfNotional).not.toBeNull();
+      expect(snap.avgQuoteAgeMs).not.toBeNull();
+
+      // A log-only run has no realized PnL, and that must stay explicit rather
+      // than being silently backfilled from the expected numbers above.
+      expect(snap.realizedTradeCount).toBe(0);
+      expect(snap.avgRealizedGrossUsd).toBeNull();
+      expect(snap.avgRealizedNetEdgeUsd).toBeNull();
+      expect(snap.submitted).toBe(0);
+    });
+
+    /**
+     * Proves the previously-dead "ready for $1 canary" branch is reachable from
+     * a real log-only run, not merely from a hand-built snapshot.
+     *
+     * Window length is the one readiness dimension a fast test cannot satisfy
+     * for real (it needs wall-clock hours), so it is the only field overridden
+     * on the snapshot the executor actually produced.
+     *
+     * The iteration count derives from READINESS.minGateEvaluations rather than
+     * a literal, so if #413 replaces that threshold this test tracks the change
+     * instead of silently asserting a stale number.
+     */
+    it('lets a log-only run reach "ready for $1 canary" once enough evaluations accumulate', async () => {
+      installFetchMock();
+      const metrics = new SessionMetrics();
+      metrics.setAiScoringMode('local');
+      const executor = new SolanaExecutor(makeConfig({ logOnly: true }), undefined, {
+        gateConfig: PERMISSIVE_GATE,
+        sessionMetrics: metrics,
+      });
+
+      for (let i = 0; i < READINESS.minGateEvaluations + 5; i++) {
+        await executor.execute(makeOpportunity());
+      }
+
+      const snap = metrics.getShadowSnapshot();
+      expect(snap.gateEvaluated).toBeGreaterThanOrEqual(READINESS.minGateEvaluations);
+      expect(snap.avgNetEdgeUsd).not.toBeNull();
+      expect(snap.avgNetEdgeUsd!).toBeGreaterThan(0);
+      expect(snap.submitted).toBe(0);
+
+      const recommendation = deriveRecommendation({ ...snap, sessionDurationSec: 30 * 3600 });
+      expect(recommendation.verdict).toBe('ready for $1 canary');
     });
   });
 

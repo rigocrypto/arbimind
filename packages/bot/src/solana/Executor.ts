@@ -643,6 +643,21 @@ export class SolanaExecutor {
       const notionalUsd = sizedOpportunity.estimatedNotionalUsd;
       const edgeBps = notionalUsd > 0 ? +((gate.netExpectedUsd / notionalUsd) * 10_000).toFixed(1) : 0;
 
+      // #411: record *expected* economics and quote age here, at gate
+      // evaluation, rather than on the sign-and-send path below. That path
+      // never runs in SOLANA_LOG_ONLY mode, so a log-only run could never
+      // populate these fields and the shadow report's canary verdict was
+      // structurally unreachable. Every value used here is already an estimate
+      // (expectedGrossUsd, estimatedExecutionFeeUsd, netExpectedUsd), so
+      // recording it as "expected" is accurate in both modes.
+      this.sessionMetrics.recordFeeNormalization(notionalUsd, estimatedExecutionFeeUsd, gate.netExpectedUsd);
+      this.sessionMetrics.recordTradeEconomics(
+        sizedOpportunity.expectedProfitUsd,
+        estimatedExecutionFeeUsd,
+        gate.netExpectedUsd,
+      );
+      this.sessionMetrics.recordQuoteAge(Date.now() - quoteRequestedAtMs);
+
       this.logger.info('[SOLANA] execution_gate', {
         passed: gate.passed,
         expectedGrossUsd: +sizedOpportunity.expectedProfitUsd.toFixed(6),
@@ -1116,7 +1131,11 @@ export class SolanaExecutor {
           maxRetries: 2,
         });
         this.sessionMetrics.recordSubmitted();
-        if (submitAgeMs !== undefined) this.sessionMetrics.recordQuoteAge(submitAgeMs);
+        // Quote age is recorded once, at gate evaluation (see #411). Recording
+        // it again here would blend two different measurement points -- age at
+        // gate versus age at submission, which also includes swap-build time --
+        // into a single average. submitAgeMs is still logged below for
+        // per-submission diagnostics.
 
         this.logger.info('[SOLANA] tx_submitted', {
           signature,
@@ -1185,12 +1204,12 @@ export class SolanaExecutor {
                 slippageCostUsd: 0, // Actual slippage would require comparing expected vs actual output
                 netEdgeUsd: netExpectedAfterFeesUsd,
               });
-              this.sessionMetrics.recordFeeNormalization(
-                opportunity.estimatedNotionalUsd,
-                executionFeeUsd,
-                netExpectedAfterFeesUsd,
-              );
-              this.sessionMetrics.recordTradeEconomics(
+              // #411: kept distinct from the gate-time recordTradeEconomics /
+              // recordFeeNormalization above, which are expected-only. This
+              // site only ever runs for a confirmed, live-submitted trade, so
+              // it is genuinely realized -- conflating the two into one average
+              // would blend a shadow run's estimates with a canary's actuals.
+              this.sessionMetrics.recordRealizedTradeEconomics(
                 expectedGrossUsd,
                 executionFeeUsd,
                 netExpectedAfterFeesUsd,

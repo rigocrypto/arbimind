@@ -192,6 +192,41 @@ describe('SessionMetrics', () => {
     });
   });
 
+  describe('realized trade economics', () => {
+    it('returns null averages and zero count with no recordings', () => {
+      const m = new SessionMetrics();
+      const summary = m.getSummary();
+      expect(summary.avgRealizedGrossUsd).toBeNull();
+      expect(summary.avgRealizedExecutionFeeUsd).toBeNull();
+      expect(summary.avgRealizedNetEdgeUsd).toBeNull();
+      expect(summary.realizedTradeCount).toBe(0);
+    });
+
+    it('computes averages correctly', () => {
+      const m = new SessionMetrics();
+      m.recordRealizedTradeEconomics(1.0, 0.2, 0.8);
+      m.recordRealizedTradeEconomics(2.0, 0.4, 1.6);
+
+      const summary = m.getSummary();
+      expect(summary.avgRealizedGrossUsd).toBe(1.5);
+      expect(summary.avgRealizedExecutionFeeUsd).toBe(0.3);
+      expect(summary.avgRealizedNetEdgeUsd).toBe(1.2);
+      expect(summary.realizedTradeCount).toBe(2);
+    });
+
+    it('stays independent from expected trade economics', () => {
+      // The whole point of the split: a shadow run's estimates and a canary's
+      // actuals must never be averaged into one number.
+      const m = new SessionMetrics();
+      m.recordTradeEconomics(1.0, 0.1, 0.9);
+      m.recordRealizedTradeEconomics(5.0, 0.5, 4.5);
+
+      const summary = m.getSummary();
+      expect(summary.avgExpectedGrossUsd).toBe(1.0);
+      expect(summary.avgRealizedGrossUsd).toBe(5.0);
+    });
+  });
+
   describe('session summary', () => {
     it('includes session duration', () => {
       const m = new SessionMetrics();

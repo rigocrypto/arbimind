@@ -118,10 +118,21 @@ export interface SessionSummary extends FunnelSnapshot {
   maxQuoteAgeMs: number | null;
   avgFeeBpsOfNotional: number | null;
   avgNetEdgeBpsOfNotional: number | null;
+  /** Expected economics, recorded at gate evaluation. Populated in log-only mode. */
   avgExpectedGrossUsd: number | null;
   avgExecutionFeeUsd: number | null;
   avgNetEdgeUsd: number | null;
   avgSlippageCostUsd: number | null;
+  /**
+   * Realized economics, recorded only for confirmed live submissions.
+   * Always null/zero on a log-only run -- that is the expected, correct state,
+   * not a bug. Never derive a canary verdict by comparing these against the
+   * expected fields above unless realizedTradeCount > 0.
+   */
+  avgRealizedGrossUsd: number | null;
+  avgRealizedExecutionFeeUsd: number | null;
+  avgRealizedNetEdgeUsd: number | null;
+  realizedTradeCount: number;
 }
 
 /**
@@ -299,11 +310,17 @@ export class SessionMetrics {
   private feeNormMinBps = Infinity;
   private feeNormMaxBps = -Infinity;
 
-  // Gross / fee / net USD tracking (for averages)
+  // Gross / fee / net USD tracking (for averages) -- expected, gate-time
   private grossUsdTotal = 0;
   private executionFeeUsdTotal = 0;
   private netEdgeUsdTotal = 0;
   private tradeCount = 0;
+
+  // Realized economics -- only fed by confirmed, live-submitted trades
+  private realizedGrossUsdTotal = 0;
+  private realizedExecutionFeeUsdTotal = 0;
+  private realizedNetEdgeUsdTotal = 0;
+  private realizedTradeCount = 0;
 
   // Slippage cost tracking (separate count: not every gate eval yields an estimate)
   private slippageCostUsdTotal = 0;
@@ -488,11 +505,25 @@ export class SessionMetrics {
     if (feeBps > this.feeNormMaxBps) this.feeNormMaxBps = feeBps;
   }
 
+  /** Expected trade economics, recorded at gate evaluation (see #411). */
   recordTradeEconomics(grossUsd: number, executionFeeUsd: number, netEdgeUsd: number): void {
     this.grossUsdTotal += grossUsd;
     this.executionFeeUsdTotal += executionFeeUsd;
     this.netEdgeUsdTotal += netEdgeUsd;
     this.tradeCount++;
+  }
+
+  /**
+   * Realized trade economics, recorded only for a confirmed, live-submitted
+   * trade. Kept in separate accumulators from {@link recordTradeEconomics} so
+   * a shadow run's estimates and a canary's actuals are never averaged
+   * together into one number.
+   */
+  recordRealizedTradeEconomics(grossUsd: number, executionFeeUsd: number, netEdgeUsd: number): void {
+    this.realizedGrossUsdTotal += grossUsd;
+    this.realizedExecutionFeeUsdTotal += executionFeeUsd;
+    this.realizedNetEdgeUsdTotal += netEdgeUsd;
+    this.realizedTradeCount++;
   }
 
   recordGrossEdge(pairLabel: string, grossUsd: number): void {
@@ -559,6 +590,16 @@ export class SessionMetrics {
       avgSlippageCostUsd: this.slippageCostCount > 0
         ? +(this.slippageCostUsdTotal / this.slippageCostCount).toFixed(6)
         : null,
+      avgRealizedGrossUsd: this.realizedTradeCount > 0
+        ? +(this.realizedGrossUsdTotal / this.realizedTradeCount).toFixed(6)
+        : null,
+      avgRealizedExecutionFeeUsd: this.realizedTradeCount > 0
+        ? +(this.realizedExecutionFeeUsdTotal / this.realizedTradeCount).toFixed(6)
+        : null,
+      avgRealizedNetEdgeUsd: this.realizedTradeCount > 0
+        ? +(this.realizedNetEdgeUsdTotal / this.realizedTradeCount).toFixed(6)
+        : null,
+      realizedTradeCount: this.realizedTradeCount,
     };
   }
 
