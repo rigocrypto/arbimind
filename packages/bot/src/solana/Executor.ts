@@ -651,7 +651,7 @@ export class SolanaExecutor {
       // (expectedGrossUsd, estimatedExecutionFeeUsd, netExpectedUsd), so
       // recording it as "expected" is accurate in both modes.
       this.sessionMetrics.recordFeeNormalization(notionalUsd, estimatedExecutionFeeUsd, gate.netExpectedUsd);
-      this.sessionMetrics.recordTradeEconomics(
+      this.sessionMetrics.recordExpectedTradeEconomics(
         sizedOpportunity.expectedProfitUsd,
         estimatedExecutionFeeUsd,
         gate.netExpectedUsd,
@@ -1204,7 +1204,7 @@ export class SolanaExecutor {
                 slippageCostUsd: 0, // Actual slippage would require comparing expected vs actual output
                 netEdgeUsd: netExpectedAfterFeesUsd,
               });
-              // #411: kept distinct from the gate-time recordTradeEconomics /
+              // #411: kept distinct from the gate-time recordExpectedTradeEconomics /
               // recordFeeNormalization above, which are expected-only. This
               // site only ever runs for a confirmed, live-submitted trade, so
               // it is genuinely realized -- conflating the two into one average

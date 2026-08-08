@@ -506,7 +506,7 @@ export class SessionMetrics {
   }
 
   /** Expected trade economics, recorded at gate evaluation (see #411). */
-  recordTradeEconomics(grossUsd: number, executionFeeUsd: number, netEdgeUsd: number): void {
+  recordExpectedTradeEconomics(grossUsd: number, executionFeeUsd: number, netEdgeUsd: number): void {
     this.grossUsdTotal += grossUsd;
     this.executionFeeUsdTotal += executionFeeUsd;
     this.netEdgeUsdTotal += netEdgeUsd;
@@ -515,7 +515,7 @@ export class SessionMetrics {
 
   /**
    * Realized trade economics, recorded only for a confirmed, live-submitted
-   * trade. Kept in separate accumulators from {@link recordTradeEconomics} so
+   * trade. Kept in separate accumulators from {@link recordExpectedTradeEconomics} so
    * a shadow run's estimates and a canary's actuals are never averaged
    * together into one number.
    */

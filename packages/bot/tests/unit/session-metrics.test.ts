@@ -179,8 +179,8 @@ describe('SessionMetrics', () => {
 
     it('computes averages correctly', () => {
       const m = new SessionMetrics();
-      m.recordTradeEconomics(1.0, 0.20, 0.80);
-      m.recordTradeEconomics(2.0, 0.40, 1.60);
+      m.recordExpectedTradeEconomics(1.0, 0.20, 0.80);
+      m.recordExpectedTradeEconomics(2.0, 0.40, 1.60);
 
       const summary = m.getSummary();
       // avg gross = (1.0 + 2.0) / 2 = 1.5
@@ -218,7 +218,7 @@ describe('SessionMetrics', () => {
       // The whole point of the split: a shadow run's estimates and a canary's
       // actuals must never be averaged into one number.
       const m = new SessionMetrics();
-      m.recordTradeEconomics(1.0, 0.1, 0.9);
+      m.recordExpectedTradeEconomics(1.0, 0.1, 0.9);
       m.recordRealizedTradeEconomics(5.0, 0.5, 4.5);
 
       const summary = m.getSummary();
