@@ -1,0 +1,6 @@
+{
+  "//": "Accepted advisories on the GATED surfaces (packages/bot, packages/backend) only. The required per-PR check fails on any high/critical advisory reachable from those surfaces that is NOT listed here. This file is the single reason a blocking finding is allowed to persist, so every entry must carry a rationale and a reviewBy date. See docs/security/AUDIT_EXCEPTIONS.md for the separate, broader workspace-wide exception list used by `pnpm audit` itself.",
+  "//scope": "This is NOT a list of everything wrong with the dependency tree. The ui is deliberately out of scope for the blocking check -- it is a frontend with a different threat model and does not touch keys or funds. ui findings are tracked by the scheduled audit job instead.",
+  "//process": "Additions are proposed automatically by the scheduled audit job, which deliberately leaves `rationale` EMPTY. An empty required field forces a human decision; a pre-filled one gets rubber-stamped. Removals are never automated -- a registry outage must not be able to empty this file.",
+  "advisories": []
+}

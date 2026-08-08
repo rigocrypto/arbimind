@@ -1,0 +1,130 @@
+name: Scheduled Audit
+
+# Full workspace audit against the live advisory database.
+#
+# This is where live-DB dependence belongs: a scheduled job that files an issue
+# is allowed to be non-deterministic, because nothing blocks on it. The required
+# per-PR gate in ci.yml is surface-scoped and baseline-differenced so that its
+# result changes only when the repository changes.
+#
+# Two behaviours here are deliberate and must not be "simplified":
+#
+#  1. Endpoint failures are tolerated (try again tomorrow) -- but they file a
+#     DISTINCT issue from "new advisories found". A week of outages must never
+#     read as a week of clean audits.
+#
+#  2. This job may only ever PROPOSE ADDITIONS to security/audit-baseline.json.
+#     It must never compute removals. If it received an error payload and
+#     computed "these baselined entries no longer appear, prune them", a single
+#     registry outage would empty the entire exception record in a PR that looks
+#     like routine cleanup. Removals are manual, permanently.
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Full workspace audit
+        id: audit
+        run: |
+          set +e
+          timeout 600 pnpm audit --json > audit-full.json 2>audit-full.err
+          set -e
+          # Same rule as the required gate: decide from payload shape, never
+          # from pnpm's exit code, which cannot distinguish findings from a
+          # registry failure.
+          python3 scripts/audit_surface_gate.py audit-full.json \
+            --baseline security/audit-baseline.json > gate-report.txt 2>&1
+          echo "gate_status=$?" >> "$GITHUB_OUTPUT"
+          cat gate-report.txt
+
+      - name: Report that the audit could not run
+        if: steps.audit.outputs.gate_status == '2'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = 'Scheduled audit could not run';
+            const body = [
+              'The scheduled audit produced no usable advisory data.',
+              '',
+              'This is **not** a clean audit result. It means the registry was',
+              'unreachable, the request timed out, or the output was malformed.',
+              '',
+              'No baseline changes are proposed from a failed run, by design:',
+              'a registry outage must never be able to modify the exception record.',
+              '',
+              'If this recurs for several days, investigate rather than waiting.',
+            ].join('\n');
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'audit-infrastructure',
+            });
+            if (existing.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ['audit-infrastructure'],
+              });
+            }
+
+      - name: Warn if the gated surfaces returned nothing at all
+        if: steps.audit.outputs.gate_status != '2'
+        run: |
+          # Vacuity canary. This is a WARNING, never a failure: it queries the
+          # live DB, so making it blocking would reintroduce exactly the
+          # non-determinism the required gate was changed to remove -- through a
+          # side door. Warnings also survive merge pressure; a flaky required
+          # check gets deleted.
+          moderate_hits=$(python3 scripts/audit_surface_gate.py audit-full.json \
+            --severity moderate --severity high --severity critical >/dev/null 2>&1; echo $?)
+          if [ "$moderate_hits" -eq 0 ]; then
+            echo "::warning::Audit returned zero findings for bot/backend at moderate+. Historically these surfaces carry ~10 finding-paths, so verify the filter still matches pnpm's path encoding (e.g. after a pnpm upgrade)."
+          fi
+
+      - name: Report new advisories
+        if: steps.audit.outputs.gate_status == '1'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('gate-report.txt', 'utf8');
+            const body = [
+              'The scheduled audit found high/critical advisories reachable from',
+              '`packages/bot` or `packages/backend` that are not in',
+              '`security/audit-baseline.json`.',
+              '',
+              '```',
+              report.slice(0, 55000),
+              '```',
+              '',
+              '**Fix the dependency if a patched version is reachable.** Only add a',
+              'baseline entry when no upstream fix exists (`patched: <0.0.0`) or the',
+              'fix is genuinely unreachable.',
+              '',
+              'Baseline entries require a `rationale` and a `reviewBy` date. The',
+              'rationale is deliberately left empty by automation: an empty required',
+              'field forces a decision, a pre-filled one gets rubber-stamped.',
+            ].join('\n');
+            await github.rest.issues.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              title: `Scheduled audit: new advisories on gated surfaces (${new Date().toISOString().slice(0, 10)})`,
+              body, labels: ['dependencies'],
+            });
