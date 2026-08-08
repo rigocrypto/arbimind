@@ -512,6 +512,35 @@ describe('shadow mode safety', () => {
     });
 
     /**
+     * The rejects are half the dataset. 16 of Baseline v1's 34 evaluations were
+     * rejections, and their margin is what says whether the strategy is
+     * marginally short or nowhere near — so economics must be recorded for a
+     * REJECTED evaluation too, not only for the ones that pass the gate.
+     */
+    it('records economics for gate-REJECTED evaluations, not just passes', async () => {
+      installFetchMock();
+      const metrics = new SessionMetrics();
+      // Floor far above anything the fixture can produce: guarantees rejection.
+      const executor = new SolanaExecutor(makeConfig({ logOnly: true }), undefined, {
+        gateConfig: { ...PERMISSIVE_GATE, minNetProfitUsd: 100 },
+        sessionMetrics: metrics,
+      });
+
+      const result = await executor.execute(makeOpportunity());
+      expect(result.skipped).toBe(true);
+
+      const snap = metrics.getShadowSnapshot();
+      expect(snap.gateRejected).toBe(1);
+      expect(snap.gatePassed).toBe(0);
+      // Never built or sent — but the economics of the rejection are captured.
+      expect(snap.swapBuildsAttempted).toBe(0);
+      expect(snap.submitted).toBe(0);
+      expect(snap.avgExpectedGrossUsd).not.toBeNull();
+      expect(snap.avgNetEdgeUsd).not.toBeNull();
+      expect(snap.avgQuoteAgeMs).not.toBeNull();
+    });
+
+    /**
      * Proves the previously-dead "ready for $1 canary" branch is reachable from
      * a real log-only run, not merely from a hand-built snapshot.
      *
