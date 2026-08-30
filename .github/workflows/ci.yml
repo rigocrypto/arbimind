@@ -30,20 +30,41 @@ jobs:
 
       - run: pnpm install --frozen-lockfile --prefer-offline
 
-      - name: Security audit (high-severity)
+      # Audit gate: surface-scoped and baseline-differenced, so its result can
+      # only change when the lockfile or the baseline changes -- never because
+      # GitHub published an advisory overnight. Measured on an unmodified tree:
+      # 2 unignored high across 1 package, then 5 across 3 packages hours later,
+      # byte-identical lockfile. A required check that red-lights a
+      # dependency-free diff is a scheduling artifact, not a security signal.
+      #
+      # Note there is deliberately NO endpoint-failure grep here. The previous
+      # step swallowed registry errors and exited 0, which was safe under
+      # always-fail-on-high semantics (a reachable audit would fail loudly next
+      # run) but becomes fail-open under a filtered check, on exactly the
+      # surfaces that touch keys and funds. That behaviour now lives only in the
+      # scheduled job, where "endpoint was down, try tomorrow" is still correct.
+      - name: Security audit (bot + backend surfaces)
         run: |
           set +e
-          pnpm audit --audit-level=high 2>&1 | tee audit.log
-          audit_status=${PIPESTATUS[0]}
+          # 10 minute cap: a registry that accepts the connection and then hangs
+          # would otherwise run to the job timeout, which can resolve green.
+          timeout 600 pnpm audit --prod --json > audit-prod.json 2>audit-prod.err
           set -e
-          if [ "$audit_status" -eq 0 ]; then
-            exit 0
+          # pnpm audit's exit code is deliberately ignored: it returns 1 both for
+          # "found vulnerabilities" and for "could not reach the registry", so it
+          # carries no usable information. The gate decides from payload shape.
+          python3 scripts/audit_surface_gate.py audit-prod.json \
+            --baseline security/audit-baseline.json
+          gate_status=$?
+          if [ "$gate_status" -eq 2 ]; then
+            echo "::error::Audit did not run (registry unreachable, timeout, or malformed output)."
+            echo "This is NOT a clean result. See audit-prod.err:"
+            head -20 audit-prod.err || true
           fi
-          if grep -E 'ERR_PNPM_AUDIT_BAD_RESPONSE|ERR_PNPM_META_FETCH_FAIL|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|Forbidden' audit.log >/dev/null; then
-            echo 'pnpm audit endpoint was unavailable; continuing without masking real audit findings.'
-            exit 0
-          fi
-          exit "$audit_status"
+          exit "$gate_status"
+
+      - name: Audit gate self-test
+        run: python3 tests/test_audit_surface_gate.py
 
       # Keep the existing lint gate shape: only UI lint is currently clean on main.
       - run: pnpm --filter @arbimind/ui lint
