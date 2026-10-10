@@ -190,17 +190,6 @@ function parseTreasuryDiagnostics(): TreasuryDiagnostics {
   }
 }
 
-function parseTreasuryKeypair(): Keypair {
-  const diagnostics = parseTreasuryDiagnostics();
-  if (diagnostics.configured && diagnostics.keypair) {
-    return diagnostics.keypair;
-  }
-  if (diagnostics.reason === 'not_configured') {
-    throw new Error('SOLANA_TREASURY_SECRET_KEY not configured');
-  }
-  throw new Error('SOLANA_TREASURY_SECRET_KEY must be valid JSON byte array, base64, or base58');
-}
-
 const router: Router = express.Router();
 const connectionCache = new Map<SolanaCluster, Connection>();
 
@@ -229,6 +218,8 @@ router.get('/withdraw-capabilities', async (req: Request, res: Response) => {
     // Backward-compatible fields used by existing UI.
     hasTreasuryKey: diagnostics.configured,
     treasuryPubkey: diagnostics.publicKeyDerived,
+    // POST /withdraw is disabled regardless of whether a key is configured.
+    withdrawEnabled: false,
   });
 });
 
@@ -372,85 +363,21 @@ router.post('/transfer', async (req: Request, res: Response) => {
 
 /**
  * POST /api/solana/tx/withdraw
- * Custodial treasury withdrawal (treasury signs + sends).
+ *
+ * Disabled, fail-closed. This route used to sign a treasury transfer with a
+ * caller-chosen destination, amount and cluster (including mainnet-beta) and
+ * broadcast it with no authentication -- outside the bot's LOG_ONLY gate and
+ * behind nothing but CORS, which does not stop server-to-server requests.
+ *
+ * It now refuses every request before reading the body or loading any signer.
+ * Do not restore treasury signing here behind the shared ADMIN_KEY: this is the
+ * public API process, and it should not hold treasury signing authority at all.
  */
-router.post('/withdraw', async (req: Request, res: Response) => {
-  try {
-    const cluster = getRequestCluster(req);
-    const connection = getConnection(cluster);
-    const body = req.body as {
-      amountSol?: number;
-      amount?: number;
-      fromPubkey?: string;
-      toPubkey?: string;
-      to?: string;
-    };
-
-    const amountSol = Number(body.amountSol ?? body.amount);
-    const toPubkey = (body.toPubkey ?? body.to ?? '').trim();
-
-    if (!Number.isFinite(amountSol) || amountSol <= 0) {
-      return res.status(400).json({ error: 'amountSol must be > 0' });
-    }
-    if (!toPubkey || !isValidSolanaAddress(toPubkey)) {
-      return res.status(400).json({ error: 'toPubkey required and must be valid Solana address' });
-    }
-
-    const treasury = parseTreasuryKeypair();
-    const treasuryPubkey = treasury.publicKey.toBase58();
-
-    if (body.fromPubkey && body.fromPubkey !== treasuryPubkey) {
-      return res.status(400).json({ error: 'fromPubkey does not match configured treasury signer' });
-    }
-
-    const amountLamports = Math.floor(amountSol * LAMPORTS_PER_SOL);
-    if (amountLamports <= 0) {
-      return res.status(400).json({ error: 'amountSol too small' });
-    }
-
-    const to = new PublicKey(toPubkey);
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-
-    const ixWithdraw = SystemProgram.transfer({
-      fromPubkey: treasury.publicKey,
-      toPubkey: to,
-      lamports: amountLamports,
-    });
-
-    const msg = new TransactionMessage({
-      payerKey: treasury.publicKey,
-      recentBlockhash: blockhash,
-      instructions: [ixWithdraw],
-    }).compileToV0Message();
-
-    const tx = new VersionedTransaction(msg);
-    tx.sign([treasury]);
-
-    const signature = await connection.sendRawTransaction(tx.serialize(), {
-      skipPreflight: false,
-      preflightCommitment: 'confirmed',
-      maxRetries: 3,
-    });
-
-    const suffix = getExplorerSuffix(cluster);
-
-    return res.json({
-      cluster,
-      txSig: signature,
-      signature,
-      fromPubkey: treasuryPubkey,
-      toPubkey: to.toBase58(),
-      amountLamports,
-      recentBlockhash: blockhash,
-      lastValidBlockHeight,
-      explorer: `https://solscan.io/tx/${signature}${suffix}`,
-    });
-  } catch (error) {
-    console.error('Solana tx/withdraw error:', error);
-    return res.status(500).json({
-      error: error instanceof Error ? error.message : 'Withdraw failed',
-    });
-  }
+router.post('/withdraw', (_req: Request, res: Response) => {
+  return res.status(403).json({
+    error: 'withdraw_disabled',
+    message: 'Treasury withdrawal is disabled on this API.',
+  });
 });
 
 export { getConnection, getRequestCluster, parseTreasuryDiagnostics };
