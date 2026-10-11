@@ -103,7 +103,13 @@ async function main(): Promise<void> {
 
     // Refresh config with loaded env vars
     refreshConfig();
-    
+
+    // Resolved execution-safety flags as this process loaded them (booleans and a
+    // signer source category only). Emitted before validation so it survives a
+    // config failure.
+    const { logExecutionSafetyBoot } = await import('./safety/executionSafetyBoot.js');
+    logExecutionSafetyBoot();
+
     logger.info('🚀 Starting ArbiMind Arbitrage Bot...');
     
     // Validate configuration

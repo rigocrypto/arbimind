@@ -61,6 +61,7 @@ export class ArbitrageBot {
   private canaryDailyPnlEth: number = 0;
   private canaryDay: string = new Date().toISOString().slice(0, 10);
   private lastSanityTxAtMs: number = 0;
+  private sanityLogOnlySkipLogged = false;
   private cachedGasPriceWei: bigint = 20_000_000_000n; // fallback 20 gwei, refreshed from provider
   private lastGasPriceRefreshMs: number = 0;
   /** Cached ETH/USD price derived from WETH/USDC quotes. Used to convert gas
@@ -347,6 +348,16 @@ export class ArbitrageBot {
 
   private async maybeRunSanityTransfer(): Promise<void> {
     if (!this.botConfig.sanityTxEnabled) {
+      return;
+    }
+
+    // LOG_ONLY means no broadcast from any path, the sanity transfer included.
+    // Checked before the balance lookup, SANITY_ATTEMPT, or the execution service.
+    if (this.botConfig.logOnly) {
+      if (!this.sanityLogOnlySkipLogged) {
+        console.error('[SANITY_SKIP] log_only');
+        this.sanityLogOnlySkipLogged = true;
+      }
       return;
     }
 

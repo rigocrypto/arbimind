@@ -95,6 +95,8 @@ export class SolanaInventoryManager {
   private readonly feeEstimator: PriorityFeeEstimator | null;
   private readonly maxRebalanceCostBps: number;
   private readonly sessionMetrics: SessionMetrics | null;
+  /** Resolved Solana LOG_ONLY; fails closed unless explicitly false. */
+  private readonly logOnly: boolean;
 
   private lastSnapshot: InventorySnapshot | null = null;
   private lastRebalanceAtMs = 0;
@@ -112,6 +114,8 @@ export class SolanaInventoryManager {
 
   constructor(opts: {
     config: InventoryConfig;
+    /** Resolved Solana LOG_ONLY: funding swaps are never signed or broadcast while true. */
+    logOnly: boolean;
     jupiterBaseUrl: string;
     maxSlippageBps: number;
     asLegacyTransaction: boolean;
@@ -121,6 +125,7 @@ export class SolanaInventoryManager {
     sessionMetrics?: SessionMetrics;
   }) {
     this.config = opts.config;
+    this.logOnly = opts.logOnly !== false;
     this.jupiterBaseUrl = opts.jupiterBaseUrl;
     this.maxSlippageBps = opts.maxSlippageBps;
     this.asLegacyTransaction = opts.asLegacyTransaction;
@@ -502,6 +507,16 @@ export class SolanaInventoryManager {
     wallet: Keypair,
     decision: RebalanceDecision,
   ): Promise<void> {
+    // LOG_ONLY hard gate at the sink: the rebalance decision may be computed and
+    // logged by the caller, but nothing past this point may sign or broadcast.
+    if (this.logOnly) {
+      this.logger.info('[INVENTORY] rebalance skipped — log_only', {
+        action: decision.action,
+        estimatedUsd: +decision.estimatedUsd.toFixed(2),
+      });
+      return;
+    }
+
     // Step 1: Get quote
     const quoteUrl = new URL(`${this.jupiterBaseUrl}/quote`);
     quoteUrl.searchParams.set('inputMint', decision.inputMint);

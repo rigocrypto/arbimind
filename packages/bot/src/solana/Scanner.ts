@@ -177,6 +177,7 @@ export class SolanaScanner {
     if (this.executor && inventoryConfig.autoFundEnabled) {
       this.inventoryManager = new SolanaInventoryManager({
         config: inventoryConfig,
+        logOnly: solanaExecutorConfig.logOnly,
         jupiterBaseUrl: solanaExecutorConfig.jupiterBaseUrl,
         maxSlippageBps: solanaExecutorConfig.maxSlippageBps,
         asLegacyTransaction: solanaExecutorConfig.asLegacyTransaction,
@@ -192,6 +193,7 @@ export class SolanaScanner {
     // FundingManager — step 1: balance snapshot logging on each tick
     if (inventoryConfig.autoFundEnabled && solanaExecutorConfig.rpcUrl) {
       this.fundingManager = new FundingManager({
+        logOnly: solanaExecutorConfig.logOnly,
         autoRebalanceEnabled: inventoryConfig.autoRebalanceEnabled,
         targetSolReserve: inventoryConfig.targetSolReserve,
         minSolReserve: inventoryConfig.minSolReserve,

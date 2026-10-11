@@ -26,6 +26,11 @@ const MINT_DECIMALS: Record<string, number> = {
 // ── Types ────────────────────────────────────────────────────────
 
 export interface FundingManagerConfig {
+  /**
+   * Resolved Solana LOG_ONLY. When true, rebalances are still evaluated and
+   * quoted but never signed or broadcast -- regardless of autoRebalanceEnabled.
+   */
+  logOnly: boolean;
   /** Master switch for auto-rebalance execution */
   autoRebalanceEnabled: boolean;
   /** Target SOL reserve (above this, excess is swept to base) */
@@ -100,6 +105,7 @@ export class FundingManager {
   constructor(config: FundingManagerConfig) {
     this.config = config;
     this.logger.info('[FUNDING] initialized', {
+      logOnly: this.isLogOnly(),
       autoRebalanceEnabled: config.autoRebalanceEnabled,
       baseAsset: config.baseAsset,
       baseAssetMint: config.baseAssetMint,
@@ -399,6 +405,18 @@ export class FundingManager {
       return result;
     }
 
+    // LOG_ONLY hard gate. Everything above is read-only (quote + cost check);
+    // nothing below it may sign or broadcast while LOG_ONLY is on.
+    if (this.isLogOnly()) {
+      const result: RebalanceResult = {
+        triggered: false,
+        reason: 'log_only',
+        details: { inputMint, outputMint, amountRaw, estimatedUsd, costBps },
+      };
+      this.emitRebalanceLog(label, estimatedUsd, 0, result);
+      return result;
+    }
+
     // 3. Execute swap
     let signature: string;
     try {
@@ -456,11 +474,20 @@ export class FundingManager {
     return (await resp.json()) as JupiterQuoteResponse;
   }
 
+  /** Fails closed: anything other than an explicit `logOnly: false` blocks execution. */
+  private isLogOnly(): boolean {
+    return this.config.logOnly !== false;
+  }
+
   private async executeJupiterSwap(
     connection: Connection,
     wallet: Keypair,
     quoteResponse: JupiterQuoteResponse,
   ): Promise<string> {
+    // Defense in depth at the sink itself, in case a future caller skips attemptSwap.
+    if (this.isLogOnly()) {
+      throw new Error('LOG_ONLY: refusing to sign or broadcast a funding swap');
+    }
     const swapResp = await fetch(`${this.config.jupiterBaseUrl}/swap`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
