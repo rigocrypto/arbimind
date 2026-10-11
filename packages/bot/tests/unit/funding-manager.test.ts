@@ -9,6 +9,9 @@ const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
 
 function makeConfig(overrides?: Partial<FundingManagerConfig>): FundingManagerConfig {
   return {
+    // These tests exercise the execution path, so LOG_ONLY is explicitly off.
+    // LOG_ONLY enforcement is covered in log-only-funding.test.ts.
+    logOnly: false,
     autoRebalanceEnabled: true,
     targetSolReserve: 0.25,
     minSolReserve: 0.15,

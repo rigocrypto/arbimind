@@ -123,6 +123,32 @@ export const solanaConfig: SolanaConfig = {
   isTestnet: process.env['NETWORK'] === 'testnet',
 };
 
+export type SolanaSignerSource = 'SOLANA_PRIVATE_KEY_BASE58' | 'legacy_alias' | 'none';
+
+/**
+ * Resolve the bot's own Solana execution signer.
+ *
+ * SOLANA_ARB_SECRET_KEY and SOLANA_TREASURY_SECRET_KEY are deliberately NOT
+ * accepted: they are backend treasury credentials, and an execution process
+ * must never inherit them by alias just because both happen to be set in the
+ * same environment. The malformed SOLANA_PRIVATE_KEY_BASE58Y_BASE58 alias is
+ * still read here; removing it is tracked separately in #406.
+ */
+export function resolveSolanaSigner(
+  env: NodeJS.ProcessEnv = process.env,
+): { value: string; source: SolanaSignerSource } {
+  const dedicated = env['SOLANA_PRIVATE_KEY_BASE58'];
+  if (dedicated) return { value: dedicated, source: 'SOLANA_PRIVATE_KEY_BASE58' };
+  const legacy = env['SOLANA_PRIVATE_KEY_BASE58Y_BASE58'];
+  if (legacy) return { value: legacy, source: 'legacy_alias' };
+  return { value: '', source: 'none' };
+}
+
+const solanaSigner = resolveSolanaSigner();
+
+/** Where this process's Solana signer came from (category only, never the value). */
+export const solanaSignerSource: SolanaSignerSource = solanaSigner.source;
+
 export const solanaExecutorConfig: SolanaExecutorRuntimeConfig = {
   tradingEnabled: isEnvTrue(process.env['SOLANA_TRADING_ENABLED']),
   logOnly: !isEnvFalse(process.env['SOLANA_LOG_ONLY']),
@@ -168,12 +194,7 @@ export const solanaExecutorConfig: SolanaExecutorRuntimeConfig = {
     process.env['SOLANA_RPC_URL_MAINNET_BETA'] ||
     process.env['SOLANA_RPC_URL'] ||
     '',
-  privateKeyBase58:
-    process.env['SOLANA_PRIVATE_KEY_BASE58'] ||
-    process.env['SOLANA_PRIVATE_KEY_BASE58Y_BASE58'] ||
-    process.env['SOLANA_ARB_SECRET_KEY'] ||
-    process.env['SOLANA_TREASURY_SECRET_KEY'] ||
-    '',
+  privateKeyBase58: solanaSigner.value,
   jupiterBaseUrl: process.env['JUPITER_BASE_URL'] || 'https://lite-api.jup.ag/swap/v1',
   riskPolicy: {
     denyTiers: (process.env['SOLANA_RISK_DENY_TIERS'] ?? 'critical').split(',').map(s => s.trim()).filter(Boolean) as RiskTier[],
