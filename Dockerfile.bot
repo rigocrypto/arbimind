@@ -1,13 +1,65 @@
-FROM node:22-slim AS builder
-WORKDIR /app/packages/bot
-COPY packages/bot/package.json ./package.json
-RUN npm install
-COPY packages/bot .
-RUN npm run build
+# Bot image built from the canonical pnpm workspace: pnpm-lock.yaml, the
+# overrides in pnpm-workspace.yaml, and the repository's pinned pnpm and Node.
+# The previous image ran an unlocked `npm install` against packages/bot alone,
+# which ignored all three and failed inside npm's resolver ("edgesOut").
+#
+# Build context must be the repository root.
 
-FROM node:22-slim AS runner
+FROM node:22.23.2-slim AS builder
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.27.0 --activate
+
+# Manifests and lockfile first, so the dependency layer is cached on its own.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY packages/bot/package.json packages/bot/package.json
+RUN pnpm install --frozen-lockfile --filter @arbimind/bot...
+
+# Only what tsc needs. Copying packages/bot wholesale would pull in the tracked
+# (stale) dist/ and any host node_modules: the "!packages/bot/**" rule in
+# .dockerignore re-includes both after the "**/dist" and "**/node_modules" excludes.
+COPY packages/bot/tsconfig.json packages/bot/tsconfig.json
+COPY packages/bot/src packages/bot/src
+RUN pnpm --filter @arbimind/bot build
+
+# Self-contained production dependency tree for the bot (no workspace symlinks).
+RUN pnpm --filter @arbimind/bot deploy --prod --legacy /out
+
+# pnpm 10 blocks dependency build scripts by default, and that stays the policy.
+# @tensorflow/tfjs-node is the one production dependency whose install script is
+# required: it downloads libtensorflow and the prebuilt native addon. Run exactly
+# its declared installer (`node scripts/install.js`), for that package only, with
+# the same PATH a lifecycle run would get. The download is NOT covered by
+# pnpm-lock.yaml integrity, so the build refuses to run if the download source is
+# redirected, and refuses a source-compile fallback: prebuilt binaries only.
+WORKDIR /out
+RUN set -eu; \
+    for v in TFJS_NODE_CDN_STORAGE TFJS_NODE_BASE_URI CDN_STORAGE npm_config_TFJS_NODE_CDN_STORAGE npm_config_TFJS_NODE_BASE_URI; do \
+      if env | grep -q "^${v}="; then echo "tfjs download-source override present: ${v}" >&2; exit 1; fi; \
+      echo "download-source guard ${v}: absent"; \
+    done; \
+    TFJS_DIR="$(node -p "require('path').dirname(require.resolve('@tensorflow/tfjs-node/package.json'))")"; \
+    TFJS_VERSION="$(node -p "require('${TFJS_DIR}/package.json').version")"; \
+    echo "tfjs package: @tensorflow/tfjs-node"; \
+    echo "resolved version: ${TFJS_VERSION}"; \
+    echo "resolved package directory: ${TFJS_DIR}"; \
+    test "${TFJS_VERSION}" = "4.22.0"; \
+    test -f "${TFJS_DIR}/scripts/install.js"; \
+    test ! -e "${TFJS_DIR}/scripts/custom-binary.json"; \
+    cd "${TFJS_DIR}"; \
+    export PATH="${TFJS_DIR}/node_modules/.bin:${PATH}"; \
+    test "$(command -v node-pre-gyp)" = "${TFJS_DIR}/node_modules/.bin/node-pre-gyp"; \
+    if ! node scripts/install.js > /tmp/tfjs-install.log 2>&1; then cat /tmp/tfjs-install.log; exit 1; fi; \
+    cat /tmp/tfjs-install.log; \
+    if grep -qiE 'falling back to source|build-from-source|^gyp (info|warn|ERR)|node-pre-gyp install failed' /tmp/tfjs-install.log; then \
+      echo 'tfjs-node prebuilt addon unavailable or source build attempted; refusing' >&2; exit 1; \
+    fi; \
+    cd /out; \
+    node -e "require('@tensorflow/tfjs-node'); console.log('TFJS_NODE_OK')"
+
+FROM node:22.23.2-slim AS runner
 WORKDIR /app/packages/bot
-COPY --from=builder /app/packages/bot/package.json ./package.json
-COPY --from=builder /app/packages/bot/node_modules ./node_modules
+ENV NODE_ENV=production
+COPY --from=builder /out/package.json ./package.json
+COPY --from=builder /out/node_modules ./node_modules
 COPY --from=builder /app/packages/bot/dist ./dist
-CMD ["npm", "start"]
+CMD ["node", "dist/index.js"]
