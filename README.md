@@ -37,6 +37,25 @@ Troubleshooting:
 
 A professional MEV/searcher system for detecting and executing arbitrage opportunities across multiple DEXes with intelligent risk management and profit optimization.
 
+
+## 🧭 Product Evolution: Multi-Asset Intelligence
+
+ArbiMind's current production surface remains focused on Web3 arbitrage/searcher workflows. The next roadmap expands the platform with a **research-only Multi-Asset Intelligence Engine** for futures, options, equities/ETFs, commodities, and crypto market research.
+
+The expansion is staged so new research capabilities do not weaken existing execution, signer, LOG_ONLY, CI, or security controls.
+
+- **M0 — Current-System Stabilization**
+- **M1 — Market Intelligence Foundation**: MNQ + ES + SPY, deterministic multi-timeframe scoring, hard eligibility/risk gates, Research Cards, evidence, MFE/MAE outcomes, E-STOP
+- **M2 — Options Intelligence**: chains, Greeks, IV, flow, liquidity, strategy selection
+- **M3 — Evidence Learning**: offline calibration and validated weight optimization
+- **M4 — FuturePath + Multi-Asset Expansion**: probabilistic 10/25/50/100-candle scenario simulation
+- **M5 — Crowd Forecast + RealSona Integration**: blind community voting, calibration/reputation, governed CompanyOS capabilities
+
+FuturePath and Crowd Forecast are **planned**, not current production features. Futures/Options remain research-only in this roadmap; no broker auto-execution is introduced.
+
+📘 [Full Multi-Asset Intelligence Roadmap](docs/roadmap/MULTI_ASSET_INTELLIGENCE_ROADMAP.md)  
+🧪 [M1 Market Intelligence Foundation Spec](docs/roadmap/M1_MARKET_INTELLIGENCE_FOUNDATION.md)
+
 ## 🖼️ Live-Ready Strategy Overview
 
 ![ArbiMind live-ready strategy overview](packages/ui/public/ArbiMind_4.jpg)
