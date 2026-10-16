@@ -322,6 +322,19 @@ export function renderShadowReport(snapshot: ShadowSnapshot): string {
   push('avg net profit', usd(snapshot.avgNetEdgeUsd));
   push('avg edge bps', snapshot.avgNetEdgeBpsOfNotional === null ? 'n/a' : `${snapshot.avgNetEdgeBpsOfNotional}`);
   push('best gross seen', usd(snapshot.bestGrossOverallUsd));
+  lines.push('  note: computed at gate evaluation across every evaluation (pass + reject) —');
+  lines.push('        these are estimates, not realized PnL, and populate in log-only mode');
+  lines.push('');
+
+  lines.push('realized economics (confirmed live submissions only):');
+  if (snapshot.realizedTradeCount > 0) {
+    push('trades confirmed', String(snapshot.realizedTradeCount));
+    push('avg gross profit', usd(snapshot.avgRealizedGrossUsd));
+    push('avg execution fee', usd(snapshot.avgRealizedExecutionFeeUsd));
+    push('avg net profit', usd(snapshot.avgRealizedNetEdgeUsd));
+  } else {
+    lines.push('  (no confirmed trades — expected and correct for a log-only run)');
+  }
   lines.push('');
 
   lines.push('risk notes:');

@@ -203,11 +203,33 @@ describe('renderShadowReport', () => {
       'top AMMs:',
       'latency:',
       'expected economics:',
+      'realized economics',
       'risk notes:',
       'recommendation:',
     ]) {
       expect(report).toContain(section);
     }
+  });
+
+  it('shows no confirmed trades for a log-only run, never a fabricated realized average', () => {
+    const report = renderShadowReport(healthySnapshot());
+    expect(report).toContain('no confirmed trades');
+  });
+
+  it('renders realized economics once trades confirm, distinctly from expected', () => {
+    const m = new SessionMetrics();
+    m.recordRealizedTradeEconomics(2.0, 0.1, 1.9);
+    const s = m.getSummary();
+    const report = renderShadowReport(
+      healthySnapshot({
+        realizedTradeCount: s.realizedTradeCount,
+        avgRealizedGrossUsd: s.avgRealizedGrossUsd,
+        avgRealizedExecutionFeeUsd: s.avgRealizedExecutionFeeUsd,
+        avgRealizedNetEdgeUsd: s.avgRealizedNetEdgeUsd,
+      }),
+    );
+    expect(report).not.toContain('no confirmed trades');
+    expect(report).toContain('trades confirmed');
   });
 
   it('flags a run that submitted transactions as not log-only', () => {
